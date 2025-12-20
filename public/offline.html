@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline - CAI Intake</title>
+  <style>
+    :root {
+      --cai-teal: #0D9488;
+      --background: #0A0A0A;
+      --foreground: #FAFAFA;
+      --muted: #27272A;
+      --muted-foreground: #A1A1AA;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    
+    .logo {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 24px;
+      background: var(--cai-teal);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .logo svg {
+      width: 48px;
+      height: 48px;
+      fill: white;
+    }
+    
+    h1 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    p {
+      color: var(--muted-foreground);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+    
+    .retry-btn {
+      display: inline-block;
+      background: var(--cai-teal);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+    
+    .retry-btn:hover {
+      opacity: 0.9;
+    }
+    
+    .status {
+      margin-top: 24px;
+      padding: 16px;
+      background: var(--muted);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .offline-icon {
+      width: 120px;
+      height: 120px;
+      margin: 0 auto 24px;
+      opacity: 0.3;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <svg class="offline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01M10.05 12.828a8.5 8.5 0 013.9 0M1 1l22 22M1 8.8a18 18 0 0111.2-6.4M22 8.8a18 18 0 00-5.9-4.6M6.7 12.8a12 12 0 017.8-3.6M15.3 12.8a12 12 0 00-3.6-.8"/>
+    </svg>
+    
+    <h1>You're Offline</h1>
+    <p>
+      It looks like you've lost your internet connection. 
+      CAI Intake needs an active connection to sync your cutlists.
+    </p>
+    
+    <button class="retry-btn" onclick="window.location.reload()">
+      Try Again
+    </button>
+    
+    <div class="status">
+      <span class="status-indicator"></span>
+      Waiting for connection...
+    </div>
+  </div>
+  
+  <script>
+    // Auto-reload when back online
+    window.addEventListener('online', () => {
+      window.location.reload();
+    });
+    
+    // Check connection periodically
+    setInterval(() => {
+      if (navigator.onLine) {
+        window.location.reload();
+      }
+    }, 5000);
+  </script>
+</body>
+</html>
+

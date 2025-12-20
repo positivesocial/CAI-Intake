@@ -48,6 +48,7 @@ import {
 import { useIntakeStore } from "@/lib/store";
 import type { CutPart } from "@/lib/schema";
 import { cn } from "@/lib/utils";
+import { PartEditModal } from "./PartEditModal";
 import { useColumnOrder } from "@/hooks/use-column-order";
 import { useKeyboardShortcut } from "@/components/ui/keyboard-shortcuts-dialog";
 
@@ -188,6 +189,7 @@ export function PartsTable() {
   const [sortField, setSortField] = React.useState<SortField>("label");
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc");
   const [lastSelectedId, setLastSelectedId] = React.useState<string | null>(null);
+  const [editingPartId, setEditingPartId] = React.useState<string | null>(null);
 
   // Column order state with persistence
   const [columnOrder, setColumnOrder] = useColumnOrder<ColumnKey>(
@@ -635,9 +637,7 @@ export function PartsTable() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() => {
-                            /* TODO: Implement edit */
-                          }}
+                          onClick={() => setEditingPartId(part.part_id)}
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
@@ -659,6 +659,14 @@ export function PartsTable() {
           </DndContext>
         </div>
       </CardContent>
+      
+      {/* Edit Modal */}
+      {editingPartId && (
+        <PartEditModal
+          partId={editingPartId}
+          onClose={() => setEditingPartId(null)}
+        />
+      )}
     </Card>
   );
 }

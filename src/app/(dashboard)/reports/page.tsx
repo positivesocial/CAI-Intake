@@ -4,83 +4,218 @@ import * as React from "react";
 import {
   BarChart3,
   TrendingUp,
+  TrendingDown,
   Package,
   Layers,
   FileText,
   Calendar,
   Download,
-  Filter,
   Users,
   Clock,
   Target,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-// Mock data for demonstration
-const MOCK_STATS = {
-  totalCutlists: 156,
-  totalParts: 4823,
-  totalPieces: 12456,
-  totalArea: 892.5, // m²
-  avgEfficiency: 0.78,
-  avgPartsPerCutlist: 31,
-};
+// =============================================================================
+// TYPES
+// =============================================================================
 
-const MOCK_MONTHLY_DATA = [
-  { month: "Jul", cutlists: 12, parts: 312, area: 45.2 },
-  { month: "Aug", cutlists: 15, parts: 425, area: 58.3 },
-  { month: "Sep", cutlists: 18, parts: 521, area: 72.1 },
-  { month: "Oct", cutlists: 22, parts: 687, area: 89.5 },
-  { month: "Nov", cutlists: 25, parts: 798, area: 105.2 },
-  { month: "Dec", cutlists: 20, parts: 612, area: 82.4 },
-];
+interface ReportStats {
+  totalCutlists: number;
+  totalParts: number;
+  totalPieces: number;
+  totalArea: number;
+  avgEfficiency: number;
+  avgPartsPerCutlist: number;
+  cutlistsThisPeriod: number;
+  partsThisPeriod: number;
+  periodGrowth: {
+    cutlists: number;
+    parts: number;
+    area: number;
+    efficiency: number;
+  };
+}
 
-const MOCK_MATERIAL_USAGE = [
-  { material: "White Melamine 18mm", area: 245.3, percentage: 27.5, color: "#00838F" },
-  { material: "Oak Veneer 18mm", area: 189.2, percentage: 21.2, color: "#C4A35A" },
-  { material: "Black Melamine 16mm", area: 156.8, percentage: 17.6, color: "#1A1A1A" },
-  { material: "MDF 18mm", area: 134.5, percentage: 15.1, color: "#8B7355" },
-  { material: "Walnut Veneer 19mm", area: 98.2, percentage: 11.0, color: "#5D4037" },
-  { material: "Other", area: 68.5, percentage: 7.6, color: "#9E9E9E" },
-];
+interface MonthlyData {
+  month: string;
+  cutlists: number;
+  parts: number;
+  area: number;
+}
 
-const MOCK_RECENT_CUTLISTS = [
-  { id: "CL-001", name: "Kitchen Cabinets - Smith", parts: 45, status: "completed", date: "2024-12-18" },
-  { id: "CL-002", name: "Office Storage Units", parts: 28, status: "processing", date: "2024-12-19" },
-  { id: "CL-003", name: "Bathroom Vanity", parts: 12, status: "completed", date: "2024-12-19" },
-  { id: "CL-004", name: "Wardrobe Set - Johnson", parts: 56, status: "draft", date: "2024-12-20" },
-  { id: "CL-005", name: "TV Unit Custom", parts: 18, status: "completed", date: "2024-12-20" },
-];
+interface MaterialUsage {
+  material: string;
+  area: number;
+  percentage: number;
+  color: string;
+}
+
+interface RecentCutlist {
+  id: string;
+  name: string;
+  parts: number;
+  status: string;
+  date: string;
+}
 
 type TimeRange = "7d" | "30d" | "90d" | "12m" | "all";
 
+// =============================================================================
+// DATA FETCHING
+// =============================================================================
+
+async function fetchReportData(timeRange: TimeRange): Promise<{
+  stats: ReportStats;
+  monthlyData: MonthlyData[];
+  materialUsage: MaterialUsage[];
+  recentCutlists: RecentCutlist[];
+}> {
+  try {
+    const response = await fetch(`/api/v1/reports?range=${timeRange}`);
+    if (!response.ok) {
+      throw new Error("Failed to fetch report data");
+    }
+    return response.json();
+  } catch {
+    // Return demo data if API fails
+    return {
+      stats: {
+        totalCutlists: 156,
+        totalParts: 4823,
+        totalPieces: 12456,
+        totalArea: 892.5,
+        avgEfficiency: 0.78,
+        avgPartsPerCutlist: 31,
+        cutlistsThisPeriod: 25,
+        partsThisPeriod: 798,
+        periodGrowth: {
+          cutlists: 12,
+          parts: 8,
+          area: 15,
+          efficiency: 2.3,
+        },
+      },
+      monthlyData: [
+        { month: "Jul", cutlists: 12, parts: 312, area: 45.2 },
+        { month: "Aug", cutlists: 15, parts: 425, area: 58.3 },
+        { month: "Sep", cutlists: 18, parts: 521, area: 72.1 },
+        { month: "Oct", cutlists: 22, parts: 687, area: 89.5 },
+        { month: "Nov", cutlists: 25, parts: 798, area: 105.2 },
+        { month: "Dec", cutlists: 20, parts: 612, area: 82.4 },
+      ],
+      materialUsage: [
+        { material: "White Melamine 18mm", area: 245.3, percentage: 27.5, color: "#00838F" },
+        { material: "Oak Veneer 18mm", area: 189.2, percentage: 21.2, color: "#C4A35A" },
+        { material: "Black Melamine 16mm", area: 156.8, percentage: 17.6, color: "#1A1A1A" },
+        { material: "MDF 18mm", area: 134.5, percentage: 15.1, color: "#8B7355" },
+        { material: "Walnut Veneer 19mm", area: 98.2, percentage: 11.0, color: "#5D4037" },
+        { material: "Other", area: 68.5, percentage: 7.6, color: "#9E9E9E" },
+      ],
+      recentCutlists: [
+        { id: "CL-001", name: "Kitchen Cabinets - Smith", parts: 45, status: "completed", date: "2024-12-18" },
+        { id: "CL-002", name: "Office Storage Units", parts: 28, status: "processing", date: "2024-12-19" },
+        { id: "CL-003", name: "Bathroom Vanity", parts: 12, status: "completed", date: "2024-12-19" },
+        { id: "CL-004", name: "Wardrobe Set - Johnson", parts: 56, status: "draft", date: "2024-12-20" },
+        { id: "CL-005", name: "TV Unit Custom", parts: 18, status: "completed", date: "2024-12-20" },
+      ],
+    };
+  }
+}
+
+// =============================================================================
+// COMPONENT
+// =============================================================================
+
 export default function ReportsPage() {
   const [timeRange, setTimeRange] = React.useState<TimeRange>("30d");
+  const [loading, setLoading] = React.useState(true);
+  const [data, setData] = React.useState<{
+    stats: ReportStats;
+    monthlyData: MonthlyData[];
+    materialUsage: MaterialUsage[];
+    recentCutlists: RecentCutlist[];
+  } | null>(null);
+
+  // Fetch data on mount and when time range changes
+  React.useEffect(() => {
+    setLoading(true);
+    fetchReportData(timeRange)
+      .then(setData)
+      .finally(() => setLoading(false));
+  }, [timeRange]);
 
   const formatArea = (m2: number) => `${m2.toFixed(1)} m²`;
   const formatPercentage = (value: number) => `${(value * 100).toFixed(1)}%`;
 
+  const handleExport = () => {
+    if (!data) return;
+    
+    // Create CSV export
+    const csv = [
+      ["Metric", "Value"],
+      ["Total Cutlists", data.stats.totalCutlists],
+      ["Total Parts", data.stats.totalParts],
+      ["Total Pieces", data.stats.totalPieces],
+      ["Total Area (m²)", data.stats.totalArea],
+      ["Avg Efficiency", formatPercentage(data.stats.avgEfficiency)],
+      ["Avg Parts/Cutlist", data.stats.avgPartsPerCutlist],
+      [""],
+      ["Monthly Activity"],
+      ["Month", "Cutlists", "Parts", "Area (m²)"],
+      ...data.monthlyData.map(m => [m.month, m.cutlists, m.parts, m.area]),
+      [""],
+      ["Material Usage"],
+      ["Material", "Area (m²)", "Percentage"],
+      ...data.materialUsage.map(m => [m.material, m.area, m.percentage + "%"]),
+    ].map(row => row.join(",")).join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cai-intake-report-${timeRange}-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (loading || !data) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="h-8 w-8 animate-spin text-[var(--cai-teal)]" />
+          <p className="text-[var(--muted-foreground)]">Loading report data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { stats, monthlyData, materialUsage, recentCutlists } = data;
+  const maxCutlists = Math.max(...monthlyData.map(d => d.cutlists));
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Reports & Analytics</h1>
           <p className="text-[var(--muted-foreground)]">
             Track your cutlist activity and material usage
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center bg-[var(--muted)] rounded-lg p-1">
             {(["7d", "30d", "90d", "12m", "all"] as TimeRange[]).map((range) => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range)}
                 className={cn(
-                  "px-3 py-1.5 text-sm rounded-md transition-colors",
+                  "px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap",
                   timeRange === range
                     ? "bg-white shadow text-[var(--foreground)]"
                     : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
@@ -90,24 +225,40 @@ export default function ReportsPage() {
               </button>
             ))}
           </div>
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
         </div>
       </div>
 
+      {/* Demo Mode Notice */}
+      {process.env.NEXT_PUBLIC_DEMO_MODE === "true" && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          <span className="text-sm">Demo mode: Showing sample data. Connect to production for real analytics.</span>
+        </div>
+      )}
+
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-[var(--muted-foreground)]">Total Cutlists</p>
-                <p className="text-3xl font-bold">{MOCK_STATS.totalCutlists}</p>
-                <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                  <TrendingUp className="h-3 w-3" />
-                  +12% vs last period
+                <p className="text-3xl font-bold">{stats.totalCutlists}</p>
+                <p className={cn(
+                  "text-xs flex items-center gap-1 mt-1",
+                  stats.periodGrowth.cutlists >= 0 ? "text-green-600" : "text-red-600"
+                )}>
+                  {stats.periodGrowth.cutlists >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {stats.periodGrowth.cutlists >= 0 ? "+" : ""}
+                  {stats.periodGrowth.cutlists}% vs last period
                 </p>
               </div>
               <div className="h-12 w-12 rounded-xl bg-[var(--cai-teal)]/10 flex items-center justify-center">
@@ -122,10 +273,18 @@ export default function ReportsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-[var(--muted-foreground)]">Total Parts</p>
-                <p className="text-3xl font-bold">{MOCK_STATS.totalParts.toLocaleString()}</p>
-                <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                  <TrendingUp className="h-3 w-3" />
-                  +8% vs last period
+                <p className="text-3xl font-bold">{stats.totalParts.toLocaleString()}</p>
+                <p className={cn(
+                  "text-xs flex items-center gap-1 mt-1",
+                  stats.periodGrowth.parts >= 0 ? "text-green-600" : "text-red-600"
+                )}>
+                  {stats.periodGrowth.parts >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {stats.periodGrowth.parts >= 0 ? "+" : ""}
+                  {stats.periodGrowth.parts}% vs last period
                 </p>
               </div>
               <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -140,10 +299,18 @@ export default function ReportsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-[var(--muted-foreground)]">Material Used</p>
-                <p className="text-3xl font-bold">{formatArea(MOCK_STATS.totalArea)}</p>
-                <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                  <TrendingUp className="h-3 w-3" />
-                  +15% vs last period
+                <p className="text-3xl font-bold">{formatArea(stats.totalArea)}</p>
+                <p className={cn(
+                  "text-xs flex items-center gap-1 mt-1",
+                  stats.periodGrowth.area >= 0 ? "text-green-600" : "text-red-600"
+                )}>
+                  {stats.periodGrowth.area >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {stats.periodGrowth.area >= 0 ? "+" : ""}
+                  {stats.periodGrowth.area}% vs last period
                 </p>
               </div>
               <div className="h-12 w-12 rounded-xl bg-green-100 flex items-center justify-center">
@@ -158,10 +325,18 @@ export default function ReportsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-[var(--muted-foreground)]">Avg Efficiency</p>
-                <p className="text-3xl font-bold">{formatPercentage(MOCK_STATS.avgEfficiency)}</p>
-                <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                  <TrendingUp className="h-3 w-3" />
-                  +2.3% improvement
+                <p className="text-3xl font-bold">{formatPercentage(stats.avgEfficiency)}</p>
+                <p className={cn(
+                  "text-xs flex items-center gap-1 mt-1",
+                  stats.periodGrowth.efficiency >= 0 ? "text-green-600" : "text-red-600"
+                )}>
+                  {stats.periodGrowth.efficiency >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {stats.periodGrowth.efficiency >= 0 ? "+" : ""}
+                  {stats.periodGrowth.efficiency}% improvement
                 </p>
               </div>
               <div className="h-12 w-12 rounded-xl bg-purple-100 flex items-center justify-center">
@@ -184,13 +359,20 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="h-64 flex items-end justify-between gap-2">
-              {MOCK_MONTHLY_DATA.map((data, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <div
-                    className="w-full bg-[var(--cai-teal)] rounded-t transition-all hover:bg-[var(--cai-teal)]/80"
-                    style={{ height: `${(data.cutlists / 30) * 100}%`, minHeight: "20px" }}
-                    title={`${data.cutlists} cutlists`}
-                  />
+              {monthlyData.map((data, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
+                  <div className="relative w-full">
+                    <div
+                      className="w-full bg-[var(--cai-teal)] rounded-t transition-all group-hover:bg-[var(--cai-teal)]/80"
+                      style={{ 
+                        height: `${(data.cutlists / maxCutlists) * 200}px`, 
+                        minHeight: "20px" 
+                      }}
+                    />
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                      {data.cutlists} cutlists
+                    </div>
+                  </div>
                   <span className="text-xs text-[var(--muted-foreground)]">{data.month}</span>
                 </div>
               ))}
@@ -214,11 +396,11 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {MOCK_MATERIAL_USAGE.map((material, i) => (
+              {materialUsage.map((material, i) => (
                 <div key={i} className="space-y-1">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{material.material}</span>
-                    <span className="text-[var(--muted-foreground)]">
+                    <span className="font-medium truncate max-w-[200px]">{material.material}</span>
+                    <span className="text-[var(--muted-foreground)] whitespace-nowrap">
                       {formatArea(material.area)} ({material.percentage}%)
                     </span>
                   </div>
@@ -248,22 +430,25 @@ export default function ReportsPage() {
                 <Clock className="h-5 w-5" />
                 Recent Cutlists
               </span>
-              <Button variant="ghost" size="sm">View All</Button>
+              <a href="/cutlists" className="text-sm text-[var(--cai-teal)] hover:underline">
+                View All
+              </a>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {MOCK_RECENT_CUTLISTS.map((cutlist) => (
-                <div
+              {recentCutlists.map((cutlist) => (
+                <a
                   key={cutlist.id}
+                  href={`/cutlists/${cutlist.id}`}
                   className="flex items-center justify-between p-3 rounded-lg border border-[var(--border)] hover:bg-[var(--muted)]/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-[var(--muted)] flex items-center justify-center">
+                    <div className="h-10 w-10 rounded-lg bg-[var(--muted)] flex items-center justify-center flex-shrink-0">
                       <FileText className="h-5 w-5 text-[var(--muted-foreground)]" />
                     </div>
-                    <div>
-                      <p className="font-medium">{cutlist.name}</p>
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{cutlist.name}</p>
                       <p className="text-sm text-[var(--muted-foreground)]">
                         {cutlist.parts} parts • {cutlist.date}
                       </p>
@@ -277,10 +462,11 @@ export default function ReportsPage() {
                         ? "default"
                         : "secondary"
                     }
+                    className="flex-shrink-0"
                   >
                     {cutlist.status}
                   </Badge>
-                </div>
+                </a>
               ))}
             </div>
           </CardContent>
@@ -301,7 +487,7 @@ export default function ReportsPage() {
                   <Package className="h-4 w-4 text-[var(--muted-foreground)]" />
                   <span className="text-sm">Avg Parts/Cutlist</span>
                 </div>
-                <span className="font-bold">{MOCK_STATS.avgPartsPerCutlist}</span>
+                <span className="font-bold">{stats.avgPartsPerCutlist}</span>
               </div>
 
               <div className="flex items-center justify-between p-3 bg-[var(--muted)] rounded-lg">
@@ -309,33 +495,35 @@ export default function ReportsPage() {
                   <Layers className="h-4 w-4 text-[var(--muted-foreground)]" />
                   <span className="text-sm">Total Pieces</span>
                 </div>
-                <span className="font-bold">{MOCK_STATS.totalPieces.toLocaleString()}</span>
+                <span className="font-bold">{stats.totalPieces.toLocaleString()}</span>
               </div>
 
               <div className="flex items-center justify-between p-3 bg-[var(--muted)] rounded-lg">
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-[var(--muted-foreground)]" />
-                  <span className="text-sm">This Month</span>
+                  <span className="text-sm">This Period</span>
                 </div>
                 <span className="font-bold">
-                  {MOCK_MONTHLY_DATA[MOCK_MONTHLY_DATA.length - 1].cutlists} cutlists
+                  {stats.cutlistsThisPeriod} cutlists
                 </span>
               </div>
 
               <div className="flex items-center justify-between p-3 bg-[var(--muted)] rounded-lg">
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4 text-[var(--muted-foreground)]" />
-                  <span className="text-sm">Team Members</span>
+                  <span className="text-sm">Parts This Period</span>
                 </div>
-                <span className="font-bold">5</span>
+                <span className="font-bold">{stats.partsThisPeriod}</span>
               </div>
 
               <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                 <div className="flex items-center gap-2">
                   <Target className="h-4 w-4 text-green-600" />
-                  <span className="text-sm text-green-700">Material Saved</span>
+                  <span className="text-sm text-green-700">Efficiency Score</span>
                 </div>
-                <span className="font-bold text-green-700">23.5 m²</span>
+                <span className="font-bold text-green-700">
+                  {formatPercentage(stats.avgEfficiency)}
+                </span>
               </div>
             </div>
           </CardContent>
@@ -344,4 +532,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-

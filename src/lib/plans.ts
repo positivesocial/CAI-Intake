@@ -186,8 +186,13 @@ export async function getUsageStats(organizationId: string): Promise<UsageStats>
     }),
   ]);
 
-  // TODO: Calculate actual storage from uploaded files
-  const storageUsedGB = 0;
+  // Calculate actual storage from uploaded files
+  const storageResult = await db.uploadedFile.aggregate({
+    where: { organizationId },
+    _sum: { sizeBytes: true },
+  });
+  const storageUsedBytes = storageResult._sum.sizeBytes || 0;
+  const storageUsedGB = storageUsedBytes / (1024 * 1024 * 1024);
 
   return {
     cutlistCount,
