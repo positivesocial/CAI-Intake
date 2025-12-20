@@ -5,7 +5,8 @@
   "description": "CAI Intake - The definitive cutlist data ingestion engine for cabinet/woodworking workshops",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "prisma generate",
