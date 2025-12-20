@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle, ThemeToggleCompact } from "@/components/ui/theme-toggle";
 import { useAuthStore, SUPER_ADMIN_USER, DEMO_USER } from "@/lib/auth/store";
 import { ROLE_DISPLAY_NAMES } from "@/lib/auth/roles";
 import type { RoleType } from "@/lib/auth/roles";
@@ -122,6 +123,9 @@ export default function DashboardLayout({
                 New Cutlist
               </Button>
             </Link>
+
+            {/* Theme Toggle */}
+            <ThemeToggle />
 
             {/* Notifications */}
             <button className="p-2 hover:bg-[var(--muted)] rounded-lg relative">
@@ -284,6 +288,9 @@ export default function DashboardLayout({
 
           {/* Footer */}
           <div className="p-4 border-t border-[var(--border)]">
+            {/* Theme Toggle in Sidebar */}
+            <ThemeToggleCompact className="w-full mb-2" />
+            
             <Link
               href="/help"
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[var(--muted)] transition-colors"

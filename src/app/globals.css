@@ -2,8 +2,16 @@
 
 /* CAI Intake - Global Styles */
 
+/* ========================================
+   Theme System
+   ========================================
+   Uses class-based theming for manual control
+   with CSS media query fallback for system preference.
+   The 'dark' class on <html> takes precedence.
+   ======================================== */
+
 :root {
-  /* Brand Colors */
+  /* Brand Colors (constant across themes) */
   --cai-navy: #1e3a5f;
   --cai-navy-light: #2d4a6f;
   --cai-navy-dark: #142840;
@@ -11,17 +19,19 @@
   --cai-teal-light: #33e0bb;
   --cai-teal-dark: #00a888;
   
-  /* Semantic */
+  /* Semantic Colors (constant across themes) */
   --cai-success: #22c55e;
   --cai-warning: #f59e0b;
   --cai-error: #ef4444;
   --cai-info: #3b82f6;
   
-  /* Light mode */
+  /* Light Mode (default) */
   --background: #f8fafc;
   --foreground: #1e3a5f;
   --card: #ffffff;
   --card-foreground: #1e3a5f;
+  --popover: #ffffff;
+  --popover-foreground: #1e3a5f;
   --muted: #f1f5f9;
   --muted-foreground: #64748b;
   --border: #e2e8f0;
@@ -32,35 +42,69 @@
   --secondary-foreground: #1e3a5f;
   --accent: #00d4aa;
   --accent-foreground: #1e3a5f;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
   --ring: #00d4aa;
   --radius: 0.5rem;
+  
+  /* Shadows - light mode */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  
+  /* Chart colors - light mode */
+  --chart-1: #1e3a5f;
+  --chart-2: #00d4aa;
+  --chart-3: #3b82f6;
+  --chart-4: #f59e0b;
+  --chart-5: #8b5cf6;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0f172a;
-    --foreground: #f1f5f9;
-    --card: #1e293b;
-    --card-foreground: #f1f5f9;
-    --muted: #334155;
-    --muted-foreground: #94a3b8;
-    --border: #334155;
-    --input: #334155;
-    --primary: #00d4aa;
-    --primary-foreground: #0f172a;
-    --secondary: #1e3a5f;
-    --secondary-foreground: #f1f5f9;
-    --accent: #00d4aa;
-    --accent-foreground: #0f172a;
-    --ring: #00d4aa;
-  }
+/* Dark Mode - Class-based (highest priority) */
+.dark {
+  --background: #0a0f1a;
+  --foreground: #f1f5f9;
+  --card: #111827;
+  --card-foreground: #f1f5f9;
+  --popover: #111827;
+  --popover-foreground: #f1f5f9;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --border: #1e293b;
+  --input: #1e293b;
+  --primary: #00d4aa;
+  --primary-foreground: #0a0f1a;
+  --secondary: #1e3a5f;
+  --secondary-foreground: #f1f5f9;
+  --accent: #00d4aa;
+  --accent-foreground: #0a0f1a;
+  --destructive: #f87171;
+  --destructive-foreground: #0a0f1a;
+  --ring: #00d4aa;
+  
+  /* Shadows - dark mode (more subtle) */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  
+  /* Chart colors - dark mode (brighter) */
+  --chart-1: #33e0bb;
+  --chart-2: #60a5fa;
+  --chart-3: #a78bfa;
+  --chart-4: #fbbf24;
+  --chart-5: #f472b6;
 }
 
 @theme inline {
+  /* Core semantic colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
@@ -71,6 +115,8 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-ring: var(--ring);
   --radius: var(--radius);
   
@@ -86,6 +132,20 @@
   --color-cai-error: var(--cai-error);
   --color-cai-info: var(--cai-info);
   
+  /* Chart colors */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  
+  /* Shadows */
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  
+  /* Typography */
   --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), 'JetBrains Mono', monospace;
 }
@@ -98,6 +158,23 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+/* Theme transition - smooth color changes */
+html:not(.disable-transitions),
+html:not(.disable-transitions) * {
+  transition: background-color 0.2s ease-in-out,
+              border-color 0.2s ease-in-out,
+              color 0.1s ease-in-out;
+}
+
+/* Prevent flash of unstyled content */
+html.dark {
+  color-scheme: dark;
+}
+
+html:not(.dark) {
+  color-scheme: light;
 }
 
 /* Custom scrollbar */

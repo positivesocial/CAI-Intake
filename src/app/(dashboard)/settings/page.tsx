@@ -21,7 +21,12 @@ import {
   Cpu,
   Eye,
   EyeOff,
+  Sun,
+  Moon,
+  Monitor,
+  Check,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -89,10 +94,17 @@ export default function SettingsPage() {
   const { user, updateUser, updatePreferences, updateNotifications, logout, setUser, isOrgAdmin } =
     useAuthStore();
   const { aiSettings, setAISettings, setAIProvider } = useIntakeStore();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const [activeSection, setActiveSection] = React.useState("profile");
   const [isSaving, setIsSaving] = React.useState(false);
   const [showApiKey, setShowApiKey] = React.useState(false);
   const [apiKeyInput, setApiKeyInput] = React.useState("");
+  const [mounted, setMounted] = React.useState(false);
+
+  // Avoid hydration mismatch for theme
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Form states
   const [profileForm, setProfileForm] = React.useState({
@@ -426,34 +438,51 @@ export default function SettingsPage() {
                   <div>
                     <label className="block text-sm font-medium mb-3">Theme</label>
                     <div className="grid grid-cols-3 gap-3">
-                      {["light", "dark", "system"].map((theme) => (
-                        <button
-                          key={theme}
-                          onClick={() =>
-                            updatePreferences({
-                              theme: theme as "light" | "dark" | "system",
-                            })
-                          }
-                          className={cn(
-                            "p-4 rounded-lg border-2 text-center transition-colors",
-                            user?.preferences?.theme === theme
-                              ? "border-[var(--cai-teal)] bg-[var(--cai-teal)]/10"
-                              : "border-[var(--border)] hover:border-[var(--cai-teal)]/50"
-                          )}
-                        >
-                          <div
+                      {[
+                        { value: "light", label: "Light", icon: Sun, preview: "bg-white border border-gray-200" },
+                        { value: "dark", label: "Dark", icon: Moon, preview: "bg-gray-900" },
+                        { value: "system", label: "System", icon: Monitor, preview: "bg-gradient-to-br from-white to-gray-900" },
+                      ].map((themeOption) => {
+                        const Icon = themeOption.icon;
+                        const isActive = mounted && theme === themeOption.value;
+                        return (
+                          <button
+                            key={themeOption.value}
+                            onClick={() => setTheme(themeOption.value)}
                             className={cn(
-                              "w-12 h-12 rounded-lg mx-auto mb-2",
-                              theme === "light"
-                                ? "bg-white border border-gray-200"
-                                : theme === "dark"
-                                ? "bg-gray-900"
-                                : "bg-gradient-to-br from-white to-gray-900"
+                              "p-4 rounded-lg border-2 text-center transition-all relative",
+                              isActive
+                                ? "border-[var(--cai-teal)] bg-[var(--cai-teal)]/10"
+                                : "border-[var(--border)] hover:border-[var(--cai-teal)]/50"
                             )}
-                          />
-                          <span className="capitalize font-medium">{theme}</span>
-                        </button>
-                      ))}
+                          >
+                            {isActive && (
+                              <div className="absolute top-2 right-2">
+                                <Check className="h-4 w-4 text-[var(--cai-teal)]" />
+                              </div>
+                            )}
+                            <div
+                              className={cn(
+                                "w-12 h-12 rounded-lg mx-auto mb-2 flex items-center justify-center",
+                                themeOption.preview
+                              )}
+                            >
+                              <Icon className={cn(
+                                "h-6 w-6",
+                                themeOption.value === "light" ? "text-yellow-500" :
+                                themeOption.value === "dark" ? "text-blue-200" :
+                                "text-gray-500"
+                              )} />
+                            </div>
+                            <span className="capitalize font-medium">{themeOption.label}</span>
+                            {themeOption.value === "system" && mounted && (
+                              <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                                Currently: {resolvedTheme}
+                              </p>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
