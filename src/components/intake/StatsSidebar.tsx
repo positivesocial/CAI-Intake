@@ -46,7 +46,7 @@ export function StatsSidebar({ className }: StatsSidebarProps) {
 
   if (isCollapsed) {
     return (
-      <div className={cn("w-10 h-full border-l border-[var(--border)] bg-[var(--card)] flex flex-col items-center py-4", className)}>
+      <div className={cn("w-12 h-full border-l border-[var(--border)] bg-[var(--card)] flex flex-col items-center py-4", className)}>
         <Button
           variant="ghost"
           size="icon"
@@ -88,9 +88,9 @@ export function StatsSidebar({ className }: StatsSidebarProps) {
   }
 
   return (
-    <div className={cn("w-72 h-full border-l border-[var(--border)] bg-[var(--card)] flex flex-col overflow-hidden", className)}>
+    <div className={cn("w-80 h-full border-l border-[var(--border)] bg-[var(--card)] flex flex-col", className)}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-[var(--cai-teal)]" />
           <span className="text-sm font-semibold">Statistics</span>
@@ -327,7 +327,7 @@ export function StatsSidebar({ className }: StatsSidebarProps) {
 
       {/* Footer */}
       {stats && (
-        <div className="px-4 py-3 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+        <div className="px-4 py-3 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)] shrink-0">
           Updated: {new Date(stats.calculatedAt).toLocaleTimeString()}
         </div>
       )}
