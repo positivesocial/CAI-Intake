@@ -124,7 +124,7 @@ export function FileUpload() {
       let parts: ParsedPartWithStatus[] = [];
       let method = "unknown";
       let confidence = 0;
-      let metadata = { edgeBanding: 0, grooving: 0, cncOps: 0 };
+      const metadata = { edgeBanding: 0, grooving: 0, cncOps: 0 };
 
       switch (uploadedFile.type) {
         case "text":

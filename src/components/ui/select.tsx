@@ -19,7 +19,8 @@ export interface SimpleSelectProps
 
 const SimpleSelect = React.forwardRef<HTMLSelectElement, SimpleSelectProps>(
   ({ className, error, label, hint, id, options, placeholder, ...props }, ref) => {
-    const selectId = id || React.useId();
+    const generatedId = React.useId();
+    const selectId = id || generatedId;
 
     return (
       <div className="w-full">

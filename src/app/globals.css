@@ -162,3 +162,147 @@ body {
   stroke: var(--cai-teal);
   stroke-width: 3;
 }
+
+/* Mobile animations */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out forwards;
+}
+
+@keyframes slide-down {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.3s ease-out forwards;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+
+/* Safe area insets for mobile devices (notches, home indicators) */
+.safe-area-inset-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.safe-area-inset-top {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+/* Mobile touch target sizing */
+@media (max-width: 768px) {
+  /* Ensure minimum touch target size of 44x44px for accessibility */
+  button,
+  [role="button"],
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Allow smaller buttons with explicit size classes */
+  .h-8,
+  .h-9,
+  .h-10 {
+    min-height: unset;
+    min-width: unset;
+  }
+  
+  /* Better touch feedback */
+  button:active,
+  [role="button"]:active {
+    transform: scale(0.98);
+  }
+  
+  /* Improve scrolling performance */
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Responsive table improvements */
+@media (max-width: 640px) {
+  table {
+    font-size: 0.875rem;
+  }
+  
+  table th,
+  table td {
+    padding: 0.5rem;
+  }
+  
+  /* Stack table cells on very small screens */
+  .table-responsive-stack tbody tr {
+    display: block;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  
+  .table-responsive-stack tbody td {
+    display: flex;
+    justify-content: space-between;
+    border: none;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .table-responsive-stack tbody td:last-child {
+    border-bottom: none;
+  }
+  
+  .table-responsive-stack tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+  
+  .table-responsive-stack thead {
+    display: none;
+  }
+}
+
+/* Prevent horizontal overflow on mobile */
+@media (max-width: 768px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* Improve input styling on mobile */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+  }
+}

@@ -3,6 +3,7 @@
  * 
  * Using Zustand for lightweight state management.
  * Manages the current cutlist, parts in the intake inbox, and UI state.
+ * Includes undo/redo functionality for part operations.
  */
 
 import { create } from "zustand";
@@ -42,6 +43,18 @@ export interface ParsedPartWithStatus extends CutPart {
   _originalText?: string;
 }
 
+// Undo/Redo action types
+export type UndoableAction = 
+  | { type: "ADD_PART"; part: CutPart }
+  | { type: "ADD_PARTS"; parts: CutPart[] }
+  | { type: "UPDATE_PART"; partId: string; oldPart: CutPart; newPart: CutPart }
+  | { type: "REMOVE_PART"; part: CutPart }
+  | { type: "REMOVE_PARTS"; parts: CutPart[] }
+  | { type: "CLEAR_PARTS"; parts: CutPart[] }
+  | { type: "DUPLICATE_PARTS"; originalIds: string[]; newParts: CutPart[] };
+
+const MAX_UNDO_STACK = 50;
+
 export interface IntakeState {
   // Current cutlist being edited
   currentCutlist: {
@@ -65,6 +78,13 @@ export interface IntakeState {
   
   // AI settings
   aiSettings: AISettings;
+  
+  // Undo/Redo stacks
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
+  
+  // Clipboard for copy/paste
+  clipboard: CutPart[];
 
   // Actions
   setActiveMode: (mode: IntakeMode) => void;
@@ -76,6 +96,13 @@ export interface IntakeState {
   updatePart: (partId: string, updates: Partial<CutPart>) => void;
   removePart: (partId: string) => void;
   clearParts: () => void;
+  
+  // Bulk operations
+  removeSelectedParts: () => void;
+  duplicateSelectedParts: () => void;
+  copySelectedParts: () => void;
+  pasteParts: () => void;
+  updateSelectedParts: (updates: Partial<CutPart>) => void;
 
   // Inbox management
   addToInbox: (parts: ParsedPartWithStatus[]) => void;
@@ -92,8 +119,10 @@ export interface IntakeState {
   // Selection
   selectPart: (partId: string) => void;
   deselectPart: (partId: string) => void;
+  togglePartSelection: (partId: string) => void;
   selectAllParts: () => void;
   clearSelection: () => void;
+  selectRange: (fromId: string, toId: string) => void;
 
   // Cutlist
   setCutlistName: (name: string) => void;
@@ -103,6 +132,12 @@ export interface IntakeState {
   // AI settings
   setAIProvider: (provider: AIProviderType) => void;
   setAISettings: (settings: Partial<AISettings>) => void;
+  
+  // Undo/Redo
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
 }
 
 // ============================================================
@@ -175,11 +210,23 @@ const getInitialState = () => ({
   isAdvancedMode: false,
   selectedPartIds: [],
   aiSettings: defaultAISettings,
+  undoStack: [] as UndoableAction[],
+  redoStack: [] as UndoableAction[],
+  clipboard: [] as CutPart[],
 });
 
 // ============================================================
 // STORE
 // ============================================================
+
+// Helper to push action to undo stack
+const pushUndoAction = (
+  state: IntakeState,
+  action: UndoableAction
+): Pick<IntakeState, "undoStack" | "redoStack"> => ({
+  undoStack: [...state.undoStack.slice(-MAX_UNDO_STACK + 1), action],
+  redoStack: [], // Clear redo stack on new action
+});
 
 export const useIntakeStore = create<IntakeState>()(
   persist(
@@ -197,6 +244,7 @@ export const useIntakeStore = create<IntakeState>()(
             ...state.currentCutlist,
             parts: [...state.currentCutlist.parts, part],
           },
+          ...pushUndoAction(state, { type: "ADD_PART", part }),
         })),
 
       addParts: (parts) =>
@@ -205,35 +253,145 @@ export const useIntakeStore = create<IntakeState>()(
             ...state.currentCutlist,
             parts: [...state.currentCutlist.parts, ...parts],
           },
+          ...pushUndoAction(state, { type: "ADD_PARTS", parts }),
         })),
 
-      updatePart: (partId, updates) =>
-        set((state) => ({
+      updatePart: (partId, updates) => {
+        const state = get();
+        const oldPart = state.currentCutlist.parts.find((p) => p.part_id === partId);
+        if (!oldPart) return;
+        
+        const newPart = { ...oldPart, ...updates };
+        set({
           currentCutlist: {
             ...state.currentCutlist,
             parts: state.currentCutlist.parts.map((p) =>
-              p.part_id === partId ? { ...p, ...updates } : p
+              p.part_id === partId ? newPart : p
             ),
           },
-        })),
+          ...pushUndoAction(state, { type: "UPDATE_PART", partId, oldPart, newPart }),
+        });
+      },
 
-      removePart: (partId) =>
-        set((state) => ({
+      removePart: (partId) => {
+        const state = get();
+        const part = state.currentCutlist.parts.find((p) => p.part_id === partId);
+        if (!part) return;
+        
+        set({
           currentCutlist: {
             ...state.currentCutlist,
             parts: state.currentCutlist.parts.filter((p) => p.part_id !== partId),
           },
           selectedPartIds: state.selectedPartIds.filter((id) => id !== partId),
-        })),
+          ...pushUndoAction(state, { type: "REMOVE_PART", part }),
+        });
+      },
 
-      clearParts: () =>
-        set((state) => ({
+      clearParts: () => {
+        const state = get();
+        if (state.currentCutlist.parts.length === 0) return;
+        
+        set({
           currentCutlist: {
             ...state.currentCutlist,
             parts: [],
           },
           selectedPartIds: [],
-        })),
+          ...pushUndoAction(state, { type: "CLEAR_PARTS", parts: state.currentCutlist.parts }),
+        });
+      },
+      
+      // Bulk operations
+      removeSelectedParts: () => {
+        const state = get();
+        const partsToRemove = state.currentCutlist.parts.filter(
+          (p) => state.selectedPartIds.includes(p.part_id)
+        );
+        
+        if (partsToRemove.length === 0) return;
+        
+        set({
+          currentCutlist: {
+            ...state.currentCutlist,
+            parts: state.currentCutlist.parts.filter(
+              (p) => !state.selectedPartIds.includes(p.part_id)
+            ),
+          },
+          selectedPartIds: [],
+          ...pushUndoAction(state, { type: "REMOVE_PARTS", parts: partsToRemove }),
+        });
+      },
+      
+      duplicateSelectedParts: () => {
+        const state = get();
+        const selectedParts = state.currentCutlist.parts.filter(
+          (p) => state.selectedPartIds.includes(p.part_id)
+        );
+        
+        if (selectedParts.length === 0) return;
+        
+        const newParts = selectedParts.map((p) => ({
+          ...p,
+          part_id: generateId("P"),
+          label: p.label ? `${p.label} (copy)` : undefined,
+        }));
+        
+        set({
+          currentCutlist: {
+            ...state.currentCutlist,
+            parts: [...state.currentCutlist.parts, ...newParts],
+          },
+          selectedPartIds: newParts.map((p) => p.part_id),
+          ...pushUndoAction(state, {
+            type: "DUPLICATE_PARTS",
+            originalIds: state.selectedPartIds,
+            newParts,
+          }),
+        });
+      },
+      
+      copySelectedParts: () => {
+        const state = get();
+        const selectedParts = state.currentCutlist.parts.filter(
+          (p) => state.selectedPartIds.includes(p.part_id)
+        );
+        set({ clipboard: selectedParts });
+      },
+      
+      pasteParts: () => {
+        const state = get();
+        if (state.clipboard.length === 0) return;
+        
+        const newParts = state.clipboard.map((p) => ({
+          ...p,
+          part_id: generateId("P"),
+          label: p.label ? `${p.label} (pasted)` : undefined,
+        }));
+        
+        set({
+          currentCutlist: {
+            ...state.currentCutlist,
+            parts: [...state.currentCutlist.parts, ...newParts],
+          },
+          selectedPartIds: newParts.map((p) => p.part_id),
+          ...pushUndoAction(state, { type: "ADD_PARTS", parts: newParts }),
+        });
+      },
+      
+      updateSelectedParts: (updates) => {
+        const state = get();
+        if (state.selectedPartIds.length === 0) return;
+        
+        set({
+          currentCutlist: {
+            ...state.currentCutlist,
+            parts: state.currentCutlist.parts.map((p) =>
+              state.selectedPartIds.includes(p.part_id) ? { ...p, ...updates } : p
+            ),
+          },
+        });
+      },
 
       // Inbox management
       addToInbox: (parts) =>
@@ -252,6 +410,7 @@ export const useIntakeStore = create<IntakeState>()(
               parts: [...state.currentCutlist.parts, cleanPart],
             },
             inboxParts: state.inboxParts.filter((p) => p.part_id !== partId),
+            ...pushUndoAction(state, { type: "ADD_PART", part: cleanPart }),
           });
         }
       },
@@ -261,12 +420,16 @@ export const useIntakeStore = create<IntakeState>()(
         const acceptedParts = state.inboxParts
           .filter((p) => p._status !== "rejected")
           .map(({ _status, _originalText, ...part }) => part);
+          
+        if (acceptedParts.length === 0) return;
+        
         set({
           currentCutlist: {
             ...state.currentCutlist,
             parts: [...state.currentCutlist.parts, ...acceptedParts],
           },
           inboxParts: [],
+          ...pushUndoAction(state, { type: "ADD_PARTS", parts: acceptedParts }),
         });
       },
 
@@ -317,6 +480,13 @@ export const useIntakeStore = create<IntakeState>()(
         set((state) => ({
           selectedPartIds: state.selectedPartIds.filter((id) => id !== partId),
         })),
+        
+      togglePartSelection: (partId) =>
+        set((state) => ({
+          selectedPartIds: state.selectedPartIds.includes(partId)
+            ? state.selectedPartIds.filter((id) => id !== partId)
+            : [...state.selectedPartIds, partId],
+        })),
 
       selectAllParts: () =>
         set((state) => ({
@@ -324,6 +494,24 @@ export const useIntakeStore = create<IntakeState>()(
         })),
 
       clearSelection: () => set({ selectedPartIds: [] }),
+      
+      selectRange: (fromId, toId) => {
+        const state = get();
+        const parts = state.currentCutlist.parts;
+        const fromIndex = parts.findIndex((p) => p.part_id === fromId);
+        const toIndex = parts.findIndex((p) => p.part_id === toId);
+        
+        if (fromIndex === -1 || toIndex === -1) return;
+        
+        const start = Math.min(fromIndex, toIndex);
+        const end = Math.max(fromIndex, toIndex);
+        
+        const rangeIds = parts.slice(start, end + 1).map((p) => p.part_id);
+        
+        set({
+          selectedPartIds: [...new Set([...state.selectedPartIds, ...rangeIds])],
+        });
+      },
 
       // Cutlist
       setCutlistName: (name) =>
@@ -363,6 +551,191 @@ export const useIntakeStore = create<IntakeState>()(
             ...settings,
           },
         })),
+        
+      // Undo/Redo
+      undo: () => {
+        const state = get();
+        if (state.undoStack.length === 0) return;
+        
+        const action = state.undoStack[state.undoStack.length - 1];
+        const newUndoStack = state.undoStack.slice(0, -1);
+        
+        switch (action.type) {
+          case "ADD_PART":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: state.currentCutlist.parts.filter((p) => p.part_id !== action.part.part_id),
+              },
+              undoStack: newUndoStack,
+              redoStack: [...state.redoStack, action],
+            });
+            break;
+            
+          case "ADD_PARTS":
+            const addedIds = new Set(action.parts.map((p) => p.part_id));
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: state.currentCutlist.parts.filter((p) => !addedIds.has(p.part_id)),
+              },
+              undoStack: newUndoStack,
+              redoStack: [...state.redoStack, action],
+            });
+            break;
+            
+          case "UPDATE_PART":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: state.currentCutlist.parts.map((p) =>
+                  p.part_id === action.partId ? action.oldPart : p
+                ),
+              },
+              undoStack: newUndoStack,
+              redoStack: [...state.redoStack, action],
+            });
+            break;
+            
+          case "REMOVE_PART":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: [...state.currentCutlist.parts, action.part],
+              },
+              undoStack: newUndoStack,
+              redoStack: [...state.redoStack, action],
+            });
+            break;
+            
+          case "REMOVE_PARTS":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: [...state.currentCutlist.parts, ...action.parts],
+              },
+              undoStack: newUndoStack,
+              redoStack: [...state.redoStack, action],
+            });
+            break;
+            
+          case "CLEAR_PARTS":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: action.parts,
+              },
+              undoStack: newUndoStack,
+              redoStack: [...state.redoStack, action],
+            });
+            break;
+            
+          case "DUPLICATE_PARTS":
+            const dupIds = new Set(action.newParts.map((p) => p.part_id));
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: state.currentCutlist.parts.filter((p) => !dupIds.has(p.part_id)),
+              },
+              undoStack: newUndoStack,
+              redoStack: [...state.redoStack, action],
+            });
+            break;
+        }
+      },
+      
+      redo: () => {
+        const state = get();
+        if (state.redoStack.length === 0) return;
+        
+        const action = state.redoStack[state.redoStack.length - 1];
+        const newRedoStack = state.redoStack.slice(0, -1);
+        
+        switch (action.type) {
+          case "ADD_PART":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: [...state.currentCutlist.parts, action.part],
+              },
+              undoStack: [...state.undoStack, action],
+              redoStack: newRedoStack,
+            });
+            break;
+            
+          case "ADD_PARTS":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: [...state.currentCutlist.parts, ...action.parts],
+              },
+              undoStack: [...state.undoStack, action],
+              redoStack: newRedoStack,
+            });
+            break;
+            
+          case "UPDATE_PART":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: state.currentCutlist.parts.map((p) =>
+                  p.part_id === action.partId ? action.newPart : p
+                ),
+              },
+              undoStack: [...state.undoStack, action],
+              redoStack: newRedoStack,
+            });
+            break;
+            
+          case "REMOVE_PART":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: state.currentCutlist.parts.filter((p) => p.part_id !== action.part.part_id),
+              },
+              undoStack: [...state.undoStack, action],
+              redoStack: newRedoStack,
+            });
+            break;
+            
+          case "REMOVE_PARTS":
+            const removeIds = new Set(action.parts.map((p) => p.part_id));
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: state.currentCutlist.parts.filter((p) => !removeIds.has(p.part_id)),
+              },
+              undoStack: [...state.undoStack, action],
+              redoStack: newRedoStack,
+            });
+            break;
+            
+          case "CLEAR_PARTS":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: [],
+              },
+              undoStack: [...state.undoStack, action],
+              redoStack: newRedoStack,
+            });
+            break;
+            
+          case "DUPLICATE_PARTS":
+            set({
+              currentCutlist: {
+                ...state.currentCutlist,
+                parts: [...state.currentCutlist.parts, ...action.newParts],
+              },
+              undoStack: [...state.undoStack, action],
+              redoStack: newRedoStack,
+            });
+            break;
+        }
+      },
+      
+      canUndo: () => get().undoStack.length > 0,
+      canRedo: () => get().redoStack.length > 0,
     }),
     {
       name: "cai-intake-storage",

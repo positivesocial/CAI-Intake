@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { createClient } from "@/lib/supabase/client";
 import { useAuthStore, TEST_CREDENTIALS } from "@/lib/auth/store";
 import { cn } from "@/lib/utils";
 
@@ -17,62 +16,43 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") ?? "/dashboard";
-  const { loginAsDemo, setUser } = useAuthStore();
+  
+  const { 
+    loginAsDemo, 
+    loginWithEmail, 
+    loginWithGoogle,
+    resetPassword,
+    isLoading: authLoading,
+    error: authError,
+    setError: setAuthError,
+  } = useAuthStore();
   
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
-  const [showDemoOptions, setShowDemoOptions] = React.useState(true);
-  
-  // Lazy initialize supabase client
-  const supabaseRef = React.useRef<ReturnType<typeof createClient> | null>(null);
-  const getSupabase = () => {
-    if (!supabaseRef.current) {
-      supabaseRef.current = createClient();
-    }
-    return supabaseRef.current;
-  };
+
+  const isLoading = isSubmitting || authLoading;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError(null);
+    setIsSubmitting(true);
+    setMessage(null);
+    setAuthError(null);
     
-    // Check for test credentials first
-    const testCred = TEST_CREDENTIALS[email as keyof typeof TEST_CREDENTIALS];
-    if (testCred && testCred.password === password) {
-      setUser(testCred.user);
+    const result = await loginWithEmail(email, password);
+    
+    if (result.success) {
       router.push(redirectTo);
       router.refresh();
-      setIsLoading(false);
-      return;
     }
     
-    try {
-      const supabase = getSupabase();
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) {
-        setError(error.message);
-      } else {
-        router.push(redirectTo);
-        router.refresh();
-      }
-    } catch {
-      setError("An unexpected error occurred. Try demo login below.");
-    } finally {
-      setIsLoading(false);
-    }
+    setIsSubmitting(false);
   };
 
   const handleDemoLogin = (userType: "super_admin" | "org_admin" | "operator") => {
-    setIsLoading(true);
+    setIsSubmitting(true);
     loginAsDemo(userType);
     setTimeout(() => {
       router.push(redirectTo);
@@ -81,59 +61,40 @@ function LoginForm() {
   };
 
   const handleGoogleLogin = async () => {
-    setIsLoading(true);
-    setError(null);
+    setIsSubmitting(true);
+    setMessage(null);
+    setAuthError(null);
     
-    try {
-      const supabase = getSupabase();
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?redirectTo=${redirectTo}`,
-        },
-      });
-      
-      if (error) {
-        setError(error.message);
-        setIsLoading(false);
-      }
-    } catch {
-      setError("An unexpected error occurred");
-      setIsLoading(false);
+    const result = await loginWithGoogle();
+    
+    if (!result.success) {
+      setIsSubmitting(false);
     }
+    // On success, OAuth redirect will happen
   };
 
   const handleForgotPassword = async () => {
     if (!email) {
-      setError("Please enter your email address");
+      setAuthError("Please enter your email address");
       return;
     }
     
-    setIsLoading(true);
-    setError(null);
+    setIsSubmitting(true);
+    setMessage(null);
+    setAuthError(null);
     
-    try {
-      const supabase = getSupabase();
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
-      });
-      
-      if (error) {
-        setError(error.message);
-      } else {
-        setMessage("Check your email for a password reset link");
-      }
-    } catch {
-      setError("An unexpected error occurred");
-    } finally {
-      setIsLoading(false);
+    const result = await resetPassword(email);
+    
+    if (result.success) {
+      setMessage("Check your email for a password reset link");
     }
+    
+    setIsSubmitting(false);
   };
 
   const fillCredentials = (emailValue: string, passwordValue: string) => {
     setEmail(emailValue);
     setPassword(passwordValue);
-    setShowDemoOptions(false);
   };
 
   return (
@@ -154,9 +115,9 @@ function LoginForm() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {error && (
+          {authError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-              {error}
+              {authError}
             </div>
           )}
           
@@ -283,7 +244,7 @@ function LoginForm() {
           </Button>
 
           <p className="text-center text-sm text-[var(--muted-foreground)]">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <Link
               href="/signup"
               className="text-[var(--cai-teal)] font-medium hover:underline"

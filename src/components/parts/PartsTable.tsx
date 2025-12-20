@@ -9,6 +9,13 @@ import {
   RotateCcw,
   Lock,
   GripVertical,
+  Copy,
+  Clipboard,
+  ClipboardPaste,
+  Undo2,
+  Redo2,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import {
   DndContext,
@@ -42,6 +49,7 @@ import { useIntakeStore } from "@/lib/store";
 import type { CutPart } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import { useColumnOrder } from "@/hooks/use-column-order";
+import { useKeyboardShortcut } from "@/components/ui/keyboard-shortcuts-dialog";
 
 // Column definitions
 type ColumnKey = "label" | "L" | "W" | "thickness_mm" | "qty" | "material_id" | "rotate" | "group_id" | "edging";
@@ -159,11 +167,27 @@ export function PartsTable() {
     selectedPartIds,
     selectPart,
     deselectPart,
+    togglePartSelection,
+    selectAllParts,
+    clearSelection,
+    selectRange,
     isAdvancedMode,
+    // Bulk operations
+    removeSelectedParts,
+    duplicateSelectedParts,
+    copySelectedParts,
+    pasteParts,
+    clipboard,
+    // Undo/Redo
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useIntakeStore();
 
   const [sortField, setSortField] = React.useState<SortField>("label");
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc");
+  const [lastSelectedId, setLastSelectedId] = React.useState<string | null>(null);
 
   // Column order state with persistence
   const [columnOrder, setColumnOrder] = useColumnOrder<ColumnKey>(
@@ -172,6 +196,51 @@ export function PartsTable() {
   );
 
   const parts = currentCutlist.parts;
+  
+  // Keyboard shortcuts
+  useKeyboardShortcut(["⌘", "A"], () => {
+    selectAllParts();
+  });
+  
+  useKeyboardShortcut(["⌘", "C"], () => {
+    if (selectedPartIds.length > 0) {
+      copySelectedParts();
+    }
+  });
+  
+  useKeyboardShortcut(["⌘", "V"], () => {
+    pasteParts();
+  });
+  
+  useKeyboardShortcut(["⌘", "D"], () => {
+    if (selectedPartIds.length > 0) {
+      duplicateSelectedParts();
+    }
+  });
+  
+  useKeyboardShortcut(["⌘", "Z"], () => {
+    undo();
+  });
+  
+  useKeyboardShortcut(["⌘", "⇧", "Z"], () => {
+    redo();
+  });
+  
+  useKeyboardShortcut(["Delete"], () => {
+    if (selectedPartIds.length > 0) {
+      removeSelectedParts();
+    }
+  }, { preventDefault: false });
+  
+  useKeyboardShortcut(["Backspace"], () => {
+    if (selectedPartIds.length > 0) {
+      removeSelectedParts();
+    }
+  }, { preventDefault: false });
+  
+  useKeyboardShortcut(["Escape"], () => {
+    clearSelection();
+  });
 
   // Filter visible columns based on mode and capabilities
   const visibleColumns = React.useMemo(() => {
@@ -254,12 +323,28 @@ export function PartsTable() {
     }
   };
 
-  const togglePartSelection = (partId: string) => {
-    if (selectedPartIds.includes(partId)) {
-      deselectPart(partId);
+  const handlePartClick = (partId: string, e: React.MouseEvent) => {
+    if (e.shiftKey && lastSelectedId) {
+      // Shift-click: select range
+      selectRange(lastSelectedId, partId);
+    } else if (e.metaKey || e.ctrlKey) {
+      // Cmd/Ctrl-click: toggle individual selection
+      togglePartSelection(partId);
     } else {
+      // Regular click: select only this part
+      clearSelection();
       selectPart(partId);
     }
+    setLastSelectedId(partId);
+  };
+  
+  const handleCheckboxChange = (partId: string, checked: boolean) => {
+    if (checked) {
+      selectPart(partId);
+    } else {
+      deselectPart(partId);
+    }
+    setLastSelectedId(partId);
   };
 
   // Calculate totals
@@ -342,23 +427,119 @@ export function PartsTable() {
     );
   }
 
+  const hasSelection = selectedPartIds.length > 0;
+  const allSelected = parts.length > 0 && selectedPartIds.length === parts.length;
+  const someSelected = selectedPartIds.length > 0 && selectedPartIds.length < parts.length;
+
   return (
     <Card>
       <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <CardTitle className="text-lg">Parts List</CardTitle>
             <Badge variant="secondary">
               {parts.length} parts • {totalPieces} pcs
             </Badge>
+            {hasSelection && (
+              <Badge variant="outline" className="bg-[var(--cai-teal)]/10 text-[var(--cai-teal)]">
+                {selectedPartIds.length} selected
+              </Badge>
+            )}
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-              <GripVertical className="h-3 w-3" />
-              <span>Drag columns to reorder</span>
+          
+          {/* Bulk Actions Toolbar */}
+          <div className="flex items-center gap-2">
+            {/* Undo/Redo */}
+            <div className="flex items-center gap-1 border-r border-[var(--border)] pr-2 mr-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={undo}
+                disabled={!canUndo()}
+                className="h-8 px-2"
+                title="Undo (⌘Z)"
+              >
+                <Undo2 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={redo}
+                disabled={!canRedo()}
+                className="h-8 px-2"
+                title="Redo (⌘⇧Z)"
+              >
+                <Redo2 className="h-4 w-4" />
+              </Button>
             </div>
-            <div className="text-sm text-[var(--muted-foreground)]">
-              Total area: {(totalArea / 1_000_000).toFixed(2)} m²
+            
+            {/* Selection Actions */}
+            {hasSelection ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={copySelectedParts}
+                  className="h-8 px-2"
+                  title="Copy (⌘C)"
+                >
+                  <Copy className="h-4 w-4 mr-1" />
+                  Copy
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={duplicateSelectedParts}
+                  className="h-8 px-2"
+                  title="Duplicate (⌘D)"
+                >
+                  <Clipboard className="h-4 w-4 mr-1" />
+                  Duplicate
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={removeSelectedParts}
+                  className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                  title="Delete (Delete/Backspace)"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                  className="h-8 px-2"
+                  title="Clear Selection (Esc)"
+                >
+                  <Square className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              </>
+            ) : (
+              <>
+                {clipboard.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={pasteParts}
+                    className="h-8 px-2"
+                    title="Paste (⌘V)"
+                  >
+                    <ClipboardPaste className="h-4 w-4 mr-1" />
+                    Paste ({clipboard.length})
+                  </Button>
+                )}
+                <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                  <GripVertical className="h-3 w-3" />
+                  <span className="hidden sm:inline">Drag columns to reorder</span>
+                </div>
+              </>
+            )}
+            
+            <div className="hidden md:block text-sm text-[var(--muted-foreground)] border-l border-[var(--border)] pl-2 ml-1">
+              Total: {(totalArea / 1_000_000).toFixed(2)} m²
             </div>
           </div>
         </div>
@@ -374,21 +555,24 @@ export function PartsTable() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[40px]">
-                    <input
-                      type="checkbox"
-                      className="rounded border-[var(--border)]"
-                      checked={
-                        selectedPartIds.length === parts.length &&
-                        parts.length > 0
-                      }
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          parts.forEach((p) => selectPart(p.part_id));
-                        } else {
-                          parts.forEach((p) => deselectPart(p.part_id));
-                        }
-                      }}
-                    />
+                    <div className="flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        className="rounded border-[var(--border)] cursor-pointer"
+                        checked={allSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someSelected;
+                        }}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            selectAllParts();
+                          } else {
+                            clearSelection();
+                          }
+                        }}
+                        title="Select all (⌘A)"
+                      />
+                    </div>
                   </TableHead>
                   <SortableContext
                     items={visibleColumns}
@@ -409,20 +593,27 @@ export function PartsTable() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedParts.map((part) => (
+                {sortedParts.map((part) => {
+                  const isSelected = selectedPartIds.includes(part.part_id);
+                  return (
                   <TableRow
                     key={part.part_id}
+                    onClick={(e) => handlePartClick(part.part_id, e)}
                     className={cn(
-                      selectedPartIds.includes(part.part_id) && "bg-[var(--muted)]"
+                      "cursor-pointer transition-colors",
+                      isSelected && "bg-[var(--cai-teal)]/10 hover:bg-[var(--cai-teal)]/15",
+                      !isSelected && "hover:bg-[var(--muted)]"
                     )}
                   >
-                    <TableCell>
-                      <input
-                        type="checkbox"
-                        className="rounded border-[var(--border)]"
-                        checked={selectedPartIds.includes(part.part_id)}
-                        onChange={() => togglePartSelection(part.part_id)}
-                      />
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          className="rounded border-[var(--border)] cursor-pointer"
+                          checked={isSelected}
+                          onChange={(e) => handleCheckboxChange(part.part_id, e.target.checked)}
+                        />
+                      </div>
                     </TableCell>
                     {visibleColumns.map((colKey) => {
                       const col = COLUMN_DEFS[colKey];
@@ -438,7 +629,7 @@ export function PartsTable() {
                         </TableCell>
                       );
                     })}
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="ghost"
@@ -461,7 +652,8 @@ export function PartsTable() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </DndContext>

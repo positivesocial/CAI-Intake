@@ -31,8 +31,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
-
 // Mock data - in production this would come from the API
 const MOCK_MATERIALS = [
   {
@@ -138,8 +136,11 @@ export default function MaterialsPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Generate a new ID if not editing an existing material
+    const materialId = editingMaterial?.id ?? `mat-${crypto.randomUUID().slice(0, 8)}`;
+    
     const newMaterial: Material = {
-      id: editingMaterial?.id ?? Date.now().toString(),
+      id: materialId,
       material_id: formData.material_id,
       name: formData.name,
       thickness_mm: formData.thickness_mm,

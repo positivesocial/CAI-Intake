@@ -447,7 +447,12 @@ export default function TeamManagementPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {MOCK_INVITATIONS.map((invite) => (
+                  {MOCK_INVITATIONS.map((invite) => {
+                    const daysRemaining = Math.ceil(
+                      (invite.expiresAt.getTime() - new Date().getTime()) /
+                        (1000 * 60 * 60 * 24)
+                    );
+                    return (
                     <TableRow key={invite.id}>
                       <TableCell className="font-medium">{invite.email}</TableCell>
                       <TableCell>
@@ -456,11 +461,7 @@ export default function TeamManagementPage() {
                       <TableCell className="text-[var(--muted-foreground)]">
                         <div className="flex items-center gap-1">
                           <Clock className="h-4 w-4" />
-                          {Math.ceil(
-                            (invite.expiresAt.getTime() - Date.now()) /
-                              (1000 * 60 * 60 * 24)
-                          )}{" "}
-                          days
+                          {daysRemaining} days
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -478,7 +479,8 @@ export default function TeamManagementPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </CardContent>

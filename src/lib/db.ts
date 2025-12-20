@@ -17,4 +17,6 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = db;
 }
 
+// Export as both `db` and `prisma` for compatibility
+export { db as prisma };
 export default db;

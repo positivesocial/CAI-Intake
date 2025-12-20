@@ -299,3 +299,113 @@ export async function DELETE(
   }
 }
 
+// Bulk update schema
+const BulkUpdateSchema = z.object({
+  updates: z.array(z.object({
+    part_id: z.string().min(1),
+    label: z.string().optional(),
+    qty: z.number().int().positive().optional(),
+    size: z.object({ L: z.number().positive(), W: z.number().positive() }).optional(),
+    thickness_mm: z.number().positive().optional(),
+    material_id: z.string().min(1).optional(),
+    grain: z.string().optional(),
+    allow_rotation: z.boolean().optional(),
+    group_id: z.string().nullable().optional(),
+    ops: z.any().optional(),
+    notes: z.any().optional(),
+  })),
+});
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: RouteParams
+) {
+  try {
+    const { id } = await params;
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Verify cutlist access
+    const { data: cutlist, error: cutlistError } = await supabase
+      .from("cutlists")
+      .select("id")
+      .eq("id", id)
+      .single();
+
+    if (cutlistError || !cutlist) {
+      return NextResponse.json({ error: "Cutlist not found" }, { status: 404 });
+    }
+
+    // Parse request body
+    const body = await request.json();
+    const parseResult = BulkUpdateSchema.safeParse(body);
+    
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: "Invalid request", details: parseResult.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const { updates } = parseResult.data;
+    const results: Array<{ part_id: string; success: boolean; error?: string }> = [];
+
+    // Update parts one by one (Supabase doesn't support bulk upsert easily)
+    for (const update of updates) {
+      const updateData: Record<string, unknown> = {};
+      
+      if (update.label !== undefined) updateData.label = update.label;
+      if (update.qty !== undefined) updateData.qty = update.qty;
+      if (update.size !== undefined) {
+        updateData.length_mm = update.size.L;
+        updateData.width_mm = update.size.W;
+      }
+      if (update.thickness_mm !== undefined) updateData.thickness_mm = update.thickness_mm;
+      if (update.material_id !== undefined) updateData.material_id = update.material_id;
+      if (update.grain !== undefined) updateData.grain = update.grain;
+      if (update.allow_rotation !== undefined) updateData.allow_rotation = update.allow_rotation;
+      if (update.group_id !== undefined) updateData.group_id = update.group_id;
+      if (update.ops !== undefined) updateData.ops = update.ops;
+      if (update.notes !== undefined) updateData.notes = update.notes;
+
+      if (Object.keys(updateData).length === 0) {
+        results.push({ part_id: update.part_id, success: false, error: "No fields to update" });
+        continue;
+      }
+
+      const { error } = await supabase
+        .from("parts")
+        .update(updateData)
+        .eq("cutlist_id", id)
+        .eq("part_id", update.part_id);
+
+      if (error) {
+        results.push({ part_id: update.part_id, success: false, error: error.message });
+      } else {
+        results.push({ part_id: update.part_id, success: true });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    return NextResponse.json({
+      success: failCount === 0,
+      updated: successCount,
+      failed: failCount,
+      results,
+    });
+
+  } catch (error) {
+    console.error("Parts PATCH error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+

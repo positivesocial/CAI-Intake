@@ -13,6 +13,10 @@ import {
   BarChart3,
   ChevronRight,
   Home,
+  X,
+  List,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -32,6 +36,7 @@ import {
 } from "@/components/intake";
 import { PartsTable } from "@/components/parts";
 import { useIntakeStore } from "@/lib/store";
+import { KeyboardShortcutsDialog } from "@/components/ui/keyboard-shortcuts-dialog";
 import { cn } from "@/lib/utils";
 
 const INTAKE_MODES = [
@@ -78,9 +83,15 @@ export default function IntakePage() {
     setCutlistName,
     resetCutlist,
     setCapabilities,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useIntakeStore();
   
   const [showStats, setShowStats] = React.useState(true);
+  const [showMobileStats, setShowMobileStats] = React.useState(false);
+  const [mobileView, setMobileView] = React.useState<"intake" | "parts">("intake");
 
   const totalParts = currentCutlist.parts.length;
   const totalPieces = currentCutlist.parts.reduce((sum, p) => sum + p.qty, 0);
@@ -175,17 +186,20 @@ export default function IntakePage() {
       {/* Main Content Area */}
       <div className="flex">
         {/* Main Content */}
-        <main className="flex-1 min-w-0 p-4 lg:p-6">
+        <main className="flex-1 min-w-0 p-4 lg:p-6 pb-24 md:pb-6">
           <div className="max-w-6xl mx-auto">
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
               {/* Left Column - Input Methods */}
-              <div className="xl:col-span-2 space-y-6">
-                {/* Mode Tabs */}
+              <div className={cn(
+                "xl:col-span-2 space-y-6",
+                mobileView === "parts" && "hidden md:block"
+              )}>
+                {/* Mode Tabs - Hidden on mobile (using bottom nav instead) */}
                 <Tabs
                   value={activeMode}
                   onValueChange={(v) => setActiveMode(v as typeof activeMode)}
                 >
-                  <TabsList className="w-full grid grid-cols-5 h-auto p-1">
+                  <TabsList className="hidden md:grid w-full grid-cols-5 h-auto p-1">
                     {INTAKE_MODES.map((mode) => {
                       const Icon = mode.icon;
                       return (
@@ -235,7 +249,44 @@ export default function IntakePage() {
                 {/* Intake Inbox */}
                 {inboxParts.length > 0 && <IntakeInbox />}
 
-                {/* Parts Table */}
+                {/* Parts Table - Hidden on mobile when in intake view */}
+                <div className="hidden md:block">
+                  <PartsTable />
+                </div>
+              </div>
+              
+              {/* Mobile Parts View */}
+              <div className={cn(
+                "xl:hidden",
+                mobileView !== "parts" && "hidden"
+              )}>
+                {/* Mobile-specific header for parts */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-semibold">Parts List</h2>
+                    <Badge variant="secondary">{totalParts} parts</Badge>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={undo}
+                      disabled={!canUndo()}
+                      className="h-9 w-9"
+                    >
+                      <Undo2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={redo}
+                      disabled={!canRedo()}
+                      className="h-9 w-9"
+                    >
+                      <Redo2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
                 <PartsTable />
               </div>
 
@@ -525,13 +576,97 @@ export default function IntakePage() {
           </div>
         </main>
         
-        {/* Statistics Sidebar - Right Edge */}
+        {/* Statistics Sidebar - Right Edge (Desktop) */}
         {showStats && (
           <aside className="hidden xl:block sticky top-14 h-[calc(100vh-3.5rem)] overflow-hidden">
             <StatsSidebar />
           </aside>
         )}
       </div>
+      
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[var(--card)] border-t border-[var(--border)] z-50 safe-area-inset-bottom">
+        <div className="grid grid-cols-5 h-full">
+          {INTAKE_MODES.map((mode) => {
+            const Icon = mode.icon;
+            const isActive = activeMode === mode.id && mobileView === "intake";
+            return (
+              <button
+                key={mode.id}
+                onClick={() => {
+                  setActiveMode(mode.id as typeof activeMode);
+                  setMobileView("intake");
+                }}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-0.5 transition-colors",
+                  isActive
+                    ? "text-[var(--cai-teal)] bg-[var(--cai-teal)]/10"
+                    : "text-[var(--muted-foreground)]"
+                )}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="text-[10px] font-medium">{mode.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+      
+      {/* Mobile View Toggle - Parts List */}
+      <button
+        onClick={() => setMobileView(mobileView === "parts" ? "intake" : "parts")}
+        className={cn(
+          "md:hidden fixed bottom-20 right-4 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-colors",
+          mobileView === "parts"
+            ? "bg-[var(--cai-teal)] text-white"
+            : "bg-[var(--card)] border border-[var(--border)] text-[var(--foreground)]"
+        )}
+      >
+        <List className="h-6 w-6" />
+        {totalParts > 0 && mobileView !== "parts" && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+            {totalParts > 99 ? "99+" : totalParts}
+          </span>
+        )}
+      </button>
+      
+      {/* Mobile Stats Button */}
+      <button
+        onClick={() => setShowMobileStats(true)}
+        className="md:hidden fixed bottom-20 left-4 z-50 w-14 h-14 rounded-full shadow-lg bg-[var(--card)] border border-[var(--border)] flex items-center justify-center"
+      >
+        <BarChart3 className="h-6 w-6" />
+      </button>
+      
+      {/* Mobile Stats Drawer */}
+      {showMobileStats && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={() => setShowMobileStats(false)}
+          />
+          <div className="fixed inset-x-0 bottom-0 z-50 bg-[var(--card)] rounded-t-3xl max-h-[80vh] overflow-auto safe-area-inset-bottom animate-slide-up">
+            <div className="sticky top-0 flex items-center justify-between p-4 border-b border-[var(--border)] bg-[var(--card)]">
+              <h2 className="font-semibold text-lg">Cutlist Statistics</h2>
+              <button
+                onClick={() => setShowMobileStats(false)}
+                className="p-2 hover:bg-[var(--muted)] rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 pb-20">
+              <StatsSidebar />
+            </div>
+          </div>
+        </>
+      )}
+      
+      {/* Keyboard Shortcuts Dialog */}
+      <KeyboardShortcutsDialog />
+      
+      {/* Add padding for mobile bottom nav */}
+      <div className="h-16 md:hidden" />
     </div>
   );
 }
