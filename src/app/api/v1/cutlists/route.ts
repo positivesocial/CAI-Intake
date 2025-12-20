@@ -1,0 +1,260 @@
+/**
+ * CAI Intake - Cutlists API
+ * 
+ * GET /api/v1/cutlists - List cutlists
+ * POST /api/v1/cutlists - Create cutlist
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { z } from "zod";
+import { generateId } from "@/lib/utils";
+
+// Create cutlist schema
+const CreateCutlistSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
+  job_ref: z.string().optional(),
+  client_ref: z.string().optional(),
+  capabilities: z.object({
+    core_parts: z.boolean().optional(),
+    edging: z.boolean().optional(),
+    grooves: z.boolean().optional(),
+    cnc_holes: z.boolean().optional(),
+    cnc_routing: z.boolean().optional(),
+    custom_cnc: z.boolean().optional(),
+    advanced_grouping: z.boolean().optional(),
+    part_notes: z.boolean().optional(),
+  }).optional(),
+  parts: z.array(z.object({
+    part_id: z.string(),
+    label: z.string().optional(),
+    qty: z.number().int().positive(),
+    size: z.object({ L: z.number(), W: z.number() }),
+    thickness_mm: z.number().positive(),
+    material_id: z.string(),
+    grain: z.string().optional(),
+    allow_rotation: z.boolean().optional(),
+    group_id: z.string().optional(),
+    ops: z.any().optional(),
+    notes: z.any().optional(),
+  })).optional(),
+});
+
+// List query params
+const ListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+  status: z.enum(["draft", "pending", "processing", "completed", "archived"]).optional(),
+  search: z.string().optional(),
+});
+
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user's organization
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
+    }
+
+    // Parse query params
+    const searchParams = request.nextUrl.searchParams;
+    const queryResult = ListQuerySchema.safeParse({
+      page: searchParams.get("page"),
+      limit: searchParams.get("limit"),
+      status: searchParams.get("status"),
+      search: searchParams.get("search"),
+    });
+
+    if (!queryResult.success) {
+      return NextResponse.json(
+        { error: "Invalid query parameters", details: queryResult.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const { page, limit, status, search } = queryResult.data;
+    const offset = (page - 1) * limit;
+
+    // Build query
+    let query = supabase
+      .from("cutlists")
+      .select("*, parts:parts(count)", { count: "exact" })
+      .eq("organization_id", userData.organization_id)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    // Apply filters
+    if (status) {
+      query = query.eq("status", status);
+    }
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,job_ref.ilike.%${search}%,client_ref.ilike.%${search}%`);
+    }
+
+    const { data: cutlists, error, count } = await query;
+
+    if (error) {
+      console.error("Failed to fetch cutlists:", error);
+      return NextResponse.json(
+        { error: "Failed to fetch cutlists" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      cutlists: cutlists?.map((c: any) => ({
+        ...c,
+        parts_count: c.parts?.[0]?.count ?? 0,
+        parts: undefined,
+      })),
+      pagination: {
+        page,
+        limit,
+        total: count ?? 0,
+        total_pages: Math.ceil((count ?? 0) / limit),
+      },
+    });
+
+  } catch (error) {
+    console.error("Cutlists GET error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user's organization
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
+    }
+
+    // Parse request body
+    const body = await request.json();
+    const parseResult = CreateCutlistSchema.safeParse(body);
+    
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: "Invalid request", details: parseResult.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const { name, description, job_ref, client_ref, capabilities, parts } = parseResult.data;
+
+    // Generate doc_id
+    const doc_id = generateId("DOC");
+
+    // Create cutlist
+    const { data: cutlist, error: cutlistError } = await supabase
+      .from("cutlists")
+      .insert({
+        organization_id: userData.organization_id,
+        user_id: user.id,
+        doc_id,
+        name,
+        description,
+        job_ref,
+        client_ref,
+        capabilities: capabilities ?? {
+          core_parts: true,
+          edging: true,
+          grooves: false,
+          cnc_holes: false,
+          cnc_routing: false,
+          custom_cnc: false,
+          advanced_grouping: false,
+          part_notes: true,
+        },
+      })
+      .select()
+      .single();
+
+    if (cutlistError) {
+      console.error("Failed to create cutlist:", cutlistError);
+      return NextResponse.json(
+        { error: "Failed to create cutlist" },
+        { status: 500 }
+      );
+    }
+
+    // Create parts if provided
+    if (parts && parts.length > 0) {
+      const { error: partsError } = await supabase
+        .from("parts")
+        .insert(
+          parts.map(p => ({
+            cutlist_id: cutlist.id,
+            part_id: p.part_id,
+            label: p.label,
+            qty: p.qty,
+            length_mm: p.size.L,
+            width_mm: p.size.W,
+            thickness_mm: p.thickness_mm,
+            material_id: p.material_id,
+            grain: p.grain ?? "none",
+            allow_rotation: p.allow_rotation ?? true,
+            group_id: p.group_id,
+            ops: p.ops,
+            notes: p.notes,
+          }))
+        );
+
+      if (partsError) {
+        console.error("Failed to create parts:", partsError);
+        // Don't fail the whole request, cutlist was created
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      cutlist: {
+        ...cutlist,
+        parts_count: parts?.length ?? 0,
+      },
+    }, { status: 201 });
+
+  } catch (error) {
+    console.error("Cutlists POST error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+

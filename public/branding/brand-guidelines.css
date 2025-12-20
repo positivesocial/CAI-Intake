@@ -1,0 +1,184 @@
+/**
+ * CAI Intake - Brand Guidelines
+ * 
+ * CSS Custom Properties for consistent branding across the application.
+ * Import this in your global styles or use as reference.
+ */
+
+:root {
+  /* ===========================================
+     PRIMARY COLORS
+     =========================================== */
+  
+  /* Deep Navy - Primary brand color, used for text and primary UI elements */
+  --cai-navy: #1e3a5f;
+  --cai-navy-light: #2d4a6f;
+  --cai-navy-dark: #142840;
+  
+  /* Electric Teal - Accent color, used for CTAs and highlights */
+  --cai-teal: #00d4aa;
+  --cai-teal-light: #33e0bb;
+  --cai-teal-dark: #00a888;
+  
+  /* White - Background and contrast */
+  --cai-white: #ffffff;
+  --cai-off-white: #f8fafc;
+  
+  /* ===========================================
+     SEMANTIC COLORS
+     =========================================== */
+  
+  --cai-success: #22c55e;
+  --cai-success-light: #4ade80;
+  --cai-success-bg: #f0fdf4;
+  
+  --cai-warning: #f59e0b;
+  --cai-warning-light: #fbbf24;
+  --cai-warning-bg: #fffbeb;
+  
+  --cai-error: #ef4444;
+  --cai-error-light: #f87171;
+  --cai-error-bg: #fef2f2;
+  
+  --cai-info: #3b82f6;
+  --cai-info-light: #60a5fa;
+  --cai-info-bg: #eff6ff;
+  
+  /* ===========================================
+     NEUTRAL COLORS
+     =========================================== */
+  
+  --cai-gray-50: #f9fafb;
+  --cai-gray-100: #f3f4f6;
+  --cai-gray-200: #e5e7eb;
+  --cai-gray-300: #d1d5db;
+  --cai-gray-400: #9ca3af;
+  --cai-gray-500: #6b7280;
+  --cai-gray-600: #4b5563;
+  --cai-gray-700: #374151;
+  --cai-gray-800: #1f2937;
+  --cai-gray-900: #111827;
+  
+  /* ===========================================
+     CONFIDENCE COLORS (for parse results)
+     =========================================== */
+  
+  --cai-confidence-high: #22c55e;    /* 90%+ */
+  --cai-confidence-medium: #f59e0b;  /* 70-89% */
+  --cai-confidence-low: #ef4444;     /* <70% */
+  
+  /* ===========================================
+     TYPOGRAPHY
+     =========================================== */
+  
+  /* Font families */
+  --cai-font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --cai-font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  --cai-font-display: 'Sora', var(--cai-font-sans);
+  
+  /* Font sizes */
+  --cai-text-xs: 0.75rem;      /* 12px */
+  --cai-text-sm: 0.875rem;     /* 14px */
+  --cai-text-base: 1rem;       /* 16px */
+  --cai-text-lg: 1.125rem;     /* 18px */
+  --cai-text-xl: 1.25rem;      /* 20px */
+  --cai-text-2xl: 1.5rem;      /* 24px */
+  --cai-text-3xl: 1.875rem;    /* 30px */
+  --cai-text-4xl: 2.25rem;     /* 36px */
+  
+  /* Font weights */
+  --cai-font-normal: 400;
+  --cai-font-medium: 500;
+  --cai-font-semibold: 600;
+  --cai-font-bold: 700;
+  
+  /* Line heights */
+  --cai-leading-tight: 1.25;
+  --cai-leading-normal: 1.5;
+  --cai-leading-relaxed: 1.75;
+  
+  /* ===========================================
+     SPACING
+     =========================================== */
+  
+  --cai-space-1: 0.25rem;   /* 4px */
+  --cai-space-2: 0.5rem;    /* 8px */
+  --cai-space-3: 0.75rem;   /* 12px */
+  --cai-space-4: 1rem;      /* 16px */
+  --cai-space-5: 1.25rem;   /* 20px */
+  --cai-space-6: 1.5rem;    /* 24px */
+  --cai-space-8: 2rem;      /* 32px */
+  --cai-space-10: 2.5rem;   /* 40px */
+  --cai-space-12: 3rem;     /* 48px */
+  --cai-space-16: 4rem;     /* 64px */
+  
+  /* ===========================================
+     BORDERS & RADIUS
+     =========================================== */
+  
+  --cai-radius-sm: 0.25rem;    /* 4px */
+  --cai-radius-md: 0.375rem;   /* 6px */
+  --cai-radius-lg: 0.5rem;     /* 8px */
+  --cai-radius-xl: 0.75rem;    /* 12px */
+  --cai-radius-2xl: 1rem;      /* 16px */
+  --cai-radius-full: 9999px;
+  
+  --cai-border-width: 1px;
+  --cai-border-color: var(--cai-gray-200);
+  
+  /* ===========================================
+     SHADOWS
+     =========================================== */
+  
+  --cai-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --cai-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --cai-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --cai-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  
+  /* ===========================================
+     TRANSITIONS
+     =========================================== */
+  
+  --cai-transition-fast: 150ms ease;
+  --cai-transition-normal: 200ms ease;
+  --cai-transition-slow: 300ms ease;
+  
+  /* ===========================================
+     Z-INDEX SCALE
+     =========================================== */
+  
+  --cai-z-dropdown: 1000;
+  --cai-z-sticky: 1020;
+  --cai-z-fixed: 1030;
+  --cai-z-modal-backdrop: 1040;
+  --cai-z-modal: 1050;
+  --cai-z-popover: 1060;
+  --cai-z-tooltip: 1070;
+}
+
+/* ===========================================
+   DARK MODE OVERRIDES
+   =========================================== */
+
+[data-theme="dark"] {
+  --cai-navy: #e2e8f0;
+  --cai-navy-light: #f1f5f9;
+  --cai-navy-dark: #cbd5e1;
+  
+  --cai-white: #0f172a;
+  --cai-off-white: #1e293b;
+  
+  --cai-gray-50: #1e293b;
+  --cai-gray-100: #334155;
+  --cai-gray-200: #475569;
+  --cai-gray-300: #64748b;
+  --cai-gray-400: #94a3b8;
+  --cai-gray-500: #cbd5e1;
+  --cai-gray-600: #e2e8f0;
+  --cai-gray-700: #f1f5f9;
+  --cai-gray-800: #f8fafc;
+  --cai-gray-900: #ffffff;
+  
+  --cai-border-color: var(--cai-gray-200);
+}
+

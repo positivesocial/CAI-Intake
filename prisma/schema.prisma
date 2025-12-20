@@ -1,0 +1,471 @@
+// CAI Intake - Prisma Schema
+// Database models for the cutlist ingestion system
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ORGANIZATION & USERS
+// ============================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logo      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Organization settings
+  settings Json @default("{}")
+  // Capabilities configuration
+  capabilities Json @default("{\"core_parts\": true}")
+  
+  // Subscription/plan info
+  plan       String   @default("free") // free, starter, professional, enterprise
+  planExpiry DateTime? @map("plan_expiry")
+
+  // Relationships
+  users       User[]
+  invitations Invitation[]
+  cutlists    Cutlist[]
+  materials   Material[]
+  edgebands   Edgeband[]
+  templates   Template[]
+  parseJobs   ParseJob[]
+  files       UploadedFile[]
+  auditLogs   AuditLog[]
+
+  @@map("organizations")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  avatar        String?
+  phone         String?
+  jobTitle      String?  @map("job_title")
+  
+  // Auth fields
+  passwordHash  String?  @map("password_hash")
+  emailVerified DateTime? @map("email_verified")
+  lastLoginAt   DateTime? @map("last_login_at")
+  isActive      Boolean  @default(true) @map("is_active")
+  
+  // Super admin flag (platform-wide access)
+  isSuperAdmin  Boolean  @default(false) @map("is_super_admin")
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // User preferences
+  preferences   Json     @default("{}")
+  // Notification settings
+  notifications Json     @default("{\"email\": true, \"push\": true}")
+
+  // Relationships
+  organizationId String?      @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  roleId         String?      @map("role_id")
+  role           Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  
+  cutlists       Cutlist[]
+  parseJobs      ParseJob[]
+  sessions       Session[]
+  auditLogs      AuditLog[]
+  invitationsSent Invitation[] @relation("InvitedBy")
+
+  @@map("users")
+}
+
+// ============================================================
+// ROLES & PERMISSIONS
+// ============================================================
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   // org_admin, manager, operator, viewer
+  displayName String   @map("display_name")
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system") // System roles can't be deleted
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Permission flags (JSON for flexibility)
+  permissions Json @default("{}")
+
+  // Relationships
+  users User[]
+
+  @@unique([name])
+  @@map("roles")
+}
+
+model Invitation {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  roleId    String   @map("role_id")
+  expiresAt DateTime @map("expires_at")
+  acceptedAt DateTime? @map("accepted_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedById    String       @map("invited_by_id")
+  invitedBy      User         @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([token])
+  @@map("invitations")
+}
+
+// ============================================================
+// SESSIONS & AUTH
+// ============================================================
+
+model Session {
+  id           String   @id @default(cuid())
+  token        String   @unique
+  userAgent    String?  @map("user_agent")
+  ipAddress    String?  @map("ip_address")
+  expiresAt    DateTime @map("expires_at")
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String   // user.login, cutlist.create, settings.update, etc.
+  entityType String?  @map("entity_type") // cutlist, user, organization, etc.
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  userId         String?       @map("user_id")
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================
+// PLATFORM SETTINGS (Super Admin)
+// ============================================================
+
+model PlatformSettings {
+  id        String   @id @default("platform")
+  settings  Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
+}
+
+// ============================================================
+// MATERIALS & EDGEBANDS
+// ============================================================
+
+model Material {
+  id            String   @id @default(cuid())
+  materialId    String   @map("material_id") // User-facing ID (e.g., "MAT-WHITE-18")
+  name          String
+  sku           String?
+  thicknessMm   Float    @map("thickness_mm")
+  coreType      String?  @map("core_type") // PB, MDF, PLY, HDF, OTHER
+  finish        String?
+  colorCode     String?  @map("color_code")
+  defaultSheet  Json?    @map("default_sheet") // { size: { L, W }, grained }
+  meta          Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parts          CutPart[]
+
+  @@unique([organizationId, materialId])
+  @@map("materials")
+}
+
+model Edgeband {
+  id                   String   @id @default(cuid())
+  edgebandId           String   @map("edgeband_id") // User-facing ID
+  name                 String
+  thicknessMm          Float    @map("thickness_mm")
+  colorMatchMaterialId String?  @map("color_match_material_id")
+  finish               String?
+  meta                 Json?
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, edgebandId])
+  @@map("edgebands")
+}
+
+// ============================================================
+// CUTLISTS & PARTS
+// ============================================================
+
+model Cutlist {
+  id            String   @id @default(cuid())
+  docId         String   @map("doc_id") // User-facing document ID
+  schemaVersion String   @default("cai-cutlist/v1") @map("schema_version")
+  name          String?
+  jobId         String?  @map("job_id") // Link to CAI 2D job
+  status        String   @default("draft") // draft, confirmed, optimized, exported
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Ingestion source
+  sourceMethod   String  @map("source_method") // manual, paste_parser, excel_table, etc.
+  sourceClient   String? @map("source_client") // web, api, mobile
+  sourceFileRef  String? @map("source_file_ref")
+  sourceTemplate String? @map("source_template")
+
+  // Capabilities (JSON to allow flexibility)
+  capabilities Json @default("{\"core_parts\": true}")
+
+  // Additional metadata
+  meta Json?
+
+  // CNC Library (if any)
+  cncLibrary Json? @map("cnc_library")
+
+  // Relationships
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?      @map("user_id")
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  parts          CutPart[]
+  parseJobs      ParseJob[]
+  optimizeJobs   OptimizeJob[]
+  exports        Export[]
+
+  @@unique([organizationId, docId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([status])
+  @@map("cutlists")
+}
+
+model CutPart {
+  id          String   @id @default(cuid())
+  partId      String   @map("part_id") // User-facing part ID
+  label       String?
+  family      String?  // panel, door, drawer_box, face_frame, filler, misc
+  qty         Int
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Dimensions (stored as JSON for flexibility)
+  sizeL       Float    @map("size_l") // Length in mm
+  sizeW       Float    @map("size_w") // Width in mm
+  thicknessMm Float    @map("thickness_mm")
+
+  // Material & orientation
+  materialRef   String  @map("material_ref") // Reference to material_id
+  grain         String  @default("none") // none, along_L
+  allowRotation Boolean @default(true) @map("allow_rotation")
+
+  // Grouping
+  groupId  String? @map("group_id")
+  subGroup String? @map("sub_group")
+  priority Int?
+  tags     String[] @default([])
+
+  // Operations (JSON for flexibility - matches PartOps schema)
+  ops Json?
+
+  // Notes
+  notes Json? // { operator, cnc, design }
+
+  // Audit trail
+  audit Json? // { source_method, confidence, warnings, errors, human_verified }
+
+  // Relationships
+  cutlistId  String   @map("cutlist_id")
+  cutlist    Cutlist  @relation(fields: [cutlistId], references: [id], onDelete: Cascade)
+  materialId String?  @map("material_id")
+  material   Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+
+  @@unique([cutlistId, partId])
+  @@index([cutlistId])
+  @@index([materialRef])
+  @@map("cut_parts")
+}
+
+// ============================================================
+// PARSE JOBS
+// ============================================================
+
+model ParseJob {
+  id          String   @id @default(cuid())
+  status      String   @default("queued") // queued, processing, completed, failed, cancelled
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Source information
+  sourceKind String @map("source_kind") // text, table, file, voice
+  sourceData Json   @map("source_data") // Full source object
+
+  // Parse options
+  options Json?
+  mapping Json?
+
+  // Results
+  partsPreview Json? @map("parts_preview") // Array of parsed parts for review
+  summary      Json? // { parsed_parts, confidence_avg, warnings, errors }
+
+  // Relationships
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?      @map("user_id")
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  cutlistId      String?      @map("cutlist_id")
+  cutlist        Cutlist?     @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
+  fileId         String?      @map("file_id")
+  file           UploadedFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("parse_jobs")
+}
+
+// ============================================================
+// FILES
+// ============================================================
+
+model UploadedFile {
+  id           String   @id @default(cuid())
+  fileName     String   @map("file_name")
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  storagePath  String   @map("storage_path")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // File kind
+  kind String @default("cutlist_source") // cutlist_source, template_scan, voice_audio
+
+  // Relationships
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parseJobs      ParseJob[]
+
+  @@index([organizationId])
+  @@map("uploaded_files")
+}
+
+// ============================================================
+// OPTIMIZE JOBS
+// ============================================================
+
+model OptimizeJob {
+  id            String    @id @default(cuid())
+  status        String    @default("queued") // queued, processing, completed, failed, cancelled
+  engine        String    @default("cai2d_guillotine")
+  engineVersion String?   @map("engine_version")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  completedAt   DateTime? @map("completed_at")
+
+  // Options
+  options Json?
+
+  // Results
+  metrics Json? // { sheets_used, utilization_percent, runtime_ms }
+  result  Json? // { cutplan, placements }
+
+  // Relationships
+  cutlistId String  @map("cutlist_id")
+  cutlist   Cutlist @relation(fields: [cutlistId], references: [id], onDelete: Cascade)
+
+  @@index([cutlistId])
+  @@index([status])
+  @@map("optimize_jobs")
+}
+
+// ============================================================
+// EXPORTS
+// ============================================================
+
+model Export {
+  id          String    @id @default(cuid())
+  format      String    // json:cai_cutlist_v1, csv:maxcut, csv:cutlist_plus, xlsx
+  status      String    @default("completed") // queued, processing, completed, failed
+  downloadUrl String?   @map("download_url")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Options
+  options Json?
+
+  // Relationships
+  cutlistId String  @map("cutlist_id")
+  cutlist   Cutlist @relation(fields: [cutlistId], references: [id], onDelete: Cascade)
+
+  @@index([cutlistId])
+  @@map("exports")
+}
+
+// ============================================================
+// TEMPLATES
+// ============================================================
+
+model Template {
+  id           String   @id @default(cuid())
+  templateId   String   @map("template_id") // User-facing ID with QR code
+  name         String
+  kind         String   // pdf_cutlist_form, xlsx_cutlist_form
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Template configuration
+  capabilities Json @default("{\"core_parts\": true}")
+  layoutConfig Json? @map("layout_config") // Field positions, etc.
+
+  // Generated file
+  fileUrl String? @map("file_url")
+
+  // Relationships
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, templateId])
+  @@map("templates")
+}

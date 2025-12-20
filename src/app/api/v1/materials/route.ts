@@ -1,0 +1,231 @@
+/**
+ * CAI Intake - Materials API
+ * 
+ * GET /api/v1/materials - List materials
+ * POST /api/v1/materials - Create material
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { z } from "zod";
+
+// Create material schema
+const CreateMaterialSchema = z.object({
+  material_id: z.string().min(1),
+  name: z.string().min(1),
+  thickness_mm: z.number().positive(),
+  core_type: z.string().optional(),
+  grain: z.enum(["none", "length", "width"]).optional(),
+  finish: z.string().optional(),
+  color_code: z.string().optional(),
+  default_sheet: z.object({
+    L: z.number().positive(),
+    W: z.number().positive(),
+  }).optional(),
+  cost_per_sqm: z.number().positive().optional(),
+  supplier: z.string().optional(),
+  sku: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user's organization
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
+    }
+
+    // Query params
+    const searchParams = request.nextUrl.searchParams;
+    const search = searchParams.get("search");
+    const thickness = searchParams.get("thickness");
+
+    // Build query
+    let query = supabase
+      .from("materials")
+      .select("*")
+      .eq("organization_id", userData.organization_id)
+      .order("name", { ascending: true });
+
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,material_id.ilike.%${search}%`);
+    }
+    if (thickness) {
+      query = query.eq("thickness_mm", parseFloat(thickness));
+    }
+
+    const { data: materials, error } = await query;
+
+    if (error) {
+      console.error("Failed to fetch materials:", error);
+      return NextResponse.json(
+        { error: "Failed to fetch materials" },
+        { status: 500 }
+      );
+    }
+
+    // Transform to canonical format
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const transformedMaterials = materials?.map((m: any) => ({
+      id: m.id,
+      material_id: m.material_id,
+      name: m.name,
+      thickness_mm: m.thickness_mm,
+      core_type: m.core_type,
+      grain: m.grain,
+      finish: m.finish,
+      color_code: m.color_code,
+      default_sheet: m.default_sheet_l && m.default_sheet_w ? {
+        L: m.default_sheet_l,
+        W: m.default_sheet_w,
+      } : undefined,
+      cost_per_sqm: m.cost_per_sqm,
+      supplier: m.supplier,
+      sku: m.sku,
+      metadata: m.metadata,
+      created_at: m.created_at,
+      updated_at: m.updated_at,
+    })) ?? [];
+
+    return NextResponse.json({
+      materials: transformedMaterials,
+      count: transformedMaterials.length,
+    });
+
+  } catch (error) {
+    console.error("Materials GET error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user's organization and role
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
+    }
+
+    // Check permission
+    if (!["super_admin", "org_admin", "manager"].includes(userData.role)) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
+    // Parse request body
+    const body = await request.json();
+    const parseResult = CreateMaterialSchema.safeParse(body);
+    
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: "Invalid request", details: parseResult.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const data = parseResult.data;
+
+    // Create material
+    const { data: material, error } = await supabase
+      .from("materials")
+      .insert({
+        organization_id: userData.organization_id,
+        material_id: data.material_id,
+        name: data.name,
+        thickness_mm: data.thickness_mm,
+        core_type: data.core_type,
+        grain: data.grain,
+        finish: data.finish,
+        color_code: data.color_code,
+        default_sheet_l: data.default_sheet?.L,
+        default_sheet_w: data.default_sheet?.W,
+        cost_per_sqm: data.cost_per_sqm,
+        supplier: data.supplier,
+        sku: data.sku,
+        metadata: data.metadata,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === "23505") {
+        return NextResponse.json(
+          { error: "Material ID already exists" },
+          { status: 409 }
+        );
+      }
+      console.error("Failed to create material:", error);
+      return NextResponse.json(
+        { error: "Failed to create material" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      material: {
+        id: material.id,
+        material_id: material.material_id,
+        name: material.name,
+        thickness_mm: material.thickness_mm,
+        core_type: material.core_type,
+        grain: material.grain,
+        finish: material.finish,
+        color_code: material.color_code,
+        default_sheet: material.default_sheet_l && material.default_sheet_w ? {
+          L: material.default_sheet_l,
+          W: material.default_sheet_w,
+        } : undefined,
+        cost_per_sqm: material.cost_per_sqm,
+        supplier: material.supplier,
+        sku: material.sku,
+        metadata: material.metadata,
+        created_at: material.created_at,
+      },
+    }, { status: 201 });
+
+  } catch (error) {
+    console.error("Materials POST error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+

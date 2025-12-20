@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/* CAI Intake - Global Styles */
+
+:root {
+  /* Brand Colors */
+  --cai-navy: #1e3a5f;
+  --cai-navy-light: #2d4a6f;
+  --cai-navy-dark: #142840;
+  --cai-teal: #00d4aa;
+  --cai-teal-light: #33e0bb;
+  --cai-teal-dark: #00a888;
+  
+  /* Semantic */
+  --cai-success: #22c55e;
+  --cai-warning: #f59e0b;
+  --cai-error: #ef4444;
+  --cai-info: #3b82f6;
+  
+  /* Light mode */
+  --background: #f8fafc;
+  --foreground: #1e3a5f;
+  --card: #ffffff;
+  --card-foreground: #1e3a5f;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --primary: #1e3a5f;
+  --primary-foreground: #ffffff;
+  --secondary: #00d4aa;
+  --secondary-foreground: #1e3a5f;
+  --accent: #00d4aa;
+  --accent-foreground: #1e3a5f;
+  --ring: #00d4aa;
+  --radius: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f172a;
+    --foreground: #f1f5f9;
+    --card: #1e293b;
+    --card-foreground: #f1f5f9;
+    --muted: #334155;
+    --muted-foreground: #94a3b8;
+    --border: #334155;
+    --input: #334155;
+    --primary: #00d4aa;
+    --primary-foreground: #0f172a;
+    --secondary: #1e3a5f;
+    --secondary-foreground: #f1f5f9;
+    --accent: #00d4aa;
+    --accent-foreground: #0f172a;
+    --ring: #00d4aa;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-ring: var(--ring);
+  --radius: var(--radius);
+  
+  /* Brand colors as Tailwind utilities */
+  --color-cai-navy: var(--cai-navy);
+  --color-cai-navy-light: var(--cai-navy-light);
+  --color-cai-navy-dark: var(--cai-navy-dark);
+  --color-cai-teal: var(--cai-teal);
+  --color-cai-teal-light: var(--cai-teal-light);
+  --color-cai-teal-dark: var(--cai-teal-dark);
+  --color-cai-success: var(--cai-success);
+  --color-cai-warning: var(--cai-warning);
+  --color-cai-error: var(--cai-error);
+  --color-cai-info: var(--cai-info);
+  
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), 'JetBrains Mono', monospace;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--muted);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--foreground);
+}
+
+/* Focus styles */
+*:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background: var(--cai-teal);
+  color: var(--cai-navy);
+}
+
+/* Confidence indicator colors */
+.confidence-high {
+  color: var(--cai-success);
+}
+
+.confidence-medium {
+  color: var(--cai-warning);
+}
+
+.confidence-low {
+  color: var(--cai-error);
+}
+
+/* Part preview rectangles */
+.part-preview {
+  stroke: var(--foreground);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.part-preview-grain {
+  stroke: var(--muted-foreground);
+  stroke-width: 0.5;
+  stroke-dasharray: 4 2;
+}
+
+.part-preview-edging {
+  stroke: var(--cai-teal);
+  stroke-width: 3;
+}
