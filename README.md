@@ -126,6 +126,20 @@ npm run dev
 
 Visit `http://localhost:3000` to see the application.
 
+### Test Accounts
+
+The application includes demo accounts for testing different user roles:
+
+| Role | Email | Password | Access Level |
+|------|-------|----------|--------------|
+| **Super Admin** | `super@caiintake.com` | `SuperAdmin123!` | Platform-wide admin access |
+| **Org Admin** | `admin@acmecabinets.com` | `OrgAdmin123!` | Organization admin (Acme Cabinets) |
+| **Operator** | `operator@acmecabinets.com` | `Operator123!` | Basic operator access |
+
+You can also use the **Quick Demo Login** buttons on the login page to instantly sign in as any role without entering credentials.
+
+> **Note:** These are demo accounts for local development. They work without Supabase configuration.
+
 ### Docker Setup (Optional)
 
 ```bash
