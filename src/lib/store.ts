@@ -53,7 +53,9 @@ export type UndoableAction =
   | { type: "CLEAR_PARTS"; parts: CutPart[] }
   | { type: "DUPLICATE_PARTS"; originalIds: string[]; newParts: CutPart[] };
 
-const MAX_UNDO_STACK = 50;
+// Limit undo stack to prevent memory issues with large part operations
+// Each action stores minimal data (IDs and diffs where possible)
+const MAX_UNDO_STACK = 30;
 
 export interface IntakeState {
   // Current cutlist being edited
@@ -739,10 +741,22 @@ export const useIntakeStore = create<IntakeState>()(
     }),
     {
       name: "cai-intake-storage",
+      // Only persist essential data - NOT full parts list (can be large)
+      // Parts are persisted separately or fetched from server
       partialize: (state) => ({
-        currentCutlist: state.currentCutlist,
+        currentCutlist: {
+          doc_id: state.currentCutlist.doc_id,
+          name: state.currentCutlist.name,
+          // Only persist first 100 parts locally for quick restore
+          // Full list should be persisted server-side
+          parts: state.currentCutlist.parts.slice(0, 100),
+          materials: state.currentCutlist.materials,
+          edgebands: state.currentCutlist.edgebands,
+          capabilities: state.currentCutlist.capabilities,
+        },
         isAdvancedMode: state.isAdvancedMode,
         aiSettings: state.aiSettings,
+        // Don't persist undo/redo stacks or clipboard
       }),
     }
   )

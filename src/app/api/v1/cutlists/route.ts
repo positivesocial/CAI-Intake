@@ -9,6 +9,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 import { generateId } from "@/lib/utils";
+import { sanitizeLikePattern, SIZE_LIMITS } from "@/lib/security";
+import { logger } from "@/lib/logger";
+import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
+import { trackUsage } from "@/lib/usage";
 
 // Create cutlist schema
 const CreateCutlistSchema = z.object({
@@ -104,13 +108,15 @@ export async function GET(request: NextRequest) {
       query = query.eq("status", status);
     }
     if (search) {
-      query = query.or(`name.ilike.%${search}%,job_ref.ilike.%${search}%,client_ref.ilike.%${search}%`);
+      // Sanitize search input to prevent SQL injection via LIKE patterns
+      const sanitizedSearch = sanitizeLikePattern(search.slice(0, SIZE_LIMITS.SEARCH_QUERY));
+      query = query.or(`name.ilike.%${sanitizedSearch}%,job_ref.ilike.%${sanitizedSearch}%,client_ref.ilike.%${sanitizedSearch}%`);
     }
 
     const { data: cutlists, error, count } = await query;
 
     if (error) {
-      console.error("Failed to fetch cutlists:", error);
+      logger.error("Failed to fetch cutlists", error, { userId: user.id });
       return NextResponse.json(
         { error: "Failed to fetch cutlists" },
         { status: 500 }
@@ -133,7 +139,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error("Cutlists GET error:", error);
+    logger.error("Cutlists GET error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -206,12 +212,29 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (cutlistError) {
-      console.error("Failed to create cutlist:", cutlistError);
+      logger.error("Failed to create cutlist", cutlistError, { userId: user.id });
       return NextResponse.json(
         { error: "Failed to create cutlist" },
         { status: 500 }
       );
     }
+    
+    // Log audit event
+    await logAuditFromRequest(request, {
+      userId: user.id,
+      organizationId: userData.organization_id,
+      action: AUDIT_ACTIONS.CUTLIST_CREATED,
+      entityType: "cutlist",
+      entityId: cutlist.id,
+      metadata: { name, partsCount: parts?.length || 0 },
+    });
+    
+    // Track usage
+    trackUsage({
+      organizationId: userData.organization_id,
+      userId: user.id,
+      eventType: "cutlist_created",
+    });
 
     // Create parts if provided
     if (parts && parts.length > 0) {
@@ -236,7 +259,7 @@ export async function POST(request: NextRequest) {
         );
 
       if (partsError) {
-        console.error("Failed to create parts:", partsError);
+        logger.error("Failed to create parts", partsError, { cutlistId: cutlist.id });
         // Don't fail the whole request, cutlist was created
       }
     }
@@ -250,7 +273,7 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
   } catch (error) {
-    console.error("Cutlists POST error:", error);
+    logger.error("Cutlists POST error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

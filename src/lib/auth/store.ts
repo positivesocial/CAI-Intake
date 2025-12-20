@@ -50,21 +50,10 @@ interface AuthState {
 }
 
 // =============================================================================
-// TEST CREDENTIALS
+// DEMO/TEST USERS (Development Only)
 // =============================================================================
-// 
-// Super Admin (Platform-wide access):
-//   Email: super@caiintake.com
-//   Password: SuperAdmin123!
-//
-// Organization Admin (Acme Cabinets):
-//   Email: admin@acmecabinets.com  
-//   Password: OrgAdmin123!
-//
-// Operator (Basic user):
-//   Email: operator@acmecabinets.com
-//   Password: Operator123!
-//
+// These credentials are ONLY available when NEXT_PUBLIC_DEMO_MODE=true
+// In production, these should NEVER be exposed
 // =============================================================================
 
 // Super Admin - Platform-wide access
@@ -214,12 +203,16 @@ export const OPERATOR_USER: SessionUser = {
 // Legacy export for backwards compatibility
 export const DEMO_USER = ORG_ADMIN_USER;
 
-// Test credentials map for easy lookup
-export const TEST_CREDENTIALS = {
-  "super@caiintake.com": { password: "SuperAdmin123!", user: SUPER_ADMIN_USER },
-  "admin@acmecabinets.com": { password: "OrgAdmin123!", user: ORG_ADMIN_USER },
-  "operator@acmecabinets.com": { password: "Operator123!", user: OPERATOR_USER },
-};
+// Test credentials map - ONLY available in demo mode
+// In production, this returns an empty object for security
+export const TEST_CREDENTIALS: Record<string, { password: string; user: SessionUser }> = 
+  process.env.NEXT_PUBLIC_DEMO_MODE === "true"
+    ? {
+        "super@caiintake.com": { password: "SuperAdmin123!", user: SUPER_ADMIN_USER },
+        "admin@acmecabinets.com": { password: "OrgAdmin123!", user: ORG_ADMIN_USER },
+        "operator@acmecabinets.com": { password: "Operator123!", user: OPERATOR_USER },
+      }
+    : {};
 
 // =============================================================================
 // HELPER FUNCTIONS

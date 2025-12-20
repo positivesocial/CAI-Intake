@@ -8,6 +8,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
+import { sanitizeLikePattern, SIZE_LIMITS } from "@/lib/security";
+import { logger } from "@/lib/logger";
+import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
 
 // Create material schema
 const CreateMaterialSchema = z.object({
@@ -64,7 +67,9 @@ export async function GET(request: NextRequest) {
       .order("name", { ascending: true });
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,material_id.ilike.%${search}%`);
+      // Sanitize search input to prevent SQL injection via LIKE patterns
+      const sanitizedSearch = sanitizeLikePattern(search.slice(0, SIZE_LIMITS.SEARCH_QUERY));
+      query = query.or(`name.ilike.%${sanitizedSearch}%,material_id.ilike.%${sanitizedSearch}%`);
     }
     if (thickness) {
       query = query.eq("thickness_mm", parseFloat(thickness));
@@ -73,7 +78,7 @@ export async function GET(request: NextRequest) {
     const { data: materials, error } = await query;
 
     if (error) {
-      console.error("Failed to fetch materials:", error);
+      logger.error("Failed to fetch materials", error, { userId: user.id });
       return NextResponse.json(
         { error: "Failed to fetch materials" },
         { status: 500 }
@@ -109,7 +114,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error("Materials GET error:", error);
+    logger.error("Materials GET error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -190,12 +195,22 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
-      console.error("Failed to create material:", error);
+      logger.error("Failed to create material", error, { userId: user.id });
       return NextResponse.json(
         { error: "Failed to create material" },
         { status: 500 }
       );
     }
+    
+    // Log audit event
+    await logAuditFromRequest(request, {
+      userId: user.id,
+      organizationId: userData.organization_id,
+      action: AUDIT_ACTIONS.MATERIAL_CREATED,
+      entityType: "material",
+      entityId: material.id,
+      metadata: { materialId: material.material_id, name: material.name },
+    });
 
     return NextResponse.json({
       success: true,
@@ -221,7 +236,7 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
   } catch (error) {
-    console.error("Materials POST error:", error);
+    logger.error("Materials POST error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
