@@ -158,7 +158,7 @@ export async function parseThreeLayers(
         defaultThicknessMm: options.defaultThicknessMm,
         dimOrderHint: options.dimOrderHint,
         units: options.units,
-        sourceMethod: "three_layer_regex",
+        sourceMethod: "paste_parser",
       });
       
       // Add successfully parsed parts
