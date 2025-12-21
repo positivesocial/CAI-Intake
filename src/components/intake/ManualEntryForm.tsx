@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2, Copy, ArrowDown, Keyboard, RotateCcw, GripVertical } from "lucide-react";
+import { Plus, Trash2, Copy, ArrowDown, Keyboard, GripVertical } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -60,15 +60,15 @@ const createEmptyRow = (defaultMaterial: string, defaultThickness: string): RowD
 
 // Column definitions
 const COLUMN_DEFS = {
-  label: { header: "Label", width: "15%", placeholder: "Part name", type: "text" as const },
-  L: { header: "L (mm)", width: "10%", placeholder: "720", type: "number" as const, required: true },
-  W: { header: "W (mm)", width: "10%", placeholder: "560", type: "number" as const, required: true },
-  thickness_mm: { header: "T (mm)", width: "8%", placeholder: "18", type: "number" as const },
-  qty: { header: "Qty", width: "7%", placeholder: "1", type: "number" as const },
-  material_id: { header: "Material", width: "20%", type: "select" as const },
-  allow_rotation: { header: "Rotate", width: "8%", type: "checkbox" as const },
-  group_id: { header: "Group", width: "10%", placeholder: "Group", type: "text" as const },
-  notes: { header: "Notes", width: "12%", placeholder: "Notes", type: "text" as const },
+  label: { header: "Label", width: "140px", minWidth: "120px", placeholder: "Part name", type: "text" as const },
+  L: { header: "L (mm)", width: "80px", minWidth: "70px", placeholder: "720", type: "number" as const, required: true },
+  W: { header: "W (mm)", width: "80px", minWidth: "70px", placeholder: "560", type: "number" as const, required: true },
+  thickness_mm: { header: "T (mm)", width: "70px", minWidth: "60px", placeholder: "18", type: "number" as const },
+  qty: { header: "Qty", width: "60px", minWidth: "50px", placeholder: "1", type: "number" as const },
+  material_id: { header: "Material", width: "160px", minWidth: "140px", type: "select" as const },
+  allow_rotation: { header: "Rot", width: "50px", minWidth: "50px", type: "checkbox" as const },
+  group_id: { header: "Group", width: "90px", minWidth: "80px", placeholder: "Group", type: "text" as const },
+  notes: { header: "Notes", width: "120px", minWidth: "100px", placeholder: "Notes", type: "text" as const },
 };
 
 type ColumnKey = keyof typeof COLUMN_DEFS;
@@ -83,7 +83,7 @@ function SortableHeaderCell({
   column,
 }: {
   id: string;
-  column: { header: string; width: string; required?: boolean };
+  column: { header: string; width: string; minWidth?: string; required?: boolean };
 }) {
   const {
     attributes,
@@ -96,7 +96,8 @@ function SortableHeaderCell({
 
   const style: React.CSSProperties = {
     width: column.width,
-    minWidth: column.width,
+    minWidth: column.minWidth || column.width,
+    maxWidth: column.width,
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 10 : undefined,
@@ -108,7 +109,7 @@ function SortableHeaderCell({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "px-2 py-2 text-left text-xs font-medium border-b border-r border-[var(--border)] select-none",
+        "px-2 py-2 text-left text-xs font-medium border-b border-r border-[var(--border)] select-none whitespace-nowrap",
         column.required ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]",
         isDragging && "opacity-80 bg-[var(--cai-teal)]/10 shadow-lg rounded"
       )}
@@ -119,7 +120,7 @@ function SortableHeaderCell({
           {...attributes}
           {...listeners}
           className={cn(
-            "cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded",
+            "cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded flex-shrink-0",
             "text-[var(--muted-foreground)]/50 hover:text-[var(--muted-foreground)]",
             "hover:bg-[var(--muted)] transition-colors",
             isDragging && "cursor-grabbing"
@@ -128,7 +129,7 @@ function SortableHeaderCell({
         >
           <GripVertical className="h-3 w-3" />
         </button>
-        <span className="flex-1">
+        <span className="truncate">
           {column.header}
           {column.required && <span className="text-red-500 ml-0.5">*</span>}
         </span>
@@ -421,21 +422,34 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
     if (col.type === "checkbox") {
       return (
         <div className="flex items-center justify-center h-8">
-          <label className="flex items-center gap-1.5 cursor-pointer group/check">
-            <input
-              type="checkbox"
-              checked={value as boolean}
-              onChange={(e) => updateRow(rowIndex, colKey, e.target.checked)}
-              onFocus={() => setFocusedCell({ row: rowIndex, col: colIndex })}
-              onBlur={() => setFocusedCell(null)}
-              onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex)}
-              className="h-4 w-4 rounded border-[var(--border)] text-[var(--cai-teal)] focus:ring-[var(--cai-teal)] focus:ring-offset-0 cursor-pointer"
-            />
-            <RotateCcw className={cn(
-              "h-3.5 w-3.5 transition-colors",
-              value ? "text-[var(--cai-teal)]" : "text-[var(--muted-foreground)]/40"
-            )} />
-          </label>
+          <button
+            type="button"
+            onClick={() => updateRow(rowIndex, colKey, !value)}
+            onFocus={() => setFocusedCell({ row: rowIndex, col: colIndex })}
+            onBlur={() => setFocusedCell(null)}
+            onKeyDown={(e) => {
+              if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                updateRow(rowIndex, colKey, !value);
+              } else {
+                handleKeyDown(e, rowIndex, colIndex);
+              }
+            }}
+            className={cn(
+              "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+              "focus:outline-none focus:ring-2 focus:ring-[var(--cai-teal)] focus:ring-offset-1",
+              value
+                ? "bg-[var(--cai-teal)] border-[var(--cai-teal)]"
+                : "bg-transparent border-[var(--border)] hover:border-[var(--cai-teal)]/50"
+            )}
+            title={value ? "Rotation allowed" : "Rotation not allowed"}
+          >
+            {value && (
+              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </button>
         </div>
       );
     }
@@ -555,6 +569,7 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
 
                     {visibleColumns.map((colKey, colIndex) => {
                       const hasError = errors[row.id]?.[colKey];
+                      const colDef = COLUMN_DEFS[colKey];
                       return (
                         <td
                           key={colKey}
@@ -563,8 +578,9 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
                             hasError && "bg-red-50"
                           )}
                           style={{
-                            width: COLUMN_DEFS[colKey].width,
-                            minWidth: COLUMN_DEFS[colKey].width,
+                            width: colDef.width,
+                            minWidth: colDef.minWidth || colDef.width,
+                            maxWidth: colDef.width,
                           }}
                         >
                           {renderCell(row, rowIndex, colKey, colIndex)}
