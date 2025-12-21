@@ -74,13 +74,11 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/branding/logo-icon.svg", type: "image/svg+xml" },
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
     ],
     apple: [
-      { url: "/icons/icon-152.png", sizes: "152x152", type: "image/png" },
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/branding/logo-icon.svg", type: "image/svg+xml" },
     ],
-    shortcut: "/favicon.ico",
+    shortcut: "/branding/logo-icon.svg",
   },
   robots: {
     index: true,
@@ -164,7 +162,7 @@ export default function RootLayout({
         
         {/* MS Tile */}
         <meta name="msapplication-TileColor" content="#0D9488" />
-        <meta name="msapplication-TileImage" content="/icons/icon-144.png" />
+        <meta name="msapplication-TileImage" content="/branding/logo-icon.svg" />
         
         {/* Preconnect to external services */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
