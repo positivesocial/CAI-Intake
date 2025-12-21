@@ -292,7 +292,7 @@ function parseRow(
     ops,
     notes: notes ? { operator: notes } : undefined,
     audit: {
-      source_method: "deterministic_parser",
+      source_method: "excel_table",
       source_ref: `row:${label || "unknown"}`,
       confidence: 0.95,
       human_verified: false,

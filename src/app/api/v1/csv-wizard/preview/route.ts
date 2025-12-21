@@ -192,8 +192,8 @@ function parseRow(
     ops,
     notes: notes ? { operator: notes } : undefined,
     audit: {
-      source_method: "csv_wizard",
-      source_ref: `row:${rowNum}`,
+      source_method: "excel_table",
+      source_ref: `csv_wizard:row:${rowNum}`,
       confidence: 0.9,
       human_verified: false,
     },

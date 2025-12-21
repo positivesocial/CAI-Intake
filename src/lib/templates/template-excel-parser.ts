@@ -473,7 +473,7 @@ function parseDataRow(
     ops: Object.keys(ops).length > 0 ? ops : undefined,
     notes: notes ? { operator: notes } : undefined,
     audit: {
-      source_method: "template_excel",
+      source_method: "ocr_template",
       source_ref: `row:${rowIndex + 1}`,
       confidence: 0.98,
       human_verified: false,
