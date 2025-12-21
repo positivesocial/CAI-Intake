@@ -16,6 +16,7 @@ import {
   X,
   Plus,
   Bell,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,11 @@ const NAV_ITEMS = [
     label: "Cutlists",
     href: "/cutlists",
     icon: FolderOpen,
+  },
+  {
+    label: "Materials",
+    href: "/materials",
+    icon: Layers,
   },
   {
     label: "Settings",
