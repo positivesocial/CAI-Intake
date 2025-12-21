@@ -22,8 +22,9 @@ import { Progress } from "@/components/ui/progress";
 import { useIntakeStore, type ParsedPartWithStatus } from "@/lib/store";
 import { parseTextBatch } from "@/lib/parsers/text-parser";
 import { cn } from "@/lib/utils";
-import { getOrCreateProvider, type AIParseResult, type ParsedPartResult } from "@/lib/ai";
+import { type ParsedPartResult } from "@/lib/ai";
 import { detectQRCode, type QRDetectionResult } from "@/lib/ai/template-ocr";
+import { toast } from "sonner";
 
 type FileType = "pdf" | "image" | "excel" | "csv" | "text" | "unknown";
 type ProcessingStatus = "idle" | "uploading" | "detecting_qr" | "processing" | "complete" | "error";
@@ -195,14 +196,8 @@ export function FileUpload() {
             )
           );
 
-          // Use AI provider for image/PDF processing
+          // Use server-side API for image/PDF processing
           try {
-            const provider = await getOrCreateProvider();
-            
-            if (!provider.isConfigured()) {
-              throw new Error("AI provider not configured. Please add your API key in settings.");
-            }
-
             // Progress update
             setFiles((prev) =>
               prev.map((f) =>
@@ -210,48 +205,33 @@ export function FileUpload() {
               )
             );
 
-            let aiResult: AIParseResult;
-            
-            if (uploadedFile.type === "image") {
-              const imageBuffer = await uploadedFile.file.arrayBuffer();
-              const base64 = Buffer.from(imageBuffer).toString("base64");
-              const mimeType = uploadedFile.file.type || "image/jpeg";
-              const dataUrl = `data:${mimeType};base64,${base64}`;
-              
-              aiResult = await provider.parseImage(dataUrl, {
-                extractMetadata: true,
-                confidence: "balanced",
-                templateId: qrResult?.templateId,
-                templateConfig: qrResult?.templateConfig,
-                defaultMaterialId: "MAT-WHITE-18",
-                defaultThicknessMm: 18,
-              });
-            } else {
-              // PDF - extract text first, then parse
-              const pdfBuffer = await uploadedFile.file.arrayBuffer();
-              let extractedText = "";
-              
-              try {
-                // Try to extract text from PDF
-                const pdfParseModule = await import("pdf-parse");
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const pdfParse = (pdfParseModule as any).default ?? pdfParseModule;
-                const pdfData = await pdfParse(Buffer.from(pdfBuffer));
-                extractedText = pdfData.text;
-              } catch {
-                // PDF text extraction failed
-              }
-              
-              if (extractedText) {
-                aiResult = await provider.parseText(extractedText, {
-                  extractMetadata: true,
-                  confidence: "balanced",
-                  defaultMaterialId: "MAT-WHITE-18",
-                  defaultThicknessMm: 18,
+            // Create form data to send to API
+            const formData = new FormData();
+            formData.append("file", uploadedFile.file);
+            formData.append("fileType", uploadedFile.type);
+            if (qrResult?.templateId) {
+              formData.append("templateId", qrResult.templateId);
+            }
+            if (qrResult?.templateConfig) {
+              formData.append("templateConfig", JSON.stringify(qrResult.templateConfig));
+            }
+
+            // Call server-side API
+            const response = await fetch("/api/v1/parse-file", {
+              method: "POST",
+              body: formData,
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+              // Handle specific error codes
+              if (data.code === "AI_NOT_CONFIGURED") {
+                toast.error("AI processing is not available", {
+                  description: "Please contact your system administrator to configure AI services.",
                 });
-              } else {
-                throw new Error("Could not extract text from PDF. Try uploading as an image.");
               }
+              throw new Error(data.error || "Failed to process file");
             }
 
             setFiles((prev) =>
@@ -260,23 +240,24 @@ export function FileUpload() {
               )
             );
 
-            if (!aiResult.success) {
-              throw new Error(aiResult.errors.join(", ") || "AI parsing failed");
+            if (!data.success) {
+              throw new Error("AI parsing failed");
             }
 
-            parts = aiResult.parts.map((r) => ({
+            const aiParts = data.parts as ParsedPartResult[];
+            parts = aiParts.map((r) => ({
               ...r.part,
               _status: "pending" as const,
               _originalText: r.originalText,
             }));
 
-            confidence = aiResult.totalConfidence;
+            confidence = data.totalConfidence;
             method = qrResult?.templateId 
               ? `AI + Template (${qrResult.templateId})`
               : "AI Vision";
 
             // Count extracted metadata
-            for (const p of aiResult.parts) {
+            for (const p of aiParts) {
               if (p.extractedMetadata?.edgeBanding?.detected) metadata.edgeBanding++;
               if (p.extractedMetadata?.grooving?.detected) metadata.grooving++;
               if (p.extractedMetadata?.cncOperations?.detected) metadata.cncOps++;
@@ -284,7 +265,7 @@ export function FileUpload() {
             
           } catch (aiError) {
             // Fall back to basic OCR text extraction
-            console.warn("AI processing failed, falling back to basic OCR:", aiError);
+            console.warn("AI processing failed:", aiError);
             throw aiError;
           }
           break;
