@@ -36,6 +36,17 @@ export function QuickParseField({
   const [aiError, setAIError] = React.useState<string | null>(null);
   
   const addToInbox = useIntakeStore((state) => state.addToInbox);
+  const capabilities = useIntakeStore((state) => state.currentCutlist.capabilities);
+  
+  // Build capability hints for placeholder and help
+  const enabledFeatures = React.useMemo(() => {
+    const features: string[] = [];
+    if (capabilities.edging) features.push("edging");
+    if (capabilities.grooves) features.push("grooves");
+    if (capabilities.cnc_holes) features.push("holes");
+    if (capabilities.cnc_routing || capabilities.custom_cnc) features.push("CNC");
+    return features;
+  }, [capabilities]);
 
   const handleSimpleParse = React.useCallback(() => {
     const results = parseTextBatch(text, {
@@ -183,13 +194,14 @@ export function QuickParseField({
         onKeyDown={handleKeyDown}
         placeholder={parserMode === "ai" 
           ? `Enter parts in any format - AI will parse them:
-I need 2 side panels 720x560mm in white melamine with edge banding on all visible edges
-Also 4 shelves, 560 by 500, same material, grain along length
-And a top piece 800x600 with groove for back panel`
+I need 2 side panels 720x560mm in white melamine${capabilities.edging ? " with edge banding on all visible edges" : ""}
+Also 4 shelves, 560 by 500, same material, grain along length${capabilities.grooves ? `
+And a top piece 800x600 with groove for back panel` : ""}${capabilities.cnc_holes ? `
+Bottom 600x400 with 32mm system holes` : ""}`
           : `Enter parts, one per line:
-Side panel 720x560 qty 2
+Side panel 720x560 qty 2${capabilities.edging ? " EB all" : ""}
 Shelf 560x500 qty 4 grain length
-Top 800x600 q1 white board`}
+Top 800x600 q1 white board${capabilities.grooves ? " groove L1" : ""}`}
         className={cn(
           "min-h-[120px] font-mono text-sm transition-colors",
           parserMode === "ai" && "border-[var(--cai-teal)]/30 focus:border-[var(--cai-teal)]"
@@ -250,18 +262,20 @@ Top 800x600 q1 white board`}
           <>
             <p className="font-medium mb-1 flex items-center gap-1">
               <Sparkles className="h-3 w-3" />
-              AI understands natural language:
+              AI understands natural language{enabledFeatures.length > 0 && ` (${enabledFeatures.join(", ")} enabled)`}:
             </p>
             <ul className="space-y-0.5 list-disc list-inside">
               <li>"2 side panels 720x560 white melamine"</li>
-              <li>"shelf 600 by 400 with edge banding on long sides"</li>
-              <li>"back panel with 4mm groove, 550×350"</li>
+              {capabilities.edging && <li>"shelf 600 by 400 with edge banding on long sides"</li>}
+              {capabilities.grooves && <li>"back panel with 4mm groove, 550×350"</li>}
+              {capabilities.cnc_holes && <li>"bottom 600x400 with 32mm system holes"</li>}
+              {(capabilities.cnc_routing || capabilities.custom_cnc) && <li>"drawer front 400x200 CNC program DF-001"</li>}
               <li>Messy notes, abbreviations, and mixed formats</li>
             </ul>
           </>
         ) : (
           <>
-            <p className="font-medium mb-1">Supported formats:</p>
+            <p className="font-medium mb-1">Supported formats{enabledFeatures.length > 0 && ` (${enabledFeatures.join(", ")} enabled)`}:</p>
             <ul className="space-y-0.5 list-disc list-inside">
               <li>
                 <code className="bg-[var(--card)] px-1 rounded">720x560</code> or{" "}
@@ -279,6 +293,24 @@ Top 800x600 q1 white board`}
                 or <code className="bg-[var(--card)] px-1 rounded">GL</code> - grain
                 direction
               </li>
+              {capabilities.edging && (
+                <li>
+                  <code className="bg-[var(--card)] px-1 rounded">EB all</code> or{" "}
+                  <code className="bg-[var(--card)] px-1 rounded">edge L1 L2</code> - edging
+                </li>
+              )}
+              {capabilities.grooves && (
+                <li>
+                  <code className="bg-[var(--card)] px-1 rounded">groove L1</code> or{" "}
+                  <code className="bg-[var(--card)] px-1 rounded">dado</code> - grooves
+                </li>
+              )}
+              {capabilities.cnc_holes && (
+                <li>
+                  <code className="bg-[var(--card)] px-1 rounded">holes 32mm</code> or{" "}
+                  <code className="bg-[var(--card)] px-1 rounded">system holes</code> - boring
+                </li>
+              )}
             </ul>
           </>
         )}

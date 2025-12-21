@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2, Copy, ArrowDown, Keyboard, GripVertical } from "lucide-react";
+import { Plus, Trash2, Copy, ArrowDown, Keyboard, GripVertical, Check } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIntakeStore } from "@/lib/store";
 import { generateId } from "@/lib/utils";
-import type { CutPart } from "@/lib/schema";
+import type { CutPart, CutlistCapabilities } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import { useColumnOrder } from "@/hooks/use-column-order";
 
@@ -43,9 +43,22 @@ interface RowData {
   allow_rotation: boolean;
   group_id: string;
   notes: string;
+  // Edging per edge
+  edge_L1: boolean;
+  edge_L2: boolean;
+  edge_W1: boolean;
+  edge_W2: boolean;
+  edgeband_id: string;
+  // Grooves (simplified - count)
+  groove_count: string;
+  groove_side: string;
+  // Holes (simplified)
+  hole_pattern: string;
+  // CNC 
+  cnc_program: string;
 }
 
-const createEmptyRow = (defaultMaterial: string, defaultThickness: string): RowData => ({
+const createEmptyRow = (defaultMaterial: string, defaultThickness: string, defaultEdgeband: string): RowData => ({
   id: generateId("ROW"),
   label: "",
   qty: "1",
@@ -56,25 +69,72 @@ const createEmptyRow = (defaultMaterial: string, defaultThickness: string): RowD
   allow_rotation: true,
   group_id: "",
   notes: "",
+  // Edging
+  edge_L1: false,
+  edge_L2: false,
+  edge_W1: false,
+  edge_W2: false,
+  edgeband_id: defaultEdgeband,
+  // Grooves
+  groove_count: "",
+  groove_side: "",
+  // Holes
+  hole_pattern: "",
+  // CNC
+  cnc_program: "",
 });
 
-// Column definitions
-const COLUMN_DEFS = {
-  label: { header: "Label", width: "140px", minWidth: "120px", placeholder: "Part name", type: "text" as const },
-  L: { header: "L (mm)", width: "80px", minWidth: "70px", placeholder: "720", type: "number" as const, required: true },
-  W: { header: "W (mm)", width: "80px", minWidth: "70px", placeholder: "560", type: "number" as const, required: true },
-  thickness_mm: { header: "T (mm)", width: "70px", minWidth: "60px", placeholder: "18", type: "number" as const },
-  qty: { header: "Qty", width: "60px", minWidth: "50px", placeholder: "1", type: "number" as const },
-  material_id: { header: "Material", width: "160px", minWidth: "140px", type: "select" as const },
-  allow_rotation: { header: "Rot", width: "50px", minWidth: "50px", type: "checkbox" as const },
-  group_id: { header: "Group", width: "90px", minWidth: "80px", placeholder: "Group", type: "text" as const },
-  notes: { header: "Notes", width: "120px", minWidth: "100px", placeholder: "Notes", type: "text" as const },
+// Base column definitions
+interface ColumnDef {
+  header: string;
+  width: string;
+  minWidth?: string;
+  placeholder?: string;
+  type: "text" | "number" | "select" | "checkbox" | "multi-checkbox";
+  required?: boolean;
+  /** Capability required to show this column */
+  capability?: keyof CutlistCapabilities | (keyof CutlistCapabilities)[];
+  /** Show in advanced mode only */
+  advancedOnly?: boolean;
+  /** Color class for header */
+  colorClass?: string;
+}
+
+const COLUMN_DEFS: Record<string, ColumnDef> = {
+  label: { header: "Label", width: "140px", minWidth: "120px", placeholder: "Part name", type: "text" },
+  L: { header: "L (mm)", width: "80px", minWidth: "70px", placeholder: "720", type: "number", required: true },
+  W: { header: "W (mm)", width: "80px", minWidth: "70px", placeholder: "560", type: "number", required: true },
+  thickness_mm: { header: "T (mm)", width: "70px", minWidth: "60px", placeholder: "18", type: "number" },
+  qty: { header: "Qty", width: "60px", minWidth: "50px", placeholder: "1", type: "number" },
+  material_id: { header: "Material", width: "160px", minWidth: "140px", type: "select" },
+  allow_rotation: { header: "Rot", width: "50px", minWidth: "50px", type: "checkbox" },
+  // Edging columns
+  edge_L1: { header: "L1", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600" },
+  edge_L2: { header: "L2", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600" },
+  edge_W1: { header: "W1", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600" },
+  edge_W2: { header: "W2", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600" },
+  edgeband_id: { header: "Edgeband", width: "120px", minWidth: "100px", type: "select", capability: "edging", colorClass: "text-blue-600" },
+  // Groove columns
+  groove_count: { header: "Grooves", width: "70px", minWidth: "60px", placeholder: "0", type: "number", capability: "grooves", colorClass: "text-amber-600" },
+  groove_side: { header: "G.Side", width: "70px", minWidth: "60px", placeholder: "L1", type: "text", capability: "grooves", colorClass: "text-amber-600" },
+  // Holes
+  hole_pattern: { header: "Holes", width: "80px", minWidth: "70px", placeholder: "32mm", type: "text", capability: "cnc_holes", colorClass: "text-purple-600" },
+  // CNC
+  cnc_program: { header: "CNC Prog", width: "100px", minWidth: "80px", placeholder: "Program", type: "text", capability: ["cnc_routing", "custom_cnc"], colorClass: "text-emerald-600" },
+  // Other
+  group_id: { header: "Group", width: "90px", minWidth: "80px", placeholder: "Group", type: "text", capability: "advanced_grouping" },
+  notes: { header: "Notes", width: "120px", minWidth: "100px", placeholder: "Notes", type: "text", capability: "part_notes" },
 };
 
 type ColumnKey = keyof typeof COLUMN_DEFS;
 
 const DEFAULT_COLUMN_ORDER: ColumnKey[] = [
-  "label", "L", "W", "thickness_mm", "qty", "material_id", "allow_rotation", "group_id", "notes"
+  "label", "L", "W", "thickness_mm", "qty", "material_id", "allow_rotation",
+  "edge_L1", "edge_L2", "edge_W1", "edge_W2", "edgeband_id",
+  "groove_count", "groove_side",
+  "hole_pattern",
+  "cnc_program",
+  "group_id", "notes"
 ];
 
 // Sortable header cell component
@@ -83,7 +143,7 @@ function SortableHeaderCell({
   column,
 }: {
   id: string;
-  column: { header: string; width: string; minWidth?: string; required?: boolean };
+  column: ColumnDef;
 }) {
   const {
     attributes,
@@ -111,6 +171,7 @@ function SortableHeaderCell({
       className={cn(
         "px-2 py-2 text-left text-xs font-medium border-b border-r border-[var(--border)] select-none whitespace-nowrap",
         column.required ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]",
+        column.colorClass,
         isDragging && "opacity-80 bg-[var(--cai-teal)]/10 shadow-lg rounded"
       )}
     >
@@ -140,19 +201,21 @@ function SortableHeaderCell({
 
 export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
   const { currentCutlist, addPart, isAdvancedMode } = useIntakeStore();
+  const capabilities = currentCutlist.capabilities;
   const defaultMaterial = currentCutlist.materials[0]?.material_id || "";
   const defaultThickness = "18";
+  const defaultEdgeband = currentCutlist.edgebands?.[0]?.edgeband_id || "EB-WHITE-0.8";
 
   // Column order state with persistence
   const [columnOrder, setColumnOrder] = useColumnOrder<ColumnKey>(
-    "manual-entry-columns",
+    "manual-entry-columns-v2",
     DEFAULT_COLUMN_ORDER
   );
 
   const [rows, setRows] = React.useState<RowData[]>([
-    createEmptyRow(defaultMaterial, defaultThickness),
-    createEmptyRow(defaultMaterial, defaultThickness),
-    createEmptyRow(defaultMaterial, defaultThickness),
+    createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband),
+    createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband),
+    createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband),
   ]);
   const [focusedCell, setFocusedCell] = React.useState<{ row: number; col: number } | null>(null);
   const [errors, setErrors] = React.useState<Record<string, Record<string, boolean>>>({});
@@ -165,13 +228,38 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
     label: `${m.name} (${m.thickness_mm}mm)`,
   }));
 
-  // Filter columns based on advanced mode, maintaining order
+  const edgebandOptions = (currentCutlist.edgebands || []).map((e) => ({
+    value: e.edgeband_id,
+    label: `${e.name} (${e.thickness_mm}mm)`,
+  }));
+
+  // Helper to check if capability is enabled
+  const isCapabilityEnabled = React.useCallback((cap: keyof CutlistCapabilities | (keyof CutlistCapabilities)[]): boolean => {
+    if (Array.isArray(cap)) {
+      return cap.some(c => !!capabilities[c]);
+    }
+    return !!capabilities[cap];
+  }, [capabilities]);
+
+  // Filter columns based on capabilities and advanced mode
   const visibleColumns = React.useMemo(() => {
-    const hiddenInSimple = ["group_id", "notes"];
-    return columnOrder.filter(
-      (col) => isAdvancedMode || !hiddenInSimple.includes(col)
-    );
-  }, [columnOrder, isAdvancedMode]);
+    return columnOrder.filter((col) => {
+      const def = COLUMN_DEFS[col];
+      if (!def) return false;
+      
+      // Check capability requirement
+      if (def.capability && !isCapabilityEnabled(def.capability)) {
+        return false;
+      }
+      
+      // Check advanced mode requirement
+      if (def.advancedOnly && !isAdvancedMode) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [columnOrder, isAdvancedMode, isCapabilityEnabled]);
 
   // DnD sensors
   const sensors = useSensors(
@@ -304,7 +392,7 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
   };
 
   const addNewRow = () => {
-    setRows((prev) => [...prev, createEmptyRow(defaultMaterial, defaultThickness)]);
+    setRows((prev) => [...prev, createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband)]);
   };
 
   const removeRow = (rowIndex: number) => {
@@ -345,6 +433,57 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
     
     if (!validateRow(row)) return;
 
+    // Build edging ops if any edge is selected
+    const hasEdging = row.edge_L1 || row.edge_L2 || row.edge_W1 || row.edge_W2;
+    const edgingOps = hasEdging && capabilities.edging ? {
+      edging: {
+        edges: {
+          ...(row.edge_L1 && { L1: { apply: true, edgeband_id: row.edgeband_id || defaultEdgeband } }),
+          ...(row.edge_L2 && { L2: { apply: true, edgeband_id: row.edgeband_id || defaultEdgeband } }),
+          ...(row.edge_W1 && { W1: { apply: true, edgeband_id: row.edgeband_id || defaultEdgeband } }),
+          ...(row.edge_W2 && { W2: { apply: true, edgeband_id: row.edgeband_id || defaultEdgeband } }),
+        },
+      },
+    } : {};
+
+    // Build groove ops - using offset_mm as per schema
+    const grooveCount = parseInt(row.groove_count) || 0;
+    const grooveOps = grooveCount > 0 && capabilities.grooves ? {
+      grooves: Array(grooveCount).fill(null).map((_, i) => ({
+        groove_id: generateId("GRV"),
+        side: (row.groove_side || "L1") as "L1" | "L2" | "W1" | "W2",
+        offset_mm: 10 + i * 32, // Default spacing from edge
+        depth_mm: 8,
+        width_mm: 4,
+      })),
+    } : {};
+
+    // Build hole ops - using pattern_id or notes to capture pattern info
+    const holeOps = row.hole_pattern && capabilities.cnc_holes ? {
+      holes: [{
+        pattern_id: row.hole_pattern.includes("32") ? "SYS32" : undefined,
+        face: "front" as const,
+        notes: row.hole_pattern,
+      }],
+    } : {};
+
+    // Build CNC ops - using op_type and payload as per schema
+    const cncOps = row.cnc_program && (capabilities.cnc_routing || capabilities.custom_cnc) ? {
+      custom_cnc_ops: [{
+        op_type: "program",
+        payload: { program_name: row.cnc_program },
+        notes: `CNC program: ${row.cnc_program}`,
+      }],
+    } : {};
+
+    // Combine all ops
+    const ops = {
+      ...edgingOps,
+      ...grooveOps,
+      ...holeOps,
+      ...cncOps,
+    };
+
     const part: CutPart = {
       part_id: generateId("P"),
       label: row.label || undefined,
@@ -355,11 +494,11 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
       },
       thickness_mm: parseFloat(row.thickness_mm) || 18,
       material_id: row.material_id || defaultMaterial,
-      // Grain is determined by material; allow_rotation controls nesting behavior
       grain: row.allow_rotation ? "none" : "along_L",
       allow_rotation: row.allow_rotation,
       group_id: row.group_id || undefined,
       notes: row.notes ? { operator: row.notes } : undefined,
+      ops: Object.keys(ops).length > 0 ? ops : undefined,
       audit: {
         source_method: "manual",
         confidence: 1,
@@ -370,19 +509,11 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
     addPart(part);
     onPartAdded?.(part);
 
+    // Clear the row for new entry
     setRows((prev) =>
       prev.map((r, i) =>
         i === rowIndex
-          ? {
-              ...r,
-              id: generateId("ROW"),
-              label: "",
-              qty: "1",
-              L: "",
-              W: "",
-              group_id: "",
-              notes: "",
-            }
+          ? createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband)
           : r
       )
     );
@@ -416,8 +547,10 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
     colIndex: number
   ) => {
     const col = COLUMN_DEFS[colKey];
+    if (!col) return null;
+    
     const hasError = errors[row.id]?.[colKey];
-    const value = row[colKey];
+    const value = row[colKey as keyof RowData];
 
     if (col.type === "checkbox") {
       return (
@@ -439,15 +572,15 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
               "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
               "focus:outline-none focus:ring-2 focus:ring-[var(--cai-teal)] focus:ring-offset-1",
               value
-                ? "bg-[var(--cai-teal)] border-[var(--cai-teal)]"
+                ? col.colorClass 
+                  ? `bg-current border-current ${col.colorClass}`
+                  : "bg-[var(--cai-teal)] border-[var(--cai-teal)]"
                 : "bg-transparent border-[var(--border)] hover:border-[var(--cai-teal)]/50"
             )}
-            title={value ? "Rotation allowed" : "Rotation not allowed"}
+            title={col.header}
           >
             {value && (
-              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+              <Check className="w-3 h-3 text-white" />
             )}
           </button>
         </div>
@@ -455,6 +588,10 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
     }
 
     if (col.type === "select") {
+      // Determine options based on column
+      const options = colKey === "material_id" ? materialOptions : 
+                     colKey === "edgeband_id" ? edgebandOptions : [];
+      
       return (
         <select
           ref={(el) => setInputRef(rowIndex, colKey, el)}
@@ -469,14 +606,14 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
             hasError && "text-red-600"
           )}
         >
-          {materialOptions.length > 0 ? (
-            materialOptions.map((opt) => (
+          {options.length > 0 ? (
+            options.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
             ))
           ) : (
-            <option value="">No materials</option>
+            <option value="">No options</option>
           )}
         </select>
       );
@@ -505,13 +642,26 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
     );
   };
 
+  // Count enabled operation types for badge
+  const enabledOpsCount = [
+    capabilities.edging,
+    capabilities.grooves,
+    capabilities.cnc_holes,
+    capabilities.cnc_routing || capabilities.custom_cnc,
+  ].filter(Boolean).length;
+
   return (
     <Card className="w-full">
       <CardHeader className="pb-2 px-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
             <CardTitle className="text-lg">Add Parts Manually</CardTitle>
             <Badge variant="teal">Spreadsheet Entry</Badge>
+            {enabledOpsCount > 0 && (
+              <Badge variant="outline" className="text-xs">
+                {enabledOpsCount} operation{enabledOpsCount > 1 ? "s" : ""} enabled
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
             <GripVertical className="h-3 w-3" />
@@ -649,7 +799,7 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
             disabled={!hasValidRows}
           >
             <Plus className="h-4 w-4" />
-            Add All Parts to Inbox
+            Add All Parts
           </Button>
         </div>
       </CardContent>
