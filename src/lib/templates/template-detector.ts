@@ -88,7 +88,7 @@ export interface TemplateDetectionResult {
 // ============================================================
 
 /** Pattern for hidden metadata cell */
-const METADATA_CELL_PATTERN = /^CABINETAI_TEMPLATE:\s*({.+})$/s;
+const METADATA_CELL_PATTERN = /^CABINETAI_TEMPLATE:\s*({[\s\S]+})$/;
 
 /** Pattern for QR human-readable code */
 const HUMAN_CODE_PATTERN = /^CAI-(\d+\.\d+)-([A-Z0-9]+)$/;
