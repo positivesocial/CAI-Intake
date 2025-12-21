@@ -49,16 +49,12 @@ const NAV_ITEMS = [
   },
 ];
 
-const ADMIN_NAV_ITEMS = [
+const PLATFORM_NAV_ITEMS = [
   {
-    label: "Admin Dashboard",
-    href: "/admin",
+    label: "Platform Admin",
+    href: "/platform/dashboard",
     icon: Shield,
-  },
-  {
-    label: "Platform Settings",
-    href: "/admin/settings",
-    icon: Settings,
+    external: true, // Opens in new context
   },
 ];
 
@@ -254,31 +250,28 @@ export default function DashboardLayout({
               );
             })}
 
-            {/* Admin Section */}
+            {/* Platform Admin Section - Only visible to super admins */}
             {isSuperAdmin() && (
               <>
                 <div className="pt-4 pb-2">
                   <p className="px-3 text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">
-                    Admin
+                    Platform
                   </p>
                 </div>
-                {ADMIN_NAV_ITEMS.map((item) => {
+                {PLATFORM_NAV_ITEMS.map((item) => {
                   const Icon = item.icon;
-                  const isActive = pathname === item.href;
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
                       onClick={() => setIsSidebarOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
-                        isActive
-                          ? "bg-purple-100 text-purple-700"
-                          : "hover:bg-[var(--muted)] text-[var(--foreground)]"
-                      )}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200"
                     >
                       <Icon className="h-5 w-5" />
                       <span className="font-medium">{item.label}</span>
+                      <Badge className="ml-auto bg-purple-100 text-purple-700 text-xs">
+                        Admin
+                      </Badge>
                     </Link>
                   );
                 })}

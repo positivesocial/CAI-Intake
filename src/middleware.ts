@@ -14,7 +14,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-// Routes that require authentication
+// Routes that require authentication (organization members)
 const PROTECTED_ROUTES = [
   "/dashboard",
   "/intake",
@@ -24,9 +24,17 @@ const PROTECTED_ROUTES = [
   "/cutlists",
 ];
 
-// Routes that require super admin
-const SUPER_ADMIN_ROUTES = [
-  "/admin",
+// Platform admin routes (super admin only)
+const PLATFORM_ADMIN_ROUTES = [
+  "/platform/dashboard",
+  "/platform/settings",
+  "/platform/organizations",
+  "/platform/users",
+];
+
+// Platform auth routes
+const PLATFORM_AUTH_ROUTES = [
+  "/platform/login",
 ];
 
 // Auth routes (login, signup, etc.)
@@ -34,6 +42,11 @@ const AUTH_ROUTES = [
   "/login",
   "/signup",
   "/reset-password",
+];
+
+// Legacy admin routes - redirect to platform
+const LEGACY_ADMIN_ROUTES = [
+  "/admin",
 ];
 
 // Public routes (no auth required)
@@ -70,22 +83,51 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Redirect legacy admin routes to platform
+  const isLegacyAdminRoute = LEGACY_ADMIN_ROUTES.some((route) => pathname.startsWith(route));
+  if (isLegacyAdminRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname.replace("/admin", "/platform/dashboard");
+    return NextResponse.redirect(url);
+  }
+
   // Check for demo mode via cookie or query param
   const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
   const hasDemoCookie = request.cookies.get("cai-auth-storage")?.value?.includes('"isAuthenticated":true');
+  const isSuperAdminCookie = request.cookies.get("cai-auth-storage")?.value?.includes('"isSuperAdmin":true');
   
-  // In demo mode with valid auth cookie, skip Supabase check for protected routes
+  // Check route types
+  const isProtectedRoute = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
+  const isPlatformAdminRoute = PLATFORM_ADMIN_ROUTES.some((route) => pathname.startsWith(route));
+  const isPlatformAuthRoute = PLATFORM_AUTH_ROUTES.some((route) => pathname.startsWith(route));
+  const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
+
+  // In demo mode with valid auth cookie
   if (demoMode && hasDemoCookie) {
-    const isProtectedRoute = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
-    const isSuperAdminRoute = SUPER_ADMIN_ROUTES.some((route) => pathname.startsWith(route));
-    
-    if (isProtectedRoute || isSuperAdminRoute) {
-      // Allow access - demo mode with valid session
+    // Platform admin routes require super admin
+    if (isPlatformAdminRoute) {
+      if (isSuperAdminCookie) {
+        return NextResponse.next();
+      }
+      // Not super admin, redirect to platform login
+      const url = request.nextUrl.clone();
+      url.pathname = "/platform/login";
+      return NextResponse.redirect(url);
+    }
+
+    // Regular protected routes
+    if (isProtectedRoute) {
       return NextResponse.next();
     }
     
-    // Redirect authenticated users away from auth pages
-    const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
+    // Redirect authenticated super admins away from platform auth
+    if (isPlatformAuthRoute && isSuperAdminCookie) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/platform/dashboard";
+      return NextResponse.redirect(url);
+    }
+
+    // Redirect authenticated users away from regular auth pages
     if (isAuthRoute) {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";

@@ -272,47 +272,23 @@ function LoginForm() {
           </p>
           
           <div className="grid gap-2">
-            {/* Super Admin */}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => !isLoading && handleDemoLogin("super_admin")}
-              onKeyDown={(e) => e.key === "Enter" && !isLoading && handleDemoLogin("super_admin")}
-              className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] transition-colors text-left cursor-pointer",
-                isLoading && "opacity-50 cursor-not-allowed"
-              )}
+            {/* Platform Admin Link */}
+            <Link
+              href="/platform/login"
+              className="w-full flex items-center gap-3 p-3 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 transition-colors text-left"
             >
-              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Shield className="h-5 w-5 text-purple-600" />
+              <div className="w-10 h-10 rounded-lg bg-purple-200 flex items-center justify-center">
+                <Shield className="h-5 w-5 text-purple-700" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">Super Admin</span>
-                  <Badge className="text-xs bg-purple-100 text-purple-700">Platform</Badge>
+                  <span className="font-medium text-sm text-purple-900">Platform Admin?</span>
                 </div>
-                <p className="text-xs text-[var(--muted-foreground)] truncate">
-                  super@caiintake.com
+                <p className="text-xs text-purple-600">
+                  Go to Platform Admin Login →
                 </p>
               </div>
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fillCredentials("super@caiintake.com", "SuperAdmin123!");
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.stopPropagation();
-                    fillCredentials("super@caiintake.com", "SuperAdmin123!");
-                  }
-                }}
-                className="text-xs text-[var(--cai-teal)] hover:underline shrink-0 cursor-pointer"
-              >
-                Fill form
-              </span>
-            </div>
+            </Link>
 
             {/* Org Admin */}
             <div
@@ -402,7 +378,6 @@ function LoginForm() {
           <div className="pt-2 border-t border-[var(--border)]">
             <p className="text-xs text-[var(--muted-foreground)]">
               <strong>Test Passwords:</strong><br />
-              Super Admin: <code className="bg-[var(--muted)] px-1 rounded">SuperAdmin123!</code><br />
               Org Admin: <code className="bg-[var(--muted)] px-1 rounded">OrgAdmin123!</code><br />
               Operator: <code className="bg-[var(--muted)] px-1 rounded">Operator123!</code>
             </p>
