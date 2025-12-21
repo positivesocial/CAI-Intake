@@ -11,6 +11,7 @@ export * from "./materials";
 export * from "./templates";
 export * from "./corrections";
 export * from "./context";
+export * from "./use-corrections";
 
 
 

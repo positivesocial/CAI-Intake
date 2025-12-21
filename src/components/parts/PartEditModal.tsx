@@ -2,16 +2,20 @@
  * CAI Intake - Part Edit Modal
  * 
  * Modal dialog for editing a single part with full field access.
+ * Integrates with the learning system to record corrections.
  */
 
 "use client";
 
 import * as React from "react";
-import { X, Save, RotateCcw, AlertCircle } from "lucide-react";
+import { X, Save, RotateCcw, AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { useIntakeStore } from "@/lib/store";
 import type { CutPart } from "@/lib/schema";
+import { useCorrections } from "@/lib/learning/use-corrections";
+import { useAuthStore } from "@/lib/auth/store";
 
 // =============================================================================
 // TYPES
@@ -32,6 +36,7 @@ interface FormErrors {
 
 export function PartEditModal({ partId, onClose }: PartEditModalProps) {
   const { currentCutlist, updatePart } = useIntakeStore();
+  const { user } = useAuthStore();
   
   const originalPart = currentCutlist.parts.find((p) => p.part_id === partId);
   
@@ -40,6 +45,22 @@ export function PartEditModal({ partId, onClose }: PartEditModalProps) {
   );
   const [errors, setErrors] = React.useState<FormErrors>({});
   const [isDirty, setIsDirty] = React.useState(false);
+  const [isLearning, setIsLearning] = React.useState(false);
+
+  // Corrections tracking for learning from user edits
+  const { trackOriginal, recordChanges } = useCorrections({
+    organizationId: user?.organizationId,
+    userId: user?.id,
+    showLearningToast: true,
+    enabled: true,
+  });
+
+  // Track original state when modal opens
+  React.useEffect(() => {
+    if (originalPart) {
+      trackOriginal(partId, originalPart);
+    }
+  }, [partId, originalPart, trackOriginal]);
 
   // Reset form when part changes
   React.useEffect(() => {
@@ -102,10 +123,22 @@ export function PartEditModal({ partId, onClose }: PartEditModalProps) {
   };
 
   // Handle save
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
 
+    setIsLearning(true);
+    
+    // Update the part
     updatePart(partId, formData);
+    
+    // Record corrections for learning (async, non-blocking)
+    try {
+      await recordChanges(partId, formData as CutPart);
+    } catch (err) {
+      console.warn("Failed to record corrections:", err);
+    }
+    
+    setIsLearning(false);
     onClose();
   };
 
@@ -384,24 +417,33 @@ export function PartEditModal({ partId, onClose }: PartEditModalProps) {
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border)] bg-[var(--muted)]/30">
-          <div className="text-xs text-[var(--muted-foreground)]">
-            {isDirty ? (
+          <div className="text-xs text-[var(--muted-foreground)] flex items-center gap-2">
+            {isLearning ? (
+              <span className="flex items-center gap-1.5 text-[var(--cai-teal)]">
+                <Sparkles className="h-3 w-3 animate-pulse" />
+                Learning from your edit...
+              </span>
+            ) : isDirty ? (
               <span className="text-amber-500">● Unsaved changes</span>
             ) : (
               <span className="text-green-500">✓ Saved</span>
             )}
+            <Badge variant="outline" className="text-xs opacity-60">
+              <Sparkles className="h-3 w-3 mr-1" />
+              AI Learning
+            </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={handleReset} disabled={!isDirty}>
+            <Button variant="ghost" onClick={handleReset} disabled={!isDirty || isLearning}>
               <RotateCcw className="h-4 w-4 mr-1" />
               Reset
             </Button>
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={onClose} disabled={isLearning}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={!isDirty}>
+            <Button onClick={handleSave} disabled={!isDirty || isLearning}>
               <Save className="h-4 w-4 mr-1" />
-              Save Changes
+              {isLearning ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         </div>

@@ -1,5 +1,15 @@
 "use client";
 
+/**
+ * CAI Intake - Smart File Upload
+ * 
+ * Enhanced file upload with:
+ * - Queue management (add/remove files before processing)
+ * - Start/Stop processing controls
+ * - Real-time progress tracking with live item counts
+ * - Batch processing support
+ */
+
 import * as React from "react";
 import {
   Upload,
@@ -13,7 +23,11 @@ import {
   AlertCircle,
   Sparkles,
   QrCode,
-  Eye,
+  Play,
+  Square,
+  Trash2,
+  Clock,
+  Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +41,7 @@ import { detectQRCode, type QRDetectionResult } from "@/lib/ai/template-ocr";
 import { toast } from "sonner";
 
 type FileType = "pdf" | "image" | "excel" | "csv" | "text" | "unknown";
-type ProcessingStatus = "idle" | "uploading" | "detecting_qr" | "processing" | "complete" | "error";
+type ProcessingStatus = "queued" | "uploading" | "detecting_qr" | "processing" | "complete" | "error" | "cancelled";
 
 interface UploadedFile {
   id: string;
@@ -48,6 +62,15 @@ interface UploadedFile {
     };
   };
   error?: string;
+}
+
+interface BatchStats {
+  totalFiles: number;
+  processedFiles: number;
+  failedFiles: number;
+  totalPartsFound: number;
+  startTime: number | null;
+  elapsedSeconds: number;
 }
 
 function getFileType(file: File): FileType {
@@ -85,30 +108,125 @@ function getFileIcon(type: FileType) {
   }
 }
 
+function formatElapsedTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}m ${secs}s`;
+}
+
 export function FileUpload() {
   const addToInbox = useIntakeStore((state) => state.addToInbox);
 
   const [files, setFiles] = React.useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = React.useState(false);
+  const [isProcessing, setIsProcessing] = React.useState(false);
+  const [isCancelled, setIsCancelled] = React.useState(false);
+  const [batchStats, setBatchStats] = React.useState<BatchStats>({
+    totalFiles: 0,
+    processedFiles: 0,
+    failedFiles: 0,
+    totalPartsFound: 0,
+    startTime: null,
+    elapsedSeconds: 0,
+  });
+  
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const cancelRef = React.useRef(false);
 
-  const handleFiles = async (fileList: FileList) => {
+  // Elapsed time timer
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isProcessing && batchStats.startTime) {
+      interval = setInterval(() => {
+        setBatchStats((prev) => ({
+          ...prev,
+          elapsedSeconds: Math.floor((Date.now() - (prev.startTime || Date.now())) / 1000),
+        }));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isProcessing, batchStats.startTime]);
+
+  // Queue files without processing
+  const handleFiles = (fileList: FileList) => {
     const newFiles: UploadedFile[] = Array.from(fileList).map((file) => ({
       id: crypto.randomUUID(),
       file,
       type: getFileType(file),
-      status: "idle" as ProcessingStatus,
+      status: "queued" as ProcessingStatus,
       progress: 0,
     }));
 
     setFiles((prev) => [...prev, ...newFiles]);
+  };
 
-    // Process each file
-    for (const uploadedFile of newFiles) {
+  // Start processing all queued files
+  const startProcessing = async () => {
+    const queuedFiles = files.filter((f) => f.status === "queued");
+    if (queuedFiles.length === 0) {
+      toast.error("No files to process", {
+        description: "Add some files first, then click Start Processing.",
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    setIsCancelled(false);
+    cancelRef.current = false;
+    
+    setBatchStats({
+      totalFiles: queuedFiles.length,
+      processedFiles: 0,
+      failedFiles: 0,
+      totalPartsFound: 0,
+      startTime: Date.now(),
+      elapsedSeconds: 0,
+    });
+
+    for (const uploadedFile of queuedFiles) {
+      if (cancelRef.current) {
+        // Mark remaining files as cancelled
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.status === "queued" ? { ...f, status: "cancelled" as ProcessingStatus } : f
+          )
+        );
+        break;
+      }
       await processFile(uploadedFile);
+    }
+
+    setIsProcessing(false);
+    
+    if (!cancelRef.current) {
+      const stats = batchStats;
+      toast.success("Processing complete!", {
+        description: `Found ${stats.totalPartsFound} parts from ${stats.processedFiles} files.`,
+      });
     }
   };
 
+  // Stop processing
+  const stopProcessing = () => {
+    cancelRef.current = true;
+    setIsCancelled(true);
+    toast.info("Stopping...", {
+      description: "Current file will complete, then processing will stop.",
+    });
+  };
+
+  // Remove a file from the queue
+  const removeFile = (id: string) => {
+    setFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  // Clear all completed/error files
+  const clearCompleted = () => {
+    setFiles((prev) => prev.filter((f) => f.status === "queued"));
+  };
+
+  // Process a single file
   const processFile = async (uploadedFile: UploadedFile) => {
     const startTime = Date.now();
     
@@ -130,7 +248,6 @@ export function FileUpload() {
       switch (uploadedFile.type) {
         case "text":
         case "csv": {
-          // Read as text and parse
           const text = await uploadedFile.file.text();
           
           setFiles((prev) =>
@@ -162,7 +279,6 @@ export function FileUpload() {
 
         case "pdf":
         case "image": {
-          // For images, first check for QR code (template detection)
           let qrResult: QRDetectionResult | null = null;
           
           if (uploadedFile.type === "image") {
@@ -196,16 +312,13 @@ export function FileUpload() {
             )
           );
 
-          // Use server-side API for image/PDF processing
           try {
-            // Progress update
             setFiles((prev) =>
               prev.map((f) =>
                 f.id === uploadedFile.id ? { ...f, progress: 60 } : f
               )
             );
 
-            // Create form data to send to API
             const formData = new FormData();
             formData.append("file", uploadedFile.file);
             formData.append("fileType", uploadedFile.type);
@@ -216,7 +329,6 @@ export function FileUpload() {
               formData.append("templateConfig", JSON.stringify(qrResult.templateConfig));
             }
 
-            // Call server-side API
             const response = await fetch("/api/v1/parse-file", {
               method: "POST",
               body: formData,
@@ -225,7 +337,6 @@ export function FileUpload() {
             const data = await response.json();
 
             if (!response.ok) {
-              // Handle specific error codes with appropriate toast messages
               if (data.code === "AI_NOT_CONFIGURED") {
                 toast.error("AI processing is not available", {
                   description: "Please contact your system administrator to configure AI services.",
@@ -266,7 +377,6 @@ export function FileUpload() {
               ? `AI + Template (${qrResult.templateId})`
               : "AI Vision";
 
-            // Count extracted metadata
             for (const p of aiParts) {
               if (p.extractedMetadata?.edgeBanding?.detected) metadata.edgeBanding++;
               if (p.extractedMetadata?.grooving?.detected) metadata.grooving++;
@@ -274,7 +384,6 @@ export function FileUpload() {
             }
             
           } catch (aiError) {
-            // Fall back to basic OCR text extraction
             console.warn("AI processing failed:", aiError);
             throw aiError;
           }
@@ -282,7 +391,6 @@ export function FileUpload() {
         }
 
         case "excel": {
-          // Excel files should go through the Excel import wizard
           setFiles((prev) =>
             prev.map((f) =>
               f.id === uploadedFile.id
@@ -294,6 +402,7 @@ export function FileUpload() {
                 : f
             )
           );
+          setBatchStats((prev) => ({ ...prev, failedFiles: prev.failedFiles + 1 }));
           return;
         }
 
@@ -327,6 +436,14 @@ export function FileUpload() {
             : f
         )
       );
+
+      // Update batch stats with animation effect
+      setBatchStats((prev) => ({
+        ...prev,
+        processedFiles: prev.processedFiles + 1,
+        totalPartsFound: prev.totalPartsFound + parts.length,
+      }));
+
     } catch (error) {
       setFiles((prev) =>
         prev.map((f) =>
@@ -342,11 +459,8 @@ export function FileUpload() {
             : f
         )
       );
+      setBatchStats((prev) => ({ ...prev, failedFiles: prev.failedFiles + 1 }));
     }
-  };
-
-  const removeFile = (id: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -367,27 +481,105 @@ export function FileUpload() {
     }
   };
 
+  const queuedCount = files.filter((f) => f.status === "queued").length;
+  const completedCount = files.filter((f) => f.status === "complete" || f.status === "error").length;
+
   return (
     <Card>
       <CardHeader className="pb-4">
-        <div className="flex items-center gap-3">
-          <Sparkles className="h-5 w-5 text-[var(--cai-teal)]" />
-          <CardTitle className="text-lg">Smart File Upload</CardTitle>
-          <Badge variant="teal">AI-Powered</Badge>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Sparkles className="h-5 w-5 text-[var(--cai-teal)]" />
+            <CardTitle className="text-lg">Smart File Upload</CardTitle>
+            <Badge variant="teal">AI-Powered</Badge>
+          </div>
+          
+          {/* Processing Controls */}
+          <div className="flex items-center gap-2">
+            {queuedCount > 0 && !isProcessing && (
+              <Button
+                onClick={startProcessing}
+                className="gap-2 bg-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/90"
+              >
+                <Play className="h-4 w-4" />
+                Start Processing ({queuedCount})
+              </Button>
+            )}
+            
+            {isProcessing && (
+              <Button
+                onClick={stopProcessing}
+                variant="destructive"
+                className="gap-2"
+                disabled={isCancelled}
+              >
+                <Square className="h-4 w-4" />
+                {isCancelled ? "Stopping..." : "Stop"}
+              </Button>
+            )}
+            
+            {completedCount > 0 && !isProcessing && (
+              <Button
+                onClick={clearCompleted}
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                Clear Completed
+              </Button>
+            )}
+          </div>
         </div>
         <p className="text-sm text-[var(--muted-foreground)] mt-1">
-          Upload images, PDFs, or text files. AI extracts parts with edge banding, grooving, and CNC data.
+          Add files to the queue, then click Start Processing. AI extracts parts with edge banding, grooving, and CNC data.
         </p>
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Live Stats During Processing */}
+        {isProcessing && (
+          <div className="grid grid-cols-4 gap-4 p-4 bg-[var(--muted)] rounded-lg">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-[var(--cai-teal)] tabular-nums">
+                {batchStats.processedFiles}/{batchStats.totalFiles}
+              </div>
+              <div className="text-xs text-[var(--muted-foreground)]">Files Processed</div>
+            </div>
+            <div className="text-center">
+              <div className={cn(
+                "text-2xl font-bold tabular-nums transition-all",
+                batchStats.totalPartsFound > 0 && "text-green-600 animate-pulse"
+              )}>
+                <Package className="inline h-5 w-5 mr-1" />
+                {batchStats.totalPartsFound}
+              </div>
+              <div className="text-xs text-[var(--muted-foreground)]">Parts Found</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600 tabular-nums">
+                {batchStats.failedFiles}
+              </div>
+              <div className="text-xs text-[var(--muted-foreground)]">Failed</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold tabular-nums flex items-center justify-center gap-1">
+                <Clock className="h-5 w-5" />
+                {formatElapsedTime(batchStats.elapsedSeconds)}
+              </div>
+              <div className="text-xs text-[var(--muted-foreground)]">Elapsed</div>
+            </div>
+          </div>
+        )}
+
         {/* Drop zone */}
         <label
           className={cn(
             "block border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer",
             isDragging
               ? "border-[var(--cai-teal)] bg-[var(--cai-teal)]/5"
-              : "border-[var(--border)] hover:border-[var(--cai-teal)]"
+              : "border-[var(--border)] hover:border-[var(--cai-teal)]",
+            isProcessing && "opacity-50 pointer-events-none"
           )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -400,6 +592,7 @@ export function FileUpload() {
             multiple
             className="sr-only"
             onChange={(e) => e.target.files && handleFiles(e.target.files)}
+            disabled={isProcessing}
           />
           <Upload
             className={cn(
@@ -413,7 +606,7 @@ export function FileUpload() {
             Drop files here or click to browse
           </p>
           <p className="text-sm text-[var(--muted-foreground)]">
-            PDF, images, TXT, CSV • AI extracts cutlist data automatically
+            Files will be queued for processing
           </p>
           <div className="flex items-center justify-center gap-2 mt-3 text-xs text-[var(--muted-foreground)]">
             <QrCode className="h-3.5 w-3.5" />
@@ -426,11 +619,20 @@ export function FileUpload() {
           <div className="space-y-2">
             {files.map((uploadedFile) => {
               const Icon = getFileIcon(uploadedFile.type);
+              const isQueued = uploadedFile.status === "queued";
+              const isActive = uploadedFile.status === "processing" || uploadedFile.status === "detecting_qr";
 
               return (
                 <div
                   key={uploadedFile.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)]"
+                  className={cn(
+                    "flex items-center gap-3 p-3 rounded-lg border transition-all",
+                    isQueued && "border-dashed border-[var(--border)] bg-[var(--muted)]/30",
+                    isActive && "border-[var(--cai-teal)] bg-[var(--cai-teal)]/5 animate-pulse",
+                    uploadedFile.status === "complete" && "border-green-200 bg-green-50",
+                    uploadedFile.status === "error" && "border-red-200 bg-red-50",
+                    uploadedFile.status === "cancelled" && "border-gray-200 bg-gray-50 opacity-50"
+                  )}
                 >
                   <div
                     className={cn(
@@ -439,6 +641,8 @@ export function FileUpload() {
                         ? "bg-red-100"
                         : uploadedFile.status === "complete"
                         ? "bg-green-100"
+                        : isActive
+                        ? "bg-[var(--cai-teal)]/20"
                         : "bg-[var(--muted)]"
                     )}
                   >
@@ -449,6 +653,8 @@ export function FileUpload() {
                           ? "text-red-600"
                           : uploadedFile.status === "complete"
                           ? "text-green-600"
+                          : isActive
+                          ? "text-[var(--cai-teal)]"
                           : "text-[var(--muted-foreground)]"
                       )}
                     />
@@ -459,6 +665,9 @@ export function FileUpload() {
                       <p className="text-sm font-medium truncate">
                         {uploadedFile.file.name}
                       </p>
+                      {isQueued && (
+                        <Badge variant="outline" className="text-xs">Queued</Badge>
+                      )}
                       {uploadedFile.qrDetected?.templateId && (
                         <Badge variant="outline" className="text-xs shrink-0">
                           <QrCode className="h-3 w-3 mr-1" />
@@ -467,7 +676,7 @@ export function FileUpload() {
                       )}
                     </div>
 
-                    {(uploadedFile.status === "processing" || uploadedFile.status === "detecting_qr") && (
+                    {isActive && (
                       <div className="mt-1">
                         <Progress value={uploadedFile.progress} className="h-1" />
                         <p className="text-xs text-[var(--muted-foreground)] mt-1">
@@ -478,43 +687,48 @@ export function FileUpload() {
                       </div>
                     )}
 
-                    {uploadedFile.status === "complete" &&
-                      uploadedFile.result && (
-                        <div className="mt-1 space-y-1">
-                          <p className="text-xs text-green-600">
-                            Found {uploadedFile.result.partsCount} parts via{" "}
-                            {uploadedFile.result.method}
-                            {uploadedFile.result.confidence > 0 && (
-                              <span className="ml-1 opacity-75">
-                                ({Math.round(uploadedFile.result.confidence * 100)}% confidence)
-                              </span>
-                            )}
-                          </p>
-                          {uploadedFile.result.metadata && (
-                            <div className="flex gap-2 text-xs text-[var(--muted-foreground)]">
-                              {uploadedFile.result.metadata.edgeBanding > 0 && (
-                                <span>📐 {uploadedFile.result.metadata.edgeBanding} with edging</span>
-                              )}
-                              {uploadedFile.result.metadata.grooving > 0 && (
-                                <span>🔧 {uploadedFile.result.metadata.grooving} with grooves</span>
-                              )}
-                              {uploadedFile.result.metadata.cncOps > 0 && (
-                                <span>⚙️ {uploadedFile.result.metadata.cncOps} with CNC</span>
-                              )}
-                            </div>
+                    {uploadedFile.status === "complete" && uploadedFile.result && (
+                      <div className="mt-1 space-y-1">
+                        <p className="text-xs text-green-600">
+                          Found {uploadedFile.result.partsCount} parts via{" "}
+                          {uploadedFile.result.method}
+                          {uploadedFile.result.confidence > 0 && (
+                            <span className="ml-1 opacity-75">
+                              ({Math.round(uploadedFile.result.confidence * 100)}% confidence)
+                            </span>
                           )}
-                        </div>
-                      )}
+                        </p>
+                        {uploadedFile.result.metadata && (
+                          <div className="flex gap-2 text-xs text-[var(--muted-foreground)]">
+                            {uploadedFile.result.metadata.edgeBanding > 0 && (
+                              <span>📐 {uploadedFile.result.metadata.edgeBanding} with edging</span>
+                            )}
+                            {uploadedFile.result.metadata.grooving > 0 && (
+                              <span>🔧 {uploadedFile.result.metadata.grooving} with grooves</span>
+                            )}
+                            {uploadedFile.result.metadata.cncOps > 0 && (
+                              <span>⚙️ {uploadedFile.result.metadata.cncOps} with CNC</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {uploadedFile.status === "error" && (
                       <p className="text-xs text-red-600 mt-1">
                         {uploadedFile.error}
                       </p>
                     )}
+
+                    {uploadedFile.status === "cancelled" && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Processing cancelled
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {(uploadedFile.status === "processing" || uploadedFile.status === "detecting_qr") && (
+                    {isActive && (
                       <Loader2 className="h-5 w-5 animate-spin text-[var(--cai-teal)]" />
                     )}
                     {uploadedFile.status === "complete" && (
@@ -523,14 +737,17 @@ export function FileUpload() {
                     {uploadedFile.status === "error" && (
                       <AlertCircle className="h-5 w-5 text-red-600" />
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => removeFile(uploadedFile.id)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                    {(isQueued || uploadedFile.status === "complete" || uploadedFile.status === "error") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => removeFile(uploadedFile.id)}
+                        disabled={isProcessing && !isQueued}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               );

@@ -3,8 +3,11 @@
 /**
  * CAI Intake - OCR Progress Tracker
  * 
- * Visual progress tracker for file processing with ETA display.
- * Polls the progress API and shows per-file and overall status.
+ * Enhanced visual progress tracker for file processing with:
+ * - Real-time item count updates with animation
+ * - Elapsed time display
+ * - Detailed stage descriptions
+ * - Cancel functionality
  */
 
 import * as React from "react";
@@ -19,13 +22,16 @@ import {
   Eye,
   ChevronDown,
   ChevronUp,
+  Zap,
+  Package,
+  Table,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { OCRProgressClient, OCRFileProgress, OCRStage } from "@/lib/progress/types";
-import { formatETA, getStageName } from "@/lib/progress/progress-helpers";
 
 // ============================================================
 // TYPES
@@ -84,11 +90,96 @@ function getStatusColor(status: OCRFileProgress["status"]) {
 
 function getStageIcon(stage: OCRStage) {
   switch (stage) {
-    case "ocr":
+    case "uploading":
+      return <Loader2 className="h-3 w-3 animate-spin" />;
+    case "detecting":
       return <Eye className="h-3 w-3" />;
+    case "ocr":
+      return <Sparkles className="h-3 w-3" />;
+    case "parsing":
+      return <Table className="h-3 w-3" />;
+    case "validating":
+      return <Check className="h-3 w-3" />;
     default:
       return null;
   }
+}
+
+function getStageName(stage: OCRStage): string {
+  switch (stage) {
+    case "queued":
+      return "Waiting in queue...";
+    case "uploading":
+      return "Reading file...";
+    case "detecting":
+      return "Detecting document type...";
+    case "ocr":
+      return "Extracting text with AI...";
+    case "parsing":
+      return "Parsing cutlist data...";
+    case "validating":
+      return "Validating parts...";
+    case "done":
+      return "Complete";
+    default:
+      return "Processing...";
+  }
+}
+
+function formatETA(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}m ${secs}s`;
+}
+
+function formatElapsedTime(startedAt: number): string {
+  const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+  if (elapsed < 60) return `${elapsed}s`;
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+// ============================================================
+// ANIMATED COUNTER COMPONENT
+// ============================================================
+
+function AnimatedCounter({ value, label, icon: Icon, color = "text-[var(--cai-teal)]" }: {
+  value: number;
+  label: string;
+  icon: React.ElementType;
+  color?: string;
+}) {
+  const [displayValue, setDisplayValue] = React.useState(value);
+  const [isAnimating, setIsAnimating] = React.useState(false);
+  const prevValue = React.useRef(value);
+
+  React.useEffect(() => {
+    if (value !== prevValue.current) {
+      setIsAnimating(true);
+      const timeout = setTimeout(() => {
+        setDisplayValue(value);
+        setIsAnimating(false);
+      }, 150);
+      prevValue.current = value;
+      return () => clearTimeout(timeout);
+    }
+  }, [value]);
+
+  return (
+    <div className="text-center">
+      <div className={cn(
+        "text-2xl font-bold tabular-nums transition-all duration-300",
+        color,
+        isAnimating && "scale-125"
+      )}>
+        <Icon className="inline h-5 w-5 mr-1" />
+        {displayValue}
+      </div>
+      <div className="text-xs text-[var(--muted-foreground)]">{label}</div>
+    </div>
+  );
 }
 
 // ============================================================
@@ -108,6 +199,17 @@ export function OcrProgressTracker({
   const [error, setError] = React.useState<string | null>(null);
   const [showDetails, setShowDetails] = React.useState(!compact);
   const [isCancelling, setIsCancelling] = React.useState(false);
+  const [elapsedTime, setElapsedTime] = React.useState("0s");
+  
+  // Elapsed time update
+  React.useEffect(() => {
+    if (progress?.overall?.startedAt && progress.isProcessing) {
+      const interval = setInterval(() => {
+        setElapsedTime(formatElapsedTime(progress.overall.startedAt));
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [progress?.overall?.startedAt, progress?.isProcessing]);
   
   // Polling
   React.useEffect(() => {
@@ -177,8 +279,6 @@ export function OcrProgressTracker({
     } catch (err) {
       console.warn("Failed to cancel:", err);
     }
-    
-    // Don't reset isCancelling - the poll will update status
   };
   
   // Error state
@@ -217,14 +317,20 @@ export function OcrProgressTracker({
             <span className="text-sm font-medium">
               {message || (status === "complete" ? "Complete" : "Processing...")}
             </span>
-            <span className="text-sm text-[var(--muted-foreground)]">
-              {overall.overallProgress}%
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-[var(--cai-teal)]">
+                <Package className="inline h-4 w-4 mr-1" />
+                {overall.totalItemsFound} parts
+              </span>
+              <span className="text-sm text-[var(--muted-foreground)]">
+                {overall.overallProgress}%
+              </span>
+            </div>
           </div>
           <div className="h-2 bg-[var(--muted)] rounded-full overflow-hidden">
             <div
               className={cn(
-                "h-full transition-all duration-300",
+                "h-full transition-all duration-500 ease-out",
                 getStatusColor(status as OCRFileProgress["status"])
               )}
               style={{ width: `${overall.overallProgress}%` }}
@@ -232,15 +338,16 @@ export function OcrProgressTracker({
           </div>
         </div>
         
-        {/* ETA / Stats */}
-        <div className="text-right">
-          {overall.etaSeconds ? (
-            <span className="text-sm text-[var(--muted-foreground)]">
-              ~{formatETA(overall.etaSeconds)}
+        {/* ETA / Elapsed */}
+        <div className="text-right min-w-[60px]">
+          {progress.isProcessing ? (
+            <span className="text-sm text-[var(--muted-foreground)] flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {elapsedTime}
             </span>
           ) : (
             <span className="text-sm text-[var(--muted-foreground)]">
-              {overall.processedFiles}/{overall.totalFiles} files
+              {overall.processedFiles}/{overall.totalFiles}
             </span>
           )}
         </div>
@@ -301,9 +408,15 @@ export function OcrProgressTracker({
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium">{message || "Processing..."}</span>
             <div className="flex items-center gap-3">
-              {overall.etaSeconds && (
+              {progress.isProcessing && (
+                <span className="text-sm text-[var(--muted-foreground)] flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {elapsedTime}
+                </span>
+              )}
+              {overall.etaSeconds && progress.isProcessing && (
                 <span className="text-sm text-[var(--muted-foreground)]">
-                  ETA: {formatETA(overall.etaSeconds)}
+                  ~{formatETA(overall.etaSeconds)} remaining
                 </span>
               )}
               <span className="text-sm font-medium">{overall.overallProgress}%</span>
@@ -320,23 +433,25 @@ export function OcrProgressTracker({
           </div>
         </div>
         
-        {/* Stats */}
+        {/* Live Stats */}
         <div className="grid grid-cols-4 gap-4 py-4 border-y">
           <div className="text-center">
-            <div className="text-2xl font-bold">{overall.totalFiles}</div>
+            <div className="text-2xl font-bold tabular-nums">{overall.totalFiles}</div>
             <div className="text-xs text-[var(--muted-foreground)]">Total Files</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-green-600">{overall.processedFiles}</div>
+            <div className="text-2xl font-bold text-green-600 tabular-nums">{overall.processedFiles}</div>
             <div className="text-xs text-[var(--muted-foreground)]">Processed</div>
           </div>
+          <AnimatedCounter 
+            value={overall.totalItemsFound} 
+            label="Parts Found" 
+            icon={Package}
+            color="text-[var(--cai-teal)]"
+          />
           <div className="text-center">
-            <div className="text-2xl font-bold text-red-600">{overall.failedFiles}</div>
+            <div className="text-2xl font-bold text-red-600 tabular-nums">{overall.failedFiles}</div>
             <div className="text-xs text-[var(--muted-foreground)]">Failed</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-[var(--cai-teal)]">{overall.totalItemsFound}</div>
-            <div className="text-xs text-[var(--muted-foreground)]">Parts Found</div>
           </div>
         </div>
         
@@ -352,15 +467,15 @@ export function OcrProgressTracker({
             </button>
             
             {showDetails && (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
                 {files.map((file) => (
                   <div
                     key={file.fileIndex}
                     className={cn(
-                      "flex items-center gap-3 p-3 rounded-lg border",
+                      "flex items-center gap-3 p-3 rounded-lg border transition-all",
                       file.status === "complete" && "bg-green-50/50 border-green-200",
                       file.status === "error" && "bg-red-50/50 border-red-200",
-                      file.status === "processing" && "bg-[var(--cai-teal)]/5 border-[var(--cai-teal)]/20",
+                      file.status === "processing" && "bg-[var(--cai-teal)]/5 border-[var(--cai-teal)]/20 animate-pulse",
                       file.status === "pending" && "bg-[var(--muted)]/50"
                     )}
                   >
@@ -400,12 +515,14 @@ export function OcrProgressTracker({
                     <div className="flex items-center gap-2 text-sm">
                       {file.status === "complete" && (
                         <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          <Package className="h-3 w-3 mr-1" />
                           {file.itemsFound} parts
                         </Badge>
                       )}
                       
                       {file.templateDetected && (
                         <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                          <Zap className="h-3 w-3 mr-1" />
                           Template
                         </Badge>
                       )}
@@ -426,4 +543,3 @@ export function OcrProgressTracker({
     </Card>
   );
 }
-

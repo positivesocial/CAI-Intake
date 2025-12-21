@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { checkRateLimit, createIdentifier, getClientIP, RATE_LIMITS } from "./rate-limiter";
+import { checkRateLimit, checkAdvancedRateLimit, createIdentifier, getClientIP, RATE_LIMITS } from "./rate-limiter";
 import { logAuditFromRequest, AuditLogParams } from "./audit";
 import { logger, createRequestLogger } from "./logger";
 import { sanitizeLikePattern, SIZE_LIMITS, isValidBodySize } from "./security";
@@ -292,11 +292,25 @@ export async function withApiContext<T>(
       }
       user = authResult.user;
 
-      // Apply user-specific rate limit
+      // Apply user-specific rate limit with advanced checking (burst + custom limits)
       if (options.rateLimit) {
-        const userRateLimit = await applyRateLimit(request, user.id, options.rateLimit);
+        const userRateLimit = await checkAdvancedRateLimit(
+          createIdentifier(user.id, ip, user.organizationId),
+          options.rateLimit,
+          {
+            organizationId: user.organizationId,
+            userId: user.id,
+            endpoint: request.nextUrl.pathname,
+          }
+        );
         if (!userRateLimit.allowed) {
-          return userRateLimit.response;
+          return apiError(
+            "Rate limit exceeded. Please try again later.",
+            requestId,
+            429,
+            "RATE_LIMIT_EXCEEDED",
+            userRateLimit.headers
+          );
         }
       }
 

@@ -3,7 +3,13 @@
  * 
  * POST /api/v1/parse-file
  * Parses image and PDF files using AI vision capabilities.
- * Handles the AI processing server-side where API keys are available.
+ * 
+ * For PDFs:
+ * - Uses Python OCR microservice for superior text/table extraction
+ * - Falls back to AI vision if Python OCR is unavailable
+ * 
+ * For Images:
+ * - Uses AI vision directly for parsing
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -11,6 +17,7 @@ import { getUser } from "@/lib/supabase/server";
 import { getOrCreateProvider } from "@/lib/ai/provider";
 import { logger } from "@/lib/logger";
 import { applyRateLimit } from "@/lib/api-middleware";
+import { getPythonOCRClient } from "@/lib/services/python-ocr-client";
 
 // Size limits
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
@@ -94,114 +101,18 @@ export async function POST(request: NextRequest) {
     let aiResult;
 
     if (fileType === "image") {
-      // Process image
+      // Process image - use AI vision directly
       const imageBuffer = await file.arrayBuffer();
       const base64 = Buffer.from(imageBuffer).toString("base64");
       const mimeType = file.type || "image/jpeg";
       const dataUrl = `data:${mimeType};base64,${base64}`;
       
       aiResult = await provider.parseImage(dataUrl, parseOptions);
+      
     } else if (fileType === "pdf") {
-      // Process PDF - try text extraction first, then convert to images
-      const pdfBuffer = await file.arrayBuffer();
-      let extractedText = "";
+      // Process PDF - use Python OCR service
+      aiResult = await processPDF(file, provider, parseOptions);
       
-      try {
-        const pdfParseModule = await import("pdf-parse");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pdfParse = (pdfParseModule as any).default ?? pdfParseModule;
-        const pdfData = await pdfParse(Buffer.from(pdfBuffer));
-        extractedText = pdfData.text?.trim() || "";
-      } catch (err) {
-        logger.warn("PDF text extraction failed, will try image conversion", { error: err });
-      }
-      
-      // Check if we got meaningful text (more than 50 chars of actual content)
-      const meaningfulText = extractedText.replace(/\s+/g, " ").trim();
-      
-      if (meaningfulText.length > 50) {
-        // Use text parsing for text-based PDFs
-        aiResult = await provider.parseText(extractedText, parseOptions);
-      } else {
-        // PDF is scanned/image-based - convert to images and use AI vision
-        logger.info("Converting PDF to images for vision processing", { 
-          textLength: meaningfulText.length,
-          fileName: file.name
-        });
-        
-        try {
-          // Use pdfjs-dist to render PDF pages to images
-          const pdfjsLib = await import("pdfjs-dist");
-          const { createCanvas } = await import("canvas");
-          
-          // Load PDF document
-          const loadingTask = pdfjsLib.getDocument({
-            data: new Uint8Array(pdfBuffer),
-            useSystemFonts: true,
-          });
-          const pdfDoc = await loadingTask.promise;
-          
-          const pdfImages: string[] = [];
-          const numPages = Math.min(pdfDoc.numPages, 5); // Limit to 5 pages
-          
-          for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-            const page = await pdfDoc.getPage(pageNum);
-            const scale = 2.0; // Higher resolution for better OCR
-            const viewport = page.getViewport({ scale });
-            
-            // Create canvas
-            const canvas = createCanvas(viewport.width, viewport.height);
-            const context = canvas.getContext("2d");
-            
-            // Render PDF page to canvas
-            await page.render({
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              canvasContext: context as any,
-              viewport,
-            }).promise;
-            
-            // Convert to base64 PNG
-            const imageData = canvas.toDataURL("image/png");
-            pdfImages.push(imageData);
-          }
-          
-          if (pdfImages.length === 0) {
-            throw new Error("No pages found in PDF");
-          }
-          
-          logger.info("PDF converted to images", { pageCount: pdfImages.length });
-          
-          // Process first page
-          aiResult = await provider.parseImage(pdfImages[0], parseOptions);
-          
-          // If multi-page PDF, process additional pages and merge results
-          if (pdfImages.length > 1 && aiResult.success) {
-            logger.info("Processing additional PDF pages", { remaining: pdfImages.length - 1 });
-            
-            for (let i = 1; i < pdfImages.length; i++) {
-              try {
-                const pageResult = await provider.parseImage(pdfImages[i], parseOptions);
-                if (pageResult.success) {
-                  aiResult.parts.push(...pageResult.parts);
-                }
-              } catch (pageError) {
-                logger.warn(`Failed to process PDF page ${i + 1}`, { error: pageError });
-              }
-            }
-          }
-          
-        } catch (conversionError) {
-          logger.error("PDF to image conversion failed", { error: conversionError });
-          
-          return NextResponse.json(
-            { 
-              error: "Could not process this PDF. Please try uploading as an image (screenshot or photo) instead.",
-              code: "PDF_CONVERSION_FAILED"
-            },
-            { status: 400 }
-          );
-        }
-      }
     } else {
       return NextResponse.json(
         { error: "Unsupported file type. Use images or PDFs." },
@@ -241,3 +152,118 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * Process a PDF file using Python OCR service
+ * Falls back to simple text extraction + AI if Python OCR is unavailable
+ */
+async function processPDF(
+  file: File,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  provider: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parseOptions: any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  const pythonOCR = getPythonOCRClient();
+  const pdfBuffer = await file.arrayBuffer();
+  const base64 = Buffer.from(pdfBuffer).toString("base64");
+
+  // Check if Python OCR service is available
+  if (pythonOCR.isConfigured()) {
+    logger.info("🐍 Using Python OCR for PDF extraction", { fileName: file.name });
+    
+    const ocrResult = await pythonOCR.extractFromPDF(base64, file.name);
+    
+    if (ocrResult && ocrResult.success) {
+      // Python OCR succeeded - prepare text for LLM parsing
+      let textForParsing = ocrResult.text;
+      
+      // If tables were extracted, format them nicely for the LLM
+      if (ocrResult.tables && ocrResult.tables.length > 0) {
+        const tablesText = pythonOCR.formatTablesAsText(ocrResult.tables);
+        textForParsing = `${tablesText}\n\n${ocrResult.text}`;
+        
+        logger.info("📊 Python OCR extracted tables", {
+          tableCount: ocrResult.tables.length,
+          method: ocrResult.method,
+          confidence: ocrResult.confidence,
+        });
+      }
+
+      // Check if we got meaningful text
+      const meaningfulText = textForParsing.replace(/\s+/g, " ").trim();
+      
+      if (meaningfulText.length > 30) {
+        logger.info("✅ Python OCR extraction successful", {
+          textLength: meaningfulText.length,
+          confidence: ocrResult.confidence,
+          method: ocrResult.method,
+          processingTime: ocrResult.processingTime,
+        });
+        
+        // Use AI to parse the extracted text
+        return await provider.parseText(textForParsing, parseOptions);
+      } else {
+        logger.warn("⚠️ Python OCR returned insufficient text", {
+          textLength: meaningfulText.length,
+          method: ocrResult.method,
+        });
+      }
+    } else {
+      logger.warn("⚠️ Python OCR failed or unavailable", {
+        error: ocrResult?.error,
+        success: ocrResult?.success,
+      });
+    }
+  } else {
+    logger.info("Python OCR service not configured, using fallback", {
+      serviceUrl: process.env.PYTHON_OCR_SERVICE_URL,
+    });
+  }
+
+  // Fallback: Try simple text extraction with pdf-parse
+  logger.info("📄 Falling back to pdf-parse for text extraction", { fileName: file.name });
+  
+  let extractedText = "";
+  
+  try {
+    const pdfParseModule = await import("pdf-parse");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pdfParse = (pdfParseModule as any).default ?? pdfParseModule;
+    const pdfData = await pdfParse(Buffer.from(pdfBuffer));
+    extractedText = pdfData.text?.trim() || "";
+  } catch (err) {
+    logger.warn("PDF text extraction failed", { error: err });
+  }
+  
+  // Check if we got meaningful text
+  const meaningfulText = extractedText.replace(/\s+/g, " ").trim();
+  
+  if (meaningfulText.length > 50) {
+    // Use text parsing for text-based PDFs
+    logger.info("📝 Using extracted text for AI parsing", { textLength: meaningfulText.length });
+    return await provider.parseText(extractedText, parseOptions);
+  }
+  
+  // PDF is scanned/image-based and we couldn't get text
+  // Return a helpful error suggesting alternatives
+  logger.error("❌ Could not extract text from PDF", {
+    fileName: file.name,
+    textLength: meaningfulText.length,
+    pythonOCRConfigured: pythonOCR.isConfigured(),
+  });
+  
+  return {
+    success: false,
+    parts: [],
+    totalConfidence: 0,
+    errors: [
+      "Could not extract text from this PDF. This appears to be a scanned document. " +
+      "Please try one of these alternatives:\n" +
+      "• Take a clear photo of the document and upload the image\n" +
+      "• Export the PDF as an image (PNG/JPG) and upload that\n" +
+      "• If possible, use a text-based PDF instead"
+    ],
+    processingTimeMs: 0,
+  };
+}

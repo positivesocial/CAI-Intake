@@ -19,6 +19,7 @@ import {
   Layers,
   Cpu,
   Code2,
+  Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +59,11 @@ const NAV_ITEMS = [
 ];
 
 const ADMIN_NAV_ITEMS = [
+  {
+    label: "Branding",
+    href: "/settings/branding",
+    icon: Palette,
+  },
   {
     label: "Operations",
     href: "/settings/operations",
