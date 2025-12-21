@@ -91,10 +91,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Check for demo mode via cookie or query param
+  // Check for demo mode
   const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-  const hasDemoCookie = request.cookies.get("cai-auth-storage")?.value?.includes('"isAuthenticated":true');
-  const isSuperAdminCookie = request.cookies.get("cai-auth-storage")?.value?.includes('"isSuperAdmin":true');
   
   // Check route types
   const isProtectedRoute = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
@@ -102,40 +100,15 @@ export async function middleware(request: NextRequest) {
   const isPlatformAuthRoute = PLATFORM_AUTH_ROUTES.some((route) => pathname.startsWith(route));
   const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
 
-  // In demo mode with valid auth cookie
-  if (demoMode && hasDemoCookie) {
-    // Platform admin routes require super admin
-    if (isPlatformAdminRoute) {
-      if (isSuperAdminCookie) {
-        return NextResponse.next();
-      }
-      // Not super admin, redirect to platform login
-      const url = request.nextUrl.clone();
-      url.pathname = "/platform/login";
-      return NextResponse.redirect(url);
-    }
-
-    // Regular protected routes
-    if (isProtectedRoute) {
-      return NextResponse.next();
-    }
-    
-    // Redirect authenticated super admins away from platform auth
-    if (isPlatformAuthRoute && isSuperAdminCookie) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/platform/dashboard";
-      return NextResponse.redirect(url);
-    }
-
-    // Redirect authenticated users away from regular auth pages
-    if (isAuthRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
-    }
+  // In demo mode, skip server-side auth checks and let client handle it
+  // The Zustand store uses localStorage (not cookies), so middleware can't check auth state
+  // Client-side routing will handle redirects based on store state
+  if (demoMode) {
+    // Allow all routes in demo mode - client will handle auth redirects
+    return NextResponse.next();
   }
 
-  // Run Supabase session update
+  // Run Supabase session update for production mode
   return updateSession(request);
 }
 

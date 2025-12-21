@@ -25,7 +25,15 @@ function LoginForm() {
     isLoading: authLoading,
     error: authError,
     setError: setAuthError,
+    isAuthenticated,
   } = useAuthStore();
+
+  // Redirect to dashboard if already authenticated
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      router.push(redirectTo);
+    }
+  }, [isAuthenticated, router, redirectTo]);
   
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
