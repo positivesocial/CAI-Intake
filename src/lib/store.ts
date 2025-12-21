@@ -24,6 +24,8 @@ export type IntakeMode =
   | "template" 
   | "paste";
 
+export type StepId = "setup" | "intake" | "review" | "export";
+
 export type ParserMode = "simple" | "ai";
 export type AIProviderType = "openai" | "anthropic";
 
@@ -74,6 +76,9 @@ export interface IntakeState {
   // Active intake mode
   activeMode: IntakeMode;
 
+  // Workflow step (stepper)
+  currentStep: StepId;
+
   // UI state
   isAdvancedMode: boolean;
   selectedPartIds: string[];
@@ -91,6 +96,14 @@ export interface IntakeState {
   // Actions
   setActiveMode: (mode: IntakeMode) => void;
   toggleAdvancedMode: () => void;
+  
+  // Step navigation
+  setCurrentStep: (step: StepId) => void;
+  goToNextStep: () => void;
+  goToPreviousStep: () => void;
+  canProceedToIntake: () => boolean;
+  canProceedToReview: () => boolean;
+  canProceedToExport: () => boolean;
 
   // Parts management
   addPart: (part: CutPart) => void;
@@ -198,6 +211,9 @@ const defaultAISettings: AISettings = {
   confidenceThreshold: 0.75,
 };
 
+// Step order for navigation
+const STEP_ORDER: StepId[] = ["setup", "intake", "review", "export"];
+
 const getInitialState = () => ({
   currentCutlist: {
     doc_id: generateId("DOC"),
@@ -209,6 +225,7 @@ const getInitialState = () => ({
   },
   inboxParts: [],
   activeMode: "manual" as IntakeMode,
+  currentStep: "setup" as StepId,
   isAdvancedMode: false,
   selectedPartIds: [],
   aiSettings: defaultAISettings,
@@ -238,6 +255,43 @@ export const useIntakeStore = create<IntakeState>()(
       // Mode
       setActiveMode: (mode) => set({ activeMode: mode }),
       toggleAdvancedMode: () => set((state) => ({ isAdvancedMode: !state.isAdvancedMode })),
+      
+      // Step navigation
+      setCurrentStep: (step) => set({ currentStep: step }),
+      
+      goToNextStep: () => {
+        const state = get();
+        const currentIndex = STEP_ORDER.indexOf(state.currentStep);
+        if (currentIndex < STEP_ORDER.length - 1) {
+          set({ currentStep: STEP_ORDER[currentIndex + 1] });
+        }
+      },
+      
+      goToPreviousStep: () => {
+        const state = get();
+        const currentIndex = STEP_ORDER.indexOf(state.currentStep);
+        if (currentIndex > 0) {
+          set({ currentStep: STEP_ORDER[currentIndex - 1] });
+        }
+      },
+      
+      canProceedToIntake: () => {
+        const state = get();
+        // Can proceed if cutlist has a name (not empty)
+        return state.currentCutlist.name.trim().length > 0;
+      },
+      
+      canProceedToReview: () => {
+        const state = get();
+        // Can proceed if there are parts
+        return state.currentCutlist.parts.length > 0 || state.inboxParts.length > 0;
+      },
+      
+      canProceedToExport: () => {
+        const state = get();
+        // Can proceed if there are parts to export
+        return state.currentCutlist.parts.length > 0;
+      },
 
       // Parts management
       addPart: (part) =>
@@ -754,6 +808,7 @@ export const useIntakeStore = create<IntakeState>()(
           edgebands: state.currentCutlist.edgebands,
           capabilities: state.currentCutlist.capabilities,
         },
+        currentStep: state.currentStep,
         isAdvancedMode: state.isAdvancedMode,
         aiSettings: state.aiSettings,
         // Don't persist undo/redo stacks or clipboard
