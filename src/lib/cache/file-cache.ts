@@ -91,16 +91,18 @@ const stats = globalForCache.cacheStats;
  * Compute SHA-256 hash of file content
  */
 export async function computeFileHash(file: File | ArrayBuffer | Uint8Array): Promise<string> {
-  let data: BufferSource;
+  let arrayBuffer: ArrayBuffer;
   
   if (file instanceof File) {
-    data = await file.arrayBuffer();
+    arrayBuffer = await file.arrayBuffer();
+  } else if (file instanceof ArrayBuffer) {
+    arrayBuffer = file;
   } else {
-    // Both ArrayBuffer and Uint8Array work directly with crypto.subtle.digest
-    data = file;
+    // For Uint8Array, create a copy as ArrayBuffer
+    arrayBuffer = new Uint8Array(file).buffer as ArrayBuffer;
   }
   
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
