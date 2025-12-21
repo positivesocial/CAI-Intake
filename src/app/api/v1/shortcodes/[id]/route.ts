@@ -14,6 +14,14 @@ import { sanitizeInput, isValidUuid } from "@/lib/security";
 import { logAudit, AUDIT_ACTIONS } from "@/lib/audit";
 
 // ============================================================
+// TYPES
+// ============================================================
+
+interface ProfileData {
+  organization_id: string | null;
+}
+
+// ============================================================
 // VALIDATION
 // ============================================================
 
@@ -26,6 +34,20 @@ const ShortcodeUpdateSchema = z.object({
   default_specs: z.record(z.string(), z.unknown()).optional(),
   is_active: z.boolean().optional(),
 });
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+async function getOrgId(supabase: ReturnType<typeof getClient>, userId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("organization_id")
+    .eq("id", userId)
+    .single();
+  
+  return (data as ProfileData | null)?.organization_id ?? null;
+}
 
 // ============================================================
 // GET - Get single shortcode
@@ -48,15 +70,9 @@ export async function GET(
     }
 
     const supabase = getClient();
+    const organizationId = await getOrgId(supabase, user.id);
 
-    // Get user's organization
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.organization_id) {
+    if (!organizationId) {
       return NextResponse.json({ error: "No organization" }, { status: 403 });
     }
 
@@ -64,7 +80,7 @@ export async function GET(
       .from("shortcode_configs")
       .select("*")
       .eq("id", id)
-      .eq("org_id", profile.organization_id)
+      .eq("org_id", organizationId)
       .single();
 
     if (error || !config) {
@@ -105,15 +121,9 @@ export async function PUT(
     }
 
     const supabase = getClient();
+    const organizationId = await getOrgId(supabase, user.id);
 
-    // Get user's organization
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.organization_id) {
+    if (!organizationId) {
       return NextResponse.json({ error: "No organization" }, { status: 403 });
     }
 
@@ -122,7 +132,7 @@ export async function PUT(
       .from("shortcode_configs")
       .select("id")
       .eq("id", id)
-      .eq("org_id", profile.organization_id)
+      .eq("org_id", organizationId)
       .single();
 
     if (!existing) {
@@ -185,7 +195,7 @@ export async function PUT(
       .from("shortcode_configs")
       .update(updateData)
       .eq("id", id)
-      .eq("org_id", profile.organization_id)
+      .eq("org_id", organizationId)
       .select()
       .single();
 
@@ -203,7 +213,7 @@ export async function PUT(
       resource_type: "shortcode_config",
       resource_id: id,
       user_id: user.id,
-      organization_id: profile.organization_id,
+      organization_id: organizationId,
       details: { changes: Object.keys(input) },
     });
 
@@ -238,15 +248,9 @@ export async function DELETE(
     }
 
     const supabase = getClient();
+    const organizationId = await getOrgId(supabase, user.id);
 
-    // Get user's organization
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.organization_id) {
+    if (!organizationId) {
       return NextResponse.json({ error: "No organization" }, { status: 403 });
     }
 
@@ -255,7 +259,7 @@ export async function DELETE(
       .from("shortcode_configs")
       .select("shortcode, service_type")
       .eq("id", id)
-      .eq("org_id", profile.organization_id)
+      .eq("org_id", organizationId)
       .single();
 
     if (!existing) {
@@ -270,7 +274,7 @@ export async function DELETE(
       .from("shortcode_configs")
       .delete()
       .eq("id", id)
-      .eq("org_id", profile.organization_id);
+      .eq("org_id", organizationId);
 
     if (deleteError) {
       logger.error("Failed to delete shortcode", { error: deleteError });
@@ -281,13 +285,14 @@ export async function DELETE(
     }
 
     // Audit log
+    const existingData = existing as { shortcode?: string; service_type?: string };
     await logAudit({
       action: AUDIT_ACTIONS.DELETE,
       resource_type: "shortcode_config",
       resource_id: id,
       user_id: user.id,
-      organization_id: profile.organization_id,
-      details: { shortcode: existing.shortcode, service_type: existing.service_type },
+      organization_id: organizationId,
+      details: { shortcode: existingData.shortcode, service_type: existingData.service_type },
     });
 
     return NextResponse.json({ success: true });

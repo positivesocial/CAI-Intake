@@ -13,6 +13,14 @@ import { sanitizeInput } from "@/lib/security";
 import { logAudit, AUDIT_ACTIONS } from "@/lib/audit";
 
 // ============================================================
+// TYPES
+// ============================================================
+
+interface ProfileData {
+  organization_id: string | null;
+}
+
+// ============================================================
 // VALIDATION
 // ============================================================
 
@@ -27,6 +35,20 @@ const ShortcodeInputSchema = z.object({
 });
 
 // ============================================================
+// HELPERS
+// ============================================================
+
+async function getOrgId(supabase: ReturnType<typeof getClient>, userId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("organization_id")
+    .eq("id", userId)
+    .single();
+  
+  return (data as ProfileData | null)?.organization_id ?? null;
+}
+
+// ============================================================
 // GET - List shortcodes
 // ============================================================
 
@@ -38,25 +60,20 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getClient();
+    const organizationId = await getOrgId(supabase, user.id);
+
+    if (!organizationId) {
+      return NextResponse.json({ error: "No organization" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const serviceType = searchParams.get("service_type");
     const activeOnly = searchParams.get("active") !== "all";
 
-    // Get user's organization
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.organization_id) {
-      return NextResponse.json({ error: "No organization" }, { status: 403 });
-    }
-
     let query = supabase
       .from("shortcode_configs")
       .select("*")
-      .eq("org_id", profile.organization_id)
+      .eq("org_id", organizationId)
       .order("shortcode", { ascending: true });
 
     if (serviceType) {
@@ -99,15 +116,9 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getClient();
+    const organizationId = await getOrgId(supabase, user.id);
 
-    // Get user's organization
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.organization_id) {
+    if (!organizationId) {
       return NextResponse.json({ error: "No organization" }, { status: 403 });
     }
 
@@ -139,7 +150,7 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await supabase
       .from("shortcode_configs")
       .select("id")
-      .eq("org_id", profile.organization_id)
+      .eq("org_id", organizationId)
       .eq("service_type", input.service_type)
       .eq("shortcode", sanitizedShortcode.toUpperCase())
       .single();
@@ -155,7 +166,7 @@ export async function POST(request: NextRequest) {
     const { count } = await supabase
       .from("shortcode_configs")
       .select("*", { count: "exact", head: true })
-      .eq("org_id", profile.organization_id);
+      .eq("org_id", organizationId);
 
     if ((count || 0) >= 200) {
       return NextResponse.json(
@@ -168,7 +179,7 @@ export async function POST(request: NextRequest) {
     const { data: config, error: insertError } = await supabase
       .from("shortcode_configs")
       .insert({
-        org_id: profile.organization_id,
+        org_id: organizationId,
         service_type: input.service_type,
         shortcode: sanitizedShortcode.toUpperCase(),
         display_name: sanitizedDisplayName,
@@ -187,13 +198,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Audit log
+    const configData = config as { id?: string; shortcode?: string; service_type?: string };
     await logAudit({
       action: AUDIT_ACTIONS.CREATE,
       resource_type: "shortcode_config",
-      resource_id: config.id,
+      resource_id: configData.id || "",
       user_id: user.id,
-      organization_id: profile.organization_id,
-      details: { shortcode: config.shortcode, service_type: config.service_type },
+      organization_id: organizationId,
+      details: { shortcode: configData.shortcode, service_type: configData.service_type },
     });
 
     return NextResponse.json({ config }, { status: 201 });
