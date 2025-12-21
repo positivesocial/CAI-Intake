@@ -13,7 +13,9 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "npx tsx prisma/seed.ts"
+    "db:seed": "npx tsx prisma/seed.ts",
+    "db:setup-users": "npx tsx scripts/setup-test-users.ts",
+    "db:reset": "prisma migrate reset --force && npm run db:setup-users"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
