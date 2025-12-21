@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   User,
   Building2,
@@ -109,6 +110,7 @@ const SETTINGS_SECTIONS = [
 ];
 
 export default function SettingsPage() {
+  const router = useRouter();
   const { user, updateUser, updatePreferences, updateNotifications, logout, setUser, isOrgAdmin } =
     useAuthStore();
   const { aiSettings, setAISettings, setAIProvider } = useIntakeStore();
@@ -118,6 +120,11 @@ export default function SettingsPage() {
   const [showApiKey, setShowApiKey] = React.useState(false);
   const [apiKeyInput, setApiKeyInput] = React.useState("");
   const [mounted, setMounted] = React.useState(false);
+
+  const handleLogout = async () => {
+    await logout();
+    router.push("/login");
+  };
 
   // Avoid hydration mismatch for theme
   React.useEffect(() => {
@@ -233,7 +240,7 @@ export default function SettingsPage() {
                   <Button
                     variant="outline"
                     className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={logout}
+                    onClick={handleLogout}
                   >
                     <LogOut className="h-4 w-4 mr-2" />
                     Sign Out

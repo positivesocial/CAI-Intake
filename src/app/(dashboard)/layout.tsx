@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   FileSpreadsheet,
@@ -70,6 +70,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout, setUser, isSuperAdmin } = useAuthStore();
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
@@ -81,6 +82,12 @@ export default function DashboardLayout({
       setUser(SUPER_ADMIN_USER);
     }
     setIsUserMenuOpen(false);
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setIsUserMenuOpen(false);
+    router.push("/login");
   };
 
   return (
@@ -203,10 +210,7 @@ export default function DashboardLayout({
                       </button>
                       <button
                         className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--muted)] transition-colors text-left text-red-600"
-                        onClick={() => {
-                          logout();
-                          setIsUserMenuOpen(false);
-                        }}
+                        onClick={handleLogout}
                       >
                         <LogOut className="h-4 w-4" />
                         Sign Out
