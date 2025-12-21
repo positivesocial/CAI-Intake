@@ -14,6 +14,7 @@ import {
   Layers,
   Ruler,
   Activity,
+  FileDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIntakeStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { StepNavigation } from "@/components/ui/stepper";
+import { downloadCutlistPDF } from "@/lib/exports/pdf-export";
 
 interface ExportOption {
   id: string;
@@ -57,6 +59,12 @@ export function ExportStep() {
       primary: true,
     },
     {
+      id: "pdf",
+      label: "Download PDF Report",
+      description: "Full parts list with stats, operations, and source methods",
+      icon: <FileDown className="h-5 w-5" />,
+    },
+    {
       id: "json",
       label: "Export as JSON",
       description: "Full data export for integration",
@@ -85,10 +93,98 @@ export function ExportStep() {
   const handleExport = async (optionId: string) => {
     setExportStatus(`Exporting to ${optionId}...`);
     
-    // Simulate export
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      switch (optionId) {
+        case "pdf": {
+          // Generate and download PDF report
+          downloadCutlistPDF(currentCutlist, {
+            includeOperations: true,
+            includeSourceMethod: true,
+            includeNotes: true,
+            companyName: "CAI Intake",
+          });
+          setExportStatus("PDF downloaded successfully!");
+          break;
+        }
+        
+        case "json": {
+          // Export as JSON file
+          const jsonData = JSON.stringify(currentCutlist, null, 2);
+          const blob = new Blob([jsonData], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${currentCutlist.name || "cutlist"}-${new Date().toISOString().split("T")[0]}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          setExportStatus("JSON exported successfully!");
+          break;
+        }
+        
+        case "csv": {
+          // Export as CSV file
+          const headers = ["Label", "Length", "Width", "Thickness", "Qty", "Material", "Grain", "Edging", "Source"];
+          const rows = currentCutlist.parts.map(part => {
+            const material = currentCutlist.materials.find(m => m.material_id === part.material_id);
+            const edging = part.ops?.edging?.edges 
+              ? Object.entries(part.ops.edging.edges)
+                  .filter(([, e]) => e.apply)
+                  .map(([side]) => side)
+                  .join("+")
+              : "";
+            return [
+              part.label || "",
+              part.size.L,
+              part.size.W,
+              part.thickness_mm,
+              part.qty,
+              material?.name || part.material_id,
+              part.grain,
+              edging,
+              part.audit?.source_method || "",
+            ].join(",");
+          });
+          const csvContent = [headers.join(","), ...rows].join("\n");
+          const blob = new Blob([csvContent], { type: "text/csv" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${currentCutlist.name || "cutlist"}-${new Date().toISOString().split("T")[0]}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          setExportStatus("CSV exported successfully!");
+          break;
+        }
+        
+        case "optimizer": {
+          // TODO: Implement sending to optimizer API
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          setExportStatus("Sent to CAI 2D Optimizer!");
+          break;
+        }
+        
+        case "maxcut":
+        case "cutlistplus": {
+          // TODO: Implement software-specific exports
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          setExportStatus(`Exported for ${optionId === "maxcut" ? "MaxCut" : "CutList Plus"}!`);
+          break;
+        }
+        
+        default: {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          setExportStatus("Export completed!");
+        }
+      }
+    } catch (error) {
+      console.error("Export error:", error);
+      setExportStatus("Export failed. Please try again.");
+    }
     
-    setExportStatus(`Exported successfully!`);
     setTimeout(() => setExportStatus(null), 3000);
   };
 
