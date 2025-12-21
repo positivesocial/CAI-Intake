@@ -7,6 +7,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { User } from "@supabase/supabase-js";
 
 /**
  * Create a Supabase client for server-side operations
@@ -41,7 +42,7 @@ export async function createClient() {
 /**
  * Demo mode user for development/testing
  */
-const DEMO_USER = {
+const DEMO_USER: User = {
   id: "demo-user-id",
   email: "admin@acmecabinets.com",
   aud: "authenticated",
@@ -52,18 +53,18 @@ const DEMO_USER = {
     organization_id: "demo-org-id",
   },
   created_at: new Date().toISOString(),
-};
+} as User;
 
 /**
  * Get the current authenticated user
  * Returns null if not authenticated
  * In demo mode, returns a mock user
  */
-export async function getUser() {
+export async function getUser(): Promise<User | null> {
   // In demo mode, return a mock user for API routes
   const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
   if (isDemoMode) {
-    return DEMO_USER as unknown as ReturnType<Awaited<ReturnType<typeof createClient>>["auth"]["getUser"]>["data"]["user"];
+    return DEMO_USER;
   }
   
   const supabase = await createClient();
