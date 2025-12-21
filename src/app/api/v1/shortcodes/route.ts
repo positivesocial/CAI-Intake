@@ -7,11 +7,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionUser } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { getUser, getClient } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
-import { isValidInput, SIZE_LIMITS } from "@/lib/security";
-import { auditLog, AUDIT_ACTIONS } from "@/lib/audit";
+import { sanitizeInput } from "@/lib/security";
+import { logAudit, AUDIT_ACTIONS } from "@/lib/audit";
 
 // ============================================================
 // VALIDATION
@@ -33,19 +32,31 @@ const ShortcodeInputSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const { user: userData, error: authError } = await getSessionUser();
-    if (authError || !userData) {
+    const user = await getUser();
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const supabase = getClient();
     const { searchParams } = new URL(request.url);
     const serviceType = searchParams.get("service_type");
     const activeOnly = searchParams.get("active") !== "all";
 
+    // Get user's organization
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      return NextResponse.json({ error: "No organization" }, { status: 403 });
+    }
+
     let query = supabase
       .from("shortcode_configs")
       .select("*")
-      .eq("org_id", userData.organization_id)
+      .eq("org_id", profile.organization_id)
       .order("shortcode", { ascending: true });
 
     if (serviceType) {
@@ -82,9 +93,22 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user: userData, error: authError } = await getSessionUser();
-    if (authError || !userData) {
+    const user = await getUser();
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const supabase = getClient();
+
+    // Get user's organization
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      return NextResponse.json({ error: "No organization" }, { status: 403 });
     }
 
     // Parse and validate body
@@ -101,7 +125,10 @@ export async function POST(request: NextRequest) {
     const input = parseResult.data;
 
     // Sanitize inputs
-    if (!isValidInput(input.shortcode) || !isValidInput(input.display_name)) {
+    const sanitizedShortcode = sanitizeInput(input.shortcode, 20);
+    const sanitizedDisplayName = sanitizeInput(input.display_name, 100);
+
+    if (!sanitizedShortcode || !sanitizedDisplayName) {
       return NextResponse.json(
         { error: "Invalid characters in input" },
         { status: 400 }
@@ -112,9 +139,9 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await supabase
       .from("shortcode_configs")
       .select("id")
-      .eq("org_id", userData.organization_id)
+      .eq("org_id", profile.organization_id)
       .eq("service_type", input.service_type)
-      .eq("shortcode", input.shortcode.toUpperCase())
+      .eq("shortcode", sanitizedShortcode.toUpperCase())
       .single();
 
     if (existing) {
@@ -128,7 +155,7 @@ export async function POST(request: NextRequest) {
     const { count } = await supabase
       .from("shortcode_configs")
       .select("*", { count: "exact", head: true })
-      .eq("org_id", userData.organization_id);
+      .eq("org_id", profile.organization_id);
 
     if ((count || 0) >= 200) {
       return NextResponse.json(
@@ -141,10 +168,10 @@ export async function POST(request: NextRequest) {
     const { data: config, error: insertError } = await supabase
       .from("shortcode_configs")
       .insert({
-        org_id: userData.organization_id,
+        org_id: profile.organization_id,
         service_type: input.service_type,
-        shortcode: input.shortcode.toUpperCase(),
-        display_name: input.display_name,
+        shortcode: sanitizedShortcode.toUpperCase(),
+        display_name: sanitizedDisplayName,
         default_specs: input.default_specs,
         is_active: input.is_active,
       })
@@ -160,12 +187,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Audit log
-    await auditLog({
+    await logAudit({
       action: AUDIT_ACTIONS.CREATE,
       resource_type: "shortcode_config",
       resource_id: config.id,
-      user_id: userData.id,
-      organization_id: userData.organization_id,
+      user_id: user.id,
+      organization_id: profile.organization_id,
       details: { shortcode: config.shortcode, service_type: config.service_type },
     });
 
@@ -178,4 +205,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

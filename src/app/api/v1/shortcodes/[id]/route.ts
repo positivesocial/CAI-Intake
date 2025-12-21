@@ -8,11 +8,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionUser } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { getUser, getClient } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
-import { isValidInput, isValidUuid } from "@/lib/security";
-import { auditLog, AUDIT_ACTIONS } from "@/lib/audit";
+import { sanitizeInput, isValidUuid } from "@/lib/security";
+import { logAudit, AUDIT_ACTIONS } from "@/lib/audit";
 
 // ============================================================
 // VALIDATION
@@ -37,8 +36,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: userData, error: authError } = await getSessionUser();
-    if (authError || !userData) {
+    const user = await getUser();
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -48,11 +47,24 @@ export async function GET(
       return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
     }
 
+    const supabase = getClient();
+
+    // Get user's organization
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      return NextResponse.json({ error: "No organization" }, { status: 403 });
+    }
+
     const { data: config, error } = await supabase
       .from("shortcode_configs")
       .select("*")
       .eq("id", id)
-      .eq("org_id", userData.organization_id)
+      .eq("org_id", profile.organization_id)
       .single();
 
     if (error || !config) {
@@ -81,8 +93,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: userData, error: authError } = await getSessionUser();
-    if (authError || !userData) {
+    const user = await getUser();
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -92,12 +104,25 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
     }
 
+    const supabase = getClient();
+
+    // Get user's organization
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      return NextResponse.json({ error: "No organization" }, { status: 403 });
+    }
+
     // Verify ownership
     const { data: existing } = await supabase
       .from("shortcode_configs")
       .select("id")
       .eq("id", id)
-      .eq("org_id", userData.organization_id)
+      .eq("org_id", profile.organization_id)
       .single();
 
     if (!existing) {
@@ -120,30 +145,30 @@ export async function PUT(
 
     const input = parseResult.data;
 
-    // Sanitize inputs
-    if (input.shortcode && !isValidInput(input.shortcode)) {
-      return NextResponse.json(
-        { error: "Invalid characters in shortcode" },
-        { status: 400 }
-      );
-    }
-    if (input.display_name && !isValidInput(input.display_name)) {
-      return NextResponse.json(
-        { error: "Invalid characters in display name" },
-        { status: 400 }
-      );
-    }
-
     // Build update object
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
 
     if (input.shortcode !== undefined) {
-      updateData.shortcode = input.shortcode.toUpperCase();
+      const sanitized = sanitizeInput(input.shortcode, 20);
+      if (!sanitized) {
+        return NextResponse.json(
+          { error: "Invalid characters in shortcode" },
+          { status: 400 }
+        );
+      }
+      updateData.shortcode = sanitized.toUpperCase();
     }
     if (input.display_name !== undefined) {
-      updateData.display_name = input.display_name;
+      const sanitized = sanitizeInput(input.display_name, 100);
+      if (!sanitized) {
+        return NextResponse.json(
+          { error: "Invalid characters in display name" },
+          { status: 400 }
+        );
+      }
+      updateData.display_name = sanitized;
     }
     if (input.service_type !== undefined) {
       updateData.service_type = input.service_type;
@@ -160,7 +185,7 @@ export async function PUT(
       .from("shortcode_configs")
       .update(updateData)
       .eq("id", id)
-      .eq("org_id", userData.organization_id)
+      .eq("org_id", profile.organization_id)
       .select()
       .single();
 
@@ -173,12 +198,12 @@ export async function PUT(
     }
 
     // Audit log
-    await auditLog({
+    await logAudit({
       action: AUDIT_ACTIONS.UPDATE,
       resource_type: "shortcode_config",
       resource_id: id,
-      user_id: userData.id,
-      organization_id: userData.organization_id,
+      user_id: user.id,
+      organization_id: profile.organization_id,
       details: { changes: Object.keys(input) },
     });
 
@@ -201,8 +226,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: userData, error: authError } = await getSessionUser();
-    if (authError || !userData) {
+    const user = await getUser();
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -212,12 +237,25 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
     }
 
+    const supabase = getClient();
+
+    // Get user's organization
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.organization_id) {
+      return NextResponse.json({ error: "No organization" }, { status: 403 });
+    }
+
     // Verify ownership and get shortcode for audit
     const { data: existing } = await supabase
       .from("shortcode_configs")
       .select("shortcode, service_type")
       .eq("id", id)
-      .eq("org_id", userData.organization_id)
+      .eq("org_id", profile.organization_id)
       .single();
 
     if (!existing) {
@@ -232,7 +270,7 @@ export async function DELETE(
       .from("shortcode_configs")
       .delete()
       .eq("id", id)
-      .eq("org_id", userData.organization_id);
+      .eq("org_id", profile.organization_id);
 
     if (deleteError) {
       logger.error("Failed to delete shortcode", { error: deleteError });
@@ -243,12 +281,12 @@ export async function DELETE(
     }
 
     // Audit log
-    await auditLog({
+    await logAudit({
       action: AUDIT_ACTIONS.DELETE,
       resource_type: "shortcode_config",
       resource_id: id,
-      user_id: userData.id,
-      organization_id: userData.organization_id,
+      user_id: user.id,
+      organization_id: profile.organization_id,
       details: { shortcode: existing.shortcode, service_type: existing.service_type },
     });
 
@@ -261,4 +299,3 @@ export async function DELETE(
     );
   }
 }
-
