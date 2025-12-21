@@ -331,3 +331,5 @@ export const OptimizeJobResponseSchema = z.object({
 
 export type OptimizeJobResponse = z.infer<typeof OptimizeJobResponseSchema>;
 
+
+

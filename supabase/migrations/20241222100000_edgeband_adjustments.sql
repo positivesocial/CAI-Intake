@@ -72,3 +72,5 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 
 COMMENT ON FUNCTION calculate_edgeband_length IS 'Calculates total edgeband length including overhang and waste factor. Overhang is added to both ends of each edge. Waste factor is a percentage increase.';
 
+
+

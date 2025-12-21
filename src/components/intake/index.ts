@@ -15,6 +15,8 @@ export * from "./TemplateGenerator";
 export * from "./ParserModeToggle";
 export * from "./StatsSidebar";
 export * from "./ProjectMergePanel";
+export * from "./CsvWizard";
+export * from "./OcrProgressTracker";
 
 // Step Components for Stepper Workflow
 export * from "./steps";

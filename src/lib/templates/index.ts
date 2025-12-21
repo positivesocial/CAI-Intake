@@ -21,3 +21,26 @@ export {
   type QRCodeOptions,
 } from "./qr-generator";
 
+// Template detection
+export {
+  classifyDocument,
+  detectExcelTemplate,
+  detectPDFTemplate,
+  detectTemplateQR,
+  isValidTemplate,
+  getProcessingRecommendation,
+  isBlankTemplate,
+  DocType,
+  type TemplateMetadata,
+  type TemplateDetectionResult,
+} from "./template-detector";
+
+// Template Excel parser
+export {
+  parseTemplateExcel,
+  type TemplateParseOptions,
+  type TemplateParseResult,
+} from "./template-excel-parser";
+
+
+

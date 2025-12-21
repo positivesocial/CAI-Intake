@@ -186,3 +186,5 @@ self.addEventListener('notificationclick', (event) => {
 
 console.log('[SW] Service worker loaded');
 
+
+

@@ -236,3 +236,5 @@ export function getRolePermissions(role: RoleType): PermissionType[] {
   return ROLE_PERMISSIONS[role] ?? [];
 }
 
+
+

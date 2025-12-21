@@ -9,3 +9,5 @@ export { createClient as createServerClient, getUser, getSession, requireAuth } 
 export { updateSession } from "./middleware";
 export type * from "./types";
 
+
+

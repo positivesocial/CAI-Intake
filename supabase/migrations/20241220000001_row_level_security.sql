@@ -507,3 +507,5 @@ ON platform_settings FOR ALL
 TO authenticated
 USING (auth.is_super_admin());
 
+
+

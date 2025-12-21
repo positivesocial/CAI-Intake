@@ -3,6 +3,7 @@
  * 
  * POST /api/v1/parse
  * Parses text, files, or voice input into CutPart objects.
+ * Supports session-based progress tracking and cancellation.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -14,6 +15,22 @@ import { getOrCreateProvider, type ParseOptions as AIParseOptions } from "@/lib/
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { applyRateLimit } from "@/lib/api-middleware";
+import {
+  setProgress,
+  getProgress,
+  isCancellationRequested,
+} from "@/lib/progress/progress-store";
+import {
+  generateSessionId,
+  initProgress,
+  startFile,
+  updateFileStage,
+  completeFile,
+  failFile,
+  cancelSession,
+  completeSession,
+} from "@/lib/progress/progress-helpers";
+import type { OCRProgressSnapshot } from "@/lib/progress/types";
 
 // Size limits for security
 const SIZE_LIMITS = {
@@ -27,6 +44,8 @@ const ParseRequestSchema = z.object({
   content: z.string().max(SIZE_LIMITS.MAX_TEXT_LENGTH).optional(),
   file_id: z.string().optional(),
   file_url: z.string().url().optional(),
+  // Session ID for progress tracking (optional - auto-generated if not provided)
+  session_id: z.string().max(100).optional(),
   options: z.object({
     default_material_id: z.string().optional(),
     default_thickness_mm: z.number().optional(),
@@ -34,10 +53,32 @@ const ParseRequestSchema = z.object({
     units: z.enum(["mm", "cm", "inch"]).optional(),
     use_ai: z.boolean().optional(),
     column_mapping: z.record(z.string(), z.string()).optional(),
+    // Enable progress tracking
+    track_progress: z.boolean().optional(),
   }).optional(),
 });
 
+// Helper to update and save progress
+function updateProgress(
+  sessionId: string | undefined,
+  updater: (snapshot: OCRProgressSnapshot) => OCRProgressSnapshot
+): void {
+  if (!sessionId) return;
+  const current = getProgress(sessionId);
+  if (current) {
+    setProgress(sessionId, updater(current));
+  }
+}
+
+// Check if processing should be cancelled
+function shouldCancel(sessionId: string | undefined): boolean {
+  if (!sessionId) return false;
+  return isCancellationRequested(sessionId);
+}
+
 export async function POST(request: NextRequest) {
+  let sessionId: string | undefined;
+  
   try {
     // Apply rate limiting
     const rateLimitResult = await applyRateLimit(request, undefined, "parseJobs");
@@ -67,7 +108,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { source_type, content, file_id, file_url, options } = parseResult.data;
+    const { source_type, content, file_id, file_url, options, session_id } = parseResult.data;
 
     // Get user's organization
     const { data: userData } = await supabase
@@ -83,6 +124,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Initialize progress tracking if enabled
+    const trackProgress = options?.track_progress ?? false;
+    sessionId = trackProgress ? (session_id || generateSessionId()) : undefined;
+    
+    if (sessionId) {
+      // Determine file info for progress
+      const fileName = file_id ? `file_${file_id}` : (file_url ? file_url.split("/").pop() : "text_input");
+      const initialSnapshot = initProgress(
+        sessionId,
+        [{ name: fileName || "input", size: content?.length }],
+        {
+          organizationId: userData.organization_id,
+          userId: user.id,
+        }
+      );
+      setProgress(sessionId, initialSnapshot);
+      
+      // Start processing the file
+      updateProgress(sessionId, (s) => startFile(s, 0, "Starting parse..."));
+    }
+
     // Handle different source types
     let result;
     
@@ -95,9 +157,24 @@ export async function POST(request: NextRequest) {
           );
         }
         
+        // Check for cancellation
+        if (shouldCancel(sessionId)) {
+          updateProgress(sessionId, cancelSession);
+          return NextResponse.json({
+            success: false,
+            error: "Processing cancelled",
+            session_id: sessionId,
+          });
+        }
+        
+        // Update progress: parsing stage
+        updateProgress(sessionId, (s) => updateFileStage(s, 0, "parsing", 30, "Parsing text..."));
+        
         // Use AI parsing if enabled
         if (options?.use_ai) {
           try {
+            updateProgress(sessionId, (s) => updateFileStage(s, 0, "ocr", 40, "Processing with AI..."));
+            
             const provider = await getOrCreateProvider();
             const aiOptions: AIParseOptions = {
               extractMetadata: true,
@@ -106,6 +183,9 @@ export async function POST(request: NextRequest) {
               defaultThicknessMm: options?.default_thickness_mm,
             };
             const aiResult = await provider.parseText(content, aiOptions);
+            
+            updateProgress(sessionId, (s) => updateFileStage(s, 0, "validating", 90, "Validating results..."));
+            
             result = {
               parts: aiResult.parts.map(part => ({
                 part: part.part,
@@ -120,6 +200,8 @@ export async function POST(request: NextRequest) {
             };
           } catch (aiError) {
             logger.warn("AI parsing failed, falling back to regex", { error: aiError });
+            updateProgress(sessionId, (s) => updateFileStage(s, 0, "parsing", 50, "Falling back to regex parser..."));
+            
             // Fallback to regex parsing
             result = parseTextBatch(content, {
               defaultMaterialId: options?.default_material_id,
@@ -148,6 +230,18 @@ export async function POST(request: NextRequest) {
           );
         }
         
+        // Check for cancellation
+        if (shouldCancel(sessionId)) {
+          updateProgress(sessionId, cancelSession);
+          return NextResponse.json({
+            success: false,
+            error: "Processing cancelled",
+            session_id: sessionId,
+          });
+        }
+        
+        updateProgress(sessionId, (s) => updateFileStage(s, 0, "uploading", 10, "Fetching file..."));
+        
         let fileBuffer: Buffer;
         let mimeType: string = "";
         let fileName: string = "";
@@ -162,6 +256,7 @@ export async function POST(request: NextRequest) {
             .single();
             
           if (fileError || !fileRecord) {
+            updateProgress(sessionId, (s) => failFile(s, 0, "File not found"));
             return NextResponse.json(
               { error: "File not found" },
               { status: 404 }
@@ -175,15 +270,19 @@ export async function POST(request: NextRequest) {
             .createSignedUrl(fileRecord.storage_path, 60);
             
           if (urlError || !signedUrlData) {
+            updateProgress(sessionId, (s) => failFile(s, 0, "Failed to access file"));
             return NextResponse.json(
               { error: "Failed to access file" },
               { status: 500 }
             );
           }
           
+          updateProgress(sessionId, (s) => updateFileStage(s, 0, "uploading", 20, "Downloading file..."));
+          
           // Fetch the file content
           const fileResponse = await fetch(signedUrlData.signedUrl);
           if (!fileResponse.ok) {
+            updateProgress(sessionId, (s) => failFile(s, 0, "Failed to download file"));
             return NextResponse.json(
               { error: "Failed to download file" },
               { status: 500 }
@@ -197,6 +296,7 @@ export async function POST(request: NextRequest) {
           // Fetch from URL directly
           const fileResponse = await fetch(file_url);
           if (!fileResponse.ok) {
+            updateProgress(sessionId, (s) => failFile(s, 0, "Failed to fetch file from URL"));
             return NextResponse.json(
               { error: "Failed to fetch file from URL" },
               { status: 400 }
@@ -213,8 +313,12 @@ export async function POST(request: NextRequest) {
           );
         }
         
+        updateProgress(sessionId, (s) => updateFileStage(s, 0, "detecting", 30, "Detecting file type..."));
+        
         // Parse based on file type
         if (mimeType.includes("csv") || fileName.endsWith(".csv")) {
+          updateProgress(sessionId, (s) => updateFileStage(s, 0, "parsing", 50, "Parsing CSV..."));
+          
           const csvContent = fileBuffer.toString("utf-8");
           result = parseTextBatch(csvContent, {
             defaultMaterialId: options?.default_material_id,
@@ -223,12 +327,16 @@ export async function POST(request: NextRequest) {
             units: options?.units,
             sourceMethod: "file_upload",
           });
+          
+          updateProgress(sessionId, (s) => updateFileStage(s, 0, "validating", 90, "Validating..."));
         } else if (
           mimeType.includes("excel") || 
           mimeType.includes("spreadsheet") ||
           fileName.endsWith(".xlsx") ||
           fileName.endsWith(".xls")
         ) {
+          updateProgress(sessionId, (s) => updateFileStage(s, 0, "parsing", 50, "Parsing Excel..."));
+          
           // Create a new ArrayBuffer from the Buffer
           const arrayBuffer = new Uint8Array(fileBuffer).buffer;
           const excelResult = parseExcel(arrayBuffer, {
@@ -252,6 +360,8 @@ export async function POST(request: NextRequest) {
             totalErrors: excelResult.stats.errors,
             averageConfidence: successRate,
           };
+          
+          updateProgress(sessionId, (s) => updateFileStage(s, 0, "validating", 90, "Validating..."));
         } else if (
           mimeType.includes("image") || 
           mimeType === "application/pdf" ||
@@ -260,8 +370,20 @@ export async function POST(request: NextRequest) {
           // OCR parsing requires AI provider
           if (options?.use_ai) {
             try {
+              updateProgress(sessionId, (s) => updateFileStage(s, 0, "ocr", 40, "Processing with AI Vision..."));
+              
               const provider = await getOrCreateProvider();
               const base64Data = `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
+              
+              // Check for cancellation before expensive OCR
+              if (shouldCancel(sessionId)) {
+                updateProgress(sessionId, cancelSession);
+                return NextResponse.json({
+                  success: false,
+                  error: "Processing cancelled",
+                  session_id: sessionId,
+                });
+              }
               
               const aiOptions: AIParseOptions = {
                 extractMetadata: true,
@@ -270,7 +392,11 @@ export async function POST(request: NextRequest) {
                 defaultThicknessMm: options?.default_thickness_mm,
               };
               
+              updateProgress(sessionId, (s) => updateFileStage(s, 0, "ocr", 60, "Extracting text with AI..."));
+              
               const ocrResult = await provider.parseImage(base64Data, aiOptions);
+              
+              updateProgress(sessionId, (s) => updateFileStage(s, 0, "parsing", 80, "Parsing extracted text..."));
               
               result = {
                 parts: ocrResult.parts.map(part => ({
@@ -284,20 +410,25 @@ export async function POST(request: NextRequest) {
                 totalErrors: ocrResult.errors.length,
                 averageConfidence: ocrResult.totalConfidence,
               };
+              
+              updateProgress(sessionId, (s) => updateFileStage(s, 0, "validating", 95, "Validating results..."));
             } catch (visionError) {
               logger.warn("AI Vision parsing failed", { error: visionError });
+              updateProgress(sessionId, (s) => failFile(s, 0, "OCR parsing failed"));
               return NextResponse.json(
                 { error: "OCR parsing failed. Please try with a clearer image or enable AI mode." },
                 { status: 400 }
               );
             }
           } else {
+            updateProgress(sessionId, (s) => failFile(s, 0, "AI mode required for image/PDF"));
             return NextResponse.json(
               { error: "Enable AI mode for image/PDF parsing" },
               { status: 400 }
             );
           }
         } else {
+          updateProgress(sessionId, (s) => failFile(s, 0, `Unsupported file type: ${mimeType}`));
           return NextResponse.json(
             { error: `Unsupported file type: ${mimeType}` },
             { status: 400 }
@@ -341,6 +472,14 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    // Mark file as complete in progress tracking
+    if (sessionId) {
+      updateProgress(sessionId, (s) => completeFile(s, 0, result.totalParsed, {
+        confidence: result.averageConfidence,
+      }));
+      updateProgress(sessionId, (s) => completeSession(s, `Parsed ${result.totalParsed} parts`));
+    }
+
     // Create parse job record
     const { data: parseJob, error: jobError } = await supabase
       .from("parse_jobs")
@@ -348,7 +487,7 @@ export async function POST(request: NextRequest) {
         organization_id: userData.organization_id,
         user_id: user.id,
         source_kind: source_type,
-        source_data: { content: content?.slice(0, 1000), file_id, options },
+        source_data: { content: content?.slice(0, 1000), file_id, options, session_id: sessionId },
         status: "completed",
         parts_preview: result.parts.map(p => p.part),
         summary: {
@@ -369,6 +508,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       job_id: parseJob?.id,
+      session_id: sessionId,
       parts: result.parts.map(p => ({
         ...p.part,
         _confidence: p.confidence,
@@ -385,8 +525,15 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     logger.error("Parse API error:", error);
+    
+    // Update progress to error state
+    if (sessionId) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      updateProgress(sessionId, (s) => failFile(s, 0, errorMessage));
+    }
+    
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", session_id: sessionId },
       { status: 500 }
     );
   }

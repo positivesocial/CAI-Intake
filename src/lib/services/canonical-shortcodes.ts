@@ -15,11 +15,300 @@ import type {
   EdgeSide, 
   HolePatternKind, 
   CncOpType,
-  EdgeBandSpec,
   GrooveSpec,
   HolePatternSpec,
   CncOperation,
 } from "./canonical-types";
+
+// ============================================================
+// OVERRIDE SYNTAX TYPES
+// ============================================================
+
+/**
+ * Parsed shortcode with optional overrides
+ * 
+ * Override syntax: CODE@[overrides]
+ * 
+ * Examples:
+ * - GL@10       → GL edgebanding with 10mm override (thickness)
+ * - GL@d10      → GL with depth=10mm override
+ * - GL@d10w4    → GL with depth=10mm and width=4mm overrides
+ * - H2-100@d8   → H2-100 hinges with diameter=8mm override
+ * - SP-32@c5    → SP-32 shelf pins with count=5 override
+ */
+export interface ParsedShortcode {
+  /** Original raw input */
+  raw: string;
+  /** Base code without overrides */
+  baseCode: string;
+  /** Parsed overrides */
+  overrides: ShortcodeOverrides;
+  /** Whether overrides were present */
+  hasOverrides: boolean;
+}
+
+/**
+ * Possible override values
+ */
+export interface ShortcodeOverrides {
+  /** Depth/thickness override (d) */
+  depth?: number;
+  /** Width override (w) */
+  width?: number;
+  /** Offset/distance override (o) */
+  offset?: number;
+  /** Diameter override (dia) */
+  diameter?: number;
+  /** Count override (c) */
+  count?: number;
+  /** Center-to-center distance (cc) */
+  centers?: number;
+  /** Generic numeric override (bare number) */
+  value?: number;
+  /** Additional named parameters */
+  [key: string]: number | undefined;
+}
+
+// ============================================================
+// OVERRIDE PARSING
+// ============================================================
+
+/**
+ * Parse shortcode with override syntax
+ * 
+ * @param input - Raw shortcode input like "GL@10" or "H2-100@d8w4"
+ * @returns Parsed shortcode with base code and overrides
+ */
+export function parseShortcode(input: string): ParsedShortcode {
+  const raw = input.trim();
+  
+  // Check for @ override syntax
+  const atIndex = raw.indexOf("@");
+  
+  if (atIndex === -1) {
+    // No overrides
+    return {
+      raw,
+      baseCode: raw.toUpperCase(),
+      overrides: {},
+      hasOverrides: false,
+    };
+  }
+  
+  const baseCode = raw.slice(0, atIndex).trim().toUpperCase();
+  const overrideStr = raw.slice(atIndex + 1).trim().toLowerCase();
+  const overrides = parseOverrideString(overrideStr);
+  
+  return {
+    raw,
+    baseCode,
+    overrides,
+    hasOverrides: Object.keys(overrides).length > 0,
+  };
+}
+
+/**
+ * Parse the override string after the @
+ * 
+ * Supported formats:
+ * - "10"        → { value: 10 }
+ * - "d10"       → { depth: 10 }
+ * - "d10w4"     → { depth: 10, width: 4 }
+ * - "dia8"      → { diameter: 8 }
+ * - "cc128"     → { centers: 128 }
+ * - "c5"        → { count: 5 }
+ * - "o15"       → { offset: 15 }
+ */
+function parseOverrideString(str: string): ShortcodeOverrides {
+  const overrides: ShortcodeOverrides = {};
+  
+  if (!str) return overrides;
+  
+  // Try bare number first
+  const bareNumber = parseFloat(str);
+  if (!isNaN(bareNumber) && /^\d+(\.\d+)?$/.test(str)) {
+    overrides.value = bareNumber;
+    return overrides;
+  }
+  
+  // Parse named overrides: d10w4cc128
+  const pattern = /([a-z]+)(\d+(?:\.\d+)?)/g;
+  let match;
+  
+  while ((match = pattern.exec(str)) !== null) {
+    const [, prefix, numStr] = match;
+    const num = parseFloat(numStr);
+    
+    if (isNaN(num)) continue;
+    
+    switch (prefix) {
+      case "d":
+      case "depth":
+        overrides.depth = num;
+        break;
+      case "w":
+      case "width":
+        overrides.width = num;
+        break;
+      case "o":
+      case "off":
+      case "offset":
+        overrides.offset = num;
+        break;
+      case "dia":
+      case "diameter":
+        overrides.diameter = num;
+        break;
+      case "c":
+      case "cnt":
+      case "count":
+        overrides.count = Math.round(num);
+        break;
+      case "cc":
+      case "ctr":
+      case "centers":
+        overrides.centers = num;
+        break;
+      case "t":
+      case "thk":
+      case "thickness":
+        overrides.depth = num; // Thickness is same as depth for edgebanding
+        break;
+      case "r":
+      case "radius":
+        overrides[prefix] = num;
+        break;
+      default:
+        // Store unknown prefixes as-is
+        overrides[prefix] = num;
+    }
+  }
+  
+  return overrides;
+}
+
+/**
+ * Apply overrides to parsed groove code
+ */
+export function applyGrooveOverrides(
+  parsed: ParsedGrooveCode,
+  overrides: ShortcodeOverrides
+): ParsedGrooveCode {
+  return {
+    ...parsed,
+    widthMm: overrides.width ?? overrides.value ?? parsed.widthMm,
+    offsetMm: overrides.offset ?? parsed.offsetMm,
+  };
+}
+
+/**
+ * Apply overrides to parsed hole code
+ */
+export function applyHoleOverrides(
+  parsed: ParsedHoleCode,
+  overrides: ShortcodeOverrides
+): ParsedHoleCode {
+  return {
+    ...parsed,
+    count: overrides.count ?? parsed.count,
+    offsetMm: overrides.offset ?? overrides.value ?? parsed.offsetMm,
+    centersMm: overrides.centers ?? parsed.centersMm,
+  };
+}
+
+/**
+ * Generate shortcode string with overrides
+ */
+export function shortcodeWithOverrides(baseCode: string, overrides: ShortcodeOverrides): string {
+  if (Object.keys(overrides).length === 0) {
+    return baseCode;
+  }
+  
+  const parts: string[] = [];
+  
+  // Handle bare value specially
+  if (overrides.value !== undefined && Object.keys(overrides).length === 1) {
+    return `${baseCode}@${overrides.value}`;
+  }
+  
+  // Build override string
+  if (overrides.depth !== undefined) parts.push(`d${overrides.depth}`);
+  if (overrides.width !== undefined) parts.push(`w${overrides.width}`);
+  if (overrides.offset !== undefined) parts.push(`o${overrides.offset}`);
+  if (overrides.diameter !== undefined) parts.push(`dia${overrides.diameter}`);
+  if (overrides.count !== undefined) parts.push(`c${overrides.count}`);
+  if (overrides.centers !== undefined) parts.push(`cc${overrides.centers}`);
+  
+  // Add any remaining unknown overrides
+  for (const [key, val] of Object.entries(overrides)) {
+    if (!["depth", "width", "offset", "diameter", "count", "centers", "value"].includes(key)) {
+      if (val !== undefined) {
+        parts.push(`${key}${val}`);
+      }
+    }
+  }
+  
+  return parts.length > 0 ? `${baseCode}@${parts.join("")}` : baseCode;
+}
+
+/**
+ * Parse and apply edgebanding with thickness override
+ * 
+ * @example
+ * parseEdgeWithOverride("2L2W@10") → { edges: ["L1", "L2", "W1", "W2"], thickness: 10 }
+ */
+export function parseEdgeWithOverride(input: string): {
+  edges: EdgeSide[];
+  thickness?: number;
+} {
+  const parsed = parseShortcode(input);
+  const edges = parseEdgeCode(parsed.baseCode);
+  
+  return {
+    edges,
+    thickness: parsed.overrides.depth ?? parsed.overrides.value,
+  };
+}
+
+/**
+ * Parse groove with overrides
+ * 
+ * @example
+ * parseGrooveWithOverride("GL-4-10@d6") → { edges, widthMm: 4, offsetMm: 10, depth: 6 }
+ */
+export function parseGrooveWithOverride(input: string): ParsedGrooveCode & { depthMm?: number } | null {
+  const parsed = parseShortcode(input);
+  const groove = parseGrooveCode(parsed.baseCode);
+  
+  if (!groove) return null;
+  
+  const withOverrides = applyGrooveOverrides(groove, parsed.overrides);
+  
+  return {
+    ...withOverrides,
+    depthMm: parsed.overrides.depth,
+  };
+}
+
+/**
+ * Parse hole pattern with overrides
+ * 
+ * @example
+ * parseHoleWithOverride("H2-100@dia35") → { kind: "hinge", count: 2, offsetMm: 100, diameter: 35 }
+ */
+export function parseHoleWithOverride(input: string): ParsedHoleCode & { diameterMm?: number } | null {
+  const parsed = parseShortcode(input);
+  const hole = parseHoleCode(parsed.baseCode);
+  
+  if (!hole) return null;
+  
+  const withOverrides = applyHoleOverrides(hole, parsed.overrides);
+  
+  return {
+    ...withOverrides,
+    diameterMm: parsed.overrides.diameter,
+  };
+}
 
 // ============================================================
 // EDGEBANDING SHORTCODES
@@ -517,6 +806,18 @@ export const SHORTCODE_REFERENCE = {
       { code: "RADIUS-25-FRONT", description: "25mm radius, front corners" },
       { code: "POCKET-100x50x10", description: "Pocket 100x50mm, 10mm deep" },
       { code: "REBATE-10x10", description: "10mm x 10mm edge rebate" },
+    ],
+  },
+  overrides: {
+    title: "Override Syntax",
+    description: "Add @[overrides] to any code to customize parameters",
+    examples: [
+      { code: "2L2W@10", description: "All edges with 10mm thickness" },
+      { code: "GL-4-10@d6", description: "Groove with 6mm depth override" },
+      { code: "GL-4-10@d6w5", description: "Groove with 6mm depth, 5mm width" },
+      { code: "H2-100@dia35", description: "2 hinges with 35mm diameter" },
+      { code: "SP-32@c4", description: "Shelf pins with 4 count" },
+      { code: "HD-CC96@cc128", description: "Handle with 128mm centers" },
     ],
   },
 } as const;

@@ -387,3 +387,5 @@ INSERT INTO parser_patterns (organization_id, pattern_type, input_pattern, outpu
   (NULL, 'quantity_format', '[xX](\d+)', '{"prefix": "x"}', 'Quantity as x5, X10', 0.9),
   (NULL, 'quantity_format', '(\d+)\s*(?:pcs?|pieces?|qty)', '{"suffix": "pcs"}', 'Quantity with pcs suffix', 0.85);
 
+
+

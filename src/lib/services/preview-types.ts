@@ -425,3 +425,5 @@ export function generateServiceBadges(data: PartPreviewData): ServiceBadge[] {
   return badges;
 }
 
+
+

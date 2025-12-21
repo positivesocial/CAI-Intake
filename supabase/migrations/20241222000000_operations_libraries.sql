@@ -704,3 +704,5 @@ COMMENT ON COLUMN public.groove_profiles.default_face IS 'Default groove face: f
 COMMENT ON COLUMN public.routing_profiles.profile_type IS 'Operation type: edge_profile, pocket, cutout, rebate, chamfer, radius, contour, drill_array, text, custom';
 COMMENT ON COLUMN public.routing_profiles.specifications IS 'Type-specific JSON config. See migration comments for structure per type.';
 
+
+
