@@ -25,7 +25,6 @@ const UpdateMaterialSchema = z.object({
     L: z.number().positive(),
     W: z.number().positive(),
   }).optional(),
-  cost_per_sqm: z.number().positive().optional().nullable(),
   supplier: z.string().optional().nullable(),
   sku: z.string().optional().nullable(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -87,7 +86,6 @@ export async function GET(
           L: material.default_sheet_l,
           W: material.default_sheet_w,
         } : undefined,
-        cost_per_sqm: material.cost_per_sqm,
         supplier: material.supplier,
         sku: material.sku,
         metadata: material.metadata,
@@ -169,7 +167,6 @@ export async function PUT(
       updateData.default_sheet_l = data.default_sheet.L;
       updateData.default_sheet_w = data.default_sheet.W;
     }
-    if (data.cost_per_sqm !== undefined) updateData.cost_per_sqm = data.cost_per_sqm;
     if (data.supplier !== undefined) updateData.supplier = data.supplier;
     if (data.sku !== undefined) updateData.sku = data.sku;
     if (data.metadata !== undefined) updateData.metadata = data.metadata;
@@ -221,7 +218,6 @@ export async function PUT(
           L: material.default_sheet_l,
           W: material.default_sheet_w,
         } : undefined,
-        cost_per_sqm: material.cost_per_sqm,
         supplier: material.supplier,
         sku: material.sku,
         metadata: material.metadata,

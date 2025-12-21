@@ -25,7 +25,6 @@ const CreateMaterialSchema = z.object({
     L: z.number().positive(),
     W: z.number().positive(),
   }).optional(),
-  cost_per_sqm: z.number().positive().optional(),
   supplier: z.string().optional(),
   sku: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -100,7 +99,6 @@ export async function GET(request: NextRequest) {
         L: m.default_sheet_l,
         W: m.default_sheet_w,
       } : undefined,
-      cost_per_sqm: m.cost_per_sqm,
       supplier: m.supplier,
       sku: m.sku,
       metadata: m.metadata,
@@ -180,7 +178,6 @@ export async function POST(request: NextRequest) {
         color_code: data.color_code,
         default_sheet_l: data.default_sheet?.L,
         default_sheet_w: data.default_sheet?.W,
-        cost_per_sqm: data.cost_per_sqm,
         supplier: data.supplier,
         sku: data.sku,
         metadata: data.metadata,
@@ -227,7 +224,6 @@ export async function POST(request: NextRequest) {
           L: material.default_sheet_l,
           W: material.default_sheet_w,
         } : undefined,
-        cost_per_sqm: material.cost_per_sqm,
         supplier: material.supplier,
         sku: material.sku,
         metadata: material.metadata,
@@ -243,4 +239,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

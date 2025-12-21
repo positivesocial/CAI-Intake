@@ -21,7 +21,8 @@ const UpdateEdgebandSchema = z.object({
   material: z.string().optional().nullable(),
   color_code: z.string().optional().nullable(),
   color_match_material_id: z.string().optional().nullable(),
-  cost_per_meter: z.number().positive().optional().nullable(),
+  waste_factor_pct: z.number().min(0).max(100).optional(),
+  overhang_mm: z.number().min(0).optional(),
   supplier: z.string().optional().nullable(),
   sku: z.string().optional().nullable(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -79,7 +80,8 @@ export async function GET(
         material: edgeband.material,
         color_code: edgeband.color_code,
         color_match_material_id: edgeband.color_match_material_id,
-        cost_per_meter: edgeband.cost_per_meter,
+        waste_factor_pct: edgeband.waste_factor_pct ?? 1,
+        overhang_mm: edgeband.overhang_mm ?? 0,
         supplier: edgeband.supplier,
         sku: edgeband.sku,
         metadata: edgeband.metadata,
@@ -156,7 +158,8 @@ export async function PUT(
         ...(data.material !== undefined && { material: data.material }),
         ...(data.color_code !== undefined && { color_code: data.color_code }),
         ...(data.color_match_material_id !== undefined && { color_match_material_id: data.color_match_material_id }),
-        ...(data.cost_per_meter !== undefined && { cost_per_meter: data.cost_per_meter }),
+        ...(data.waste_factor_pct !== undefined && { waste_factor_pct: data.waste_factor_pct }),
+        ...(data.overhang_mm !== undefined && { overhang_mm: data.overhang_mm }),
         ...(data.supplier !== undefined && { supplier: data.supplier }),
         ...(data.sku !== undefined && { sku: data.sku }),
         ...(data.metadata !== undefined && { metadata: data.metadata }),
@@ -201,7 +204,8 @@ export async function PUT(
         material: edgeband.material,
         color_code: edgeband.color_code,
         color_match_material_id: edgeband.color_match_material_id,
-        cost_per_meter: edgeband.cost_per_meter,
+        waste_factor_pct: edgeband.waste_factor_pct ?? 1,
+        overhang_mm: edgeband.overhang_mm ?? 0,
         supplier: edgeband.supplier,
         sku: edgeband.sku,
         metadata: edgeband.metadata,
@@ -296,4 +300,3 @@ export async function DELETE(
     );
   }
 }
-

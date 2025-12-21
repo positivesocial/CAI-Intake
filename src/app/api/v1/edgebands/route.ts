@@ -21,7 +21,10 @@ const CreateEdgebandSchema = z.object({
   material: z.string().optional(),
   color_code: z.string().optional(),
   color_match_material_id: z.string().optional(),
-  cost_per_meter: z.number().positive().optional(),
+  // Waste factor as percentage (1 = 1%, default)
+  waste_factor_pct: z.number().min(0).max(100).default(1),
+  // Overhang on each end of the edgeband (adds 2x this to total length)
+  overhang_mm: z.number().min(0).default(0),
   supplier: z.string().optional(),
   sku: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -95,7 +98,8 @@ export async function GET(request: NextRequest) {
       material: e.material,
       color_code: e.color_code,
       color_match_material_id: e.color_match_material_id,
-      cost_per_meter: e.cost_per_meter,
+      waste_factor_pct: e.waste_factor_pct ?? 1,
+      overhang_mm: e.overhang_mm ?? 0,
       supplier: e.supplier,
       sku: e.sku,
       metadata: e.metadata,
@@ -173,7 +177,8 @@ export async function POST(request: NextRequest) {
         material: data.material,
         color_code: data.color_code,
         color_match_material_id: data.color_match_material_id,
-        cost_per_meter: data.cost_per_meter,
+        waste_factor_pct: data.waste_factor_pct,
+        overhang_mm: data.overhang_mm,
         supplier: data.supplier,
         sku: data.sku,
         metadata: data.metadata,
@@ -199,7 +204,7 @@ export async function POST(request: NextRequest) {
     await logAuditFromRequest(request, {
       userId: user.id,
       organizationId: userData.organization_id,
-      action: AUDIT_ACTIONS.MATERIAL_CREATED, // Use same action type
+      action: AUDIT_ACTIONS.MATERIAL_CREATED,
       entityType: "edgeband",
       entityId: edgeband.id,
       metadata: { edgebandId: edgeband.edgeband_id, name: edgeband.name },
@@ -216,7 +221,8 @@ export async function POST(request: NextRequest) {
         material: edgeband.material,
         color_code: edgeband.color_code,
         color_match_material_id: edgeband.color_match_material_id,
-        cost_per_meter: edgeband.cost_per_meter,
+        waste_factor_pct: edgeband.waste_factor_pct ?? 1,
+        overhang_mm: edgeband.overhang_mm ?? 0,
         supplier: edgeband.supplier,
         sku: edgeband.sku,
         metadata: edgeband.metadata,
@@ -232,4 +238,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

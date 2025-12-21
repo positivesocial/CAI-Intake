@@ -17,6 +17,8 @@ import {
   SquareStack,
   Ruler,
   Info,
+  Percent,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,7 +50,6 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 // ============================================================
 // TYPES
@@ -64,7 +65,6 @@ interface Material {
   finish?: string;
   color_code?: string;
   default_sheet?: { L: number; W: number };
-  cost_per_sqm?: number;
   supplier?: string;
   sku?: string;
   created_at?: string;
@@ -79,7 +79,8 @@ interface Edgeband {
   material?: string;
   color_code?: string;
   color_match_material_id?: string;
-  cost_per_meter?: number;
+  waste_factor_pct: number; // Default 1%
+  overhang_mm: number; // Default 0mm
   supplier?: string;
   sku?: string;
   created_at?: string;
@@ -108,7 +109,6 @@ function SheetGoodsTab() {
     color_code: "#FFFFFF",
     default_sheet_l: 2800,
     default_sheet_w: 2070,
-    cost_per_sqm: 0,
     supplier: "",
   });
 
@@ -166,7 +166,6 @@ function SheetGoodsTab() {
           L: formData.default_sheet_l,
           W: formData.default_sheet_w,
         },
-        cost_per_sqm: formData.cost_per_sqm || undefined,
         supplier: formData.supplier || undefined,
       };
 
@@ -215,7 +214,6 @@ function SheetGoodsTab() {
       color_code: "#FFFFFF",
       default_sheet_l: 2800,
       default_sheet_w: 2070,
-      cost_per_sqm: 0,
       supplier: "",
     });
     setEditingMaterial(null);
@@ -234,7 +232,6 @@ function SheetGoodsTab() {
       color_code: material.color_code ?? "#FFFFFF",
       default_sheet_l: material.default_sheet?.L ?? 2800,
       default_sheet_w: material.default_sheet?.W ?? 2070,
-      cost_per_sqm: material.cost_per_sqm ?? 0,
       supplier: material.supplier ?? "",
     });
     setIsAddDialogOpen(true);
@@ -398,7 +395,7 @@ function SheetGoodsTab() {
                   <TableHead>Core</TableHead>
                   <TableHead>Grain</TableHead>
                   <TableHead>Sheet Size</TableHead>
-                  <TableHead className="text-right">Cost/m²</TableHead>
+                  <TableHead>Supplier</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -443,10 +440,8 @@ function SheetGoodsTab() {
                           ? `${material.default_sheet.L} × ${material.default_sheet.W}`
                           : "-"}
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {material.cost_per_sqm
-                          ? `$${material.cost_per_sqm.toFixed(2)}`
-                          : "-"}
+                      <TableCell className="text-sm text-muted-foreground">
+                        {material.supplier || "-"}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
@@ -571,7 +566,7 @@ function SheetGoodsTab() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Finish</Label>
                 <Input
@@ -601,21 +596,6 @@ function SheetGoodsTab() {
                     className="flex-1"
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Cost per m²</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.cost_per_sqm}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      cost_per_sqm: parseFloat(e.target.value),
-                    })
-                  }
-                  placeholder="0.00"
-                />
               </div>
             </div>
 
@@ -695,7 +675,8 @@ function EdgebandingTab() {
     material: "PVC",
     color_code: "#FFFFFF",
     color_match_material_id: "",
-    cost_per_meter: 0,
+    waste_factor_pct: 1,
+    overhang_mm: 0,
     supplier: "",
   });
 
@@ -752,7 +733,8 @@ function EdgebandingTab() {
         material: formData.material || undefined,
         color_code: formData.color_code,
         color_match_material_id: formData.color_match_material_id || undefined,
-        cost_per_meter: formData.cost_per_meter || undefined,
+        waste_factor_pct: formData.waste_factor_pct,
+        overhang_mm: formData.overhang_mm,
         supplier: formData.supplier || undefined,
       };
 
@@ -799,7 +781,8 @@ function EdgebandingTab() {
       material: "PVC",
       color_code: "#FFFFFF",
       color_match_material_id: "",
-      cost_per_meter: 0,
+      waste_factor_pct: 1,
+      overhang_mm: 0,
       supplier: "",
     });
     setEditingEdgeband(null);
@@ -816,7 +799,8 @@ function EdgebandingTab() {
       material: edgeband.material ?? "PVC",
       color_code: edgeband.color_code ?? "#FFFFFF",
       color_match_material_id: edgeband.color_match_material_id ?? "",
-      cost_per_meter: edgeband.cost_per_meter ?? 0,
+      waste_factor_pct: edgeband.waste_factor_pct ?? 1,
+      overhang_mm: edgeband.overhang_mm ?? 0,
       supplier: edgeband.supplier ?? "",
     });
     setIsAddDialogOpen(true);
@@ -977,8 +961,8 @@ function EdgebandingTab() {
                   <TableHead className="text-right">Thickness</TableHead>
                   <TableHead className="text-right">Width</TableHead>
                   <TableHead>Material</TableHead>
-                  <TableHead className="text-right">Cost/m</TableHead>
-                  <TableHead>Supplier</TableHead>
+                  <TableHead className="text-right">Waste</TableHead>
+                  <TableHead className="text-right">Overhang</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -1015,12 +999,14 @@ function EdgebandingTab() {
                         <Badge variant="outline">{edgeband.material || "-"}</Badge>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {edgeband.cost_per_meter
-                          ? `$${edgeband.cost_per_meter.toFixed(2)}`
-                          : "-"}
+                        <span className="text-amber-600">{edgeband.waste_factor_pct}%</span>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {edgeband.supplier || "-"}
+                      <TableCell className="text-right font-mono">
+                        {edgeband.overhang_mm > 0 ? (
+                          <span className="text-blue-600">+{edgeband.overhang_mm}mm</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
@@ -1179,24 +1165,6 @@ function EdgebandingTab() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Cost per Meter</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.cost_per_meter}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      cost_per_meter: parseFloat(e.target.value),
-                    })
-                  }
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
                 <Label>Matching Material ID</Label>
                 <Input
                   value={formData.color_match_material_id}
@@ -1208,20 +1176,74 @@ function EdgebandingTab() {
                   }
                   placeholder="MAT-WHITE-18"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Link to a sheet material for color matching
-                </p>
               </div>
-              <div className="space-y-2">
-                <Label>Supplier</Label>
-                <Input
-                  value={formData.supplier}
-                  onChange={(e) =>
-                    setFormData({ ...formData, supplier: e.target.value })
-                  }
-                  placeholder="Supplier name"
-                />
+            </div>
+
+            {/* Material Length Adjustments */}
+            <div className="rounded-lg border p-4 bg-muted/30 space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <ArrowLeftRight className="h-4 w-4" />
+                Material Length Adjustments
               </div>
+              <p className="text-xs text-muted-foreground">
+                These values adjust the edgeband length calculation when generating material requirements.
+              </p>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Percent className="h-3 w-3" />
+                    Waste Factor (%)
+                  </Label>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="100"
+                    value={formData.waste_factor_pct}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        waste_factor_pct: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    placeholder="1"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Percentage added for waste/trim (default: 1%)
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Overhang (mm)</Label>
+                  <Input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={formData.overhang_mm}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        overhang_mm: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    placeholder="0"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Extra length on each end for flush trimming (adds 2× to total)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Supplier</Label>
+              <Input
+                value={formData.supplier}
+                onChange={(e) =>
+                  setFormData({ ...formData, supplier: e.target.value })
+                }
+                placeholder="Supplier name"
+              />
             </div>
 
             <DialogFooter>
@@ -1274,8 +1296,8 @@ export default function MaterialsLibraryPage() {
         <CardContent className="flex items-start gap-3 py-3">
           <Info className="h-5 w-5 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-800">
-            <strong>Organization Library:</strong> These materials are specific to your organization.
-            They are used for cutlist creation, cost estimation, and optimization planning.
+            <strong>Organization Library:</strong> These materials are specific to your organization
+            and are used for cutlist creation and optimization planning.
           </div>
         </CardContent>
       </Card>
