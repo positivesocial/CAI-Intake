@@ -225,10 +225,20 @@ export function FileUpload() {
             const data = await response.json();
 
             if (!response.ok) {
-              // Handle specific error codes
+              // Handle specific error codes with appropriate toast messages
               if (data.code === "AI_NOT_CONFIGURED") {
                 toast.error("AI processing is not available", {
                   description: "Please contact your system administrator to configure AI services.",
+                });
+              } else if (data.code === "PDF_NO_TEXT") {
+                toast.error("Scanned PDF detected", {
+                  description: "Take a screenshot of your cutlist and upload as an image instead.",
+                  duration: 8000,
+                });
+              } else if (data.code === "PDF_EXTRACTION_FAILED") {
+                toast.error("Could not read PDF", {
+                  description: "Try uploading as an image (PNG/JPG) instead.",
+                  duration: 6000,
                 });
               }
               throw new Error(data.error || "Failed to process file");

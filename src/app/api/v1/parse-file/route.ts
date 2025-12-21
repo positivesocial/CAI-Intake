@@ -102,31 +102,45 @@ export async function POST(request: NextRequest) {
       
       aiResult = await provider.parseImage(dataUrl, parseOptions);
     } else if (fileType === "pdf") {
-      // Process PDF - extract text first
+      // Process PDF - extract text
       const pdfBuffer = await file.arrayBuffer();
       let extractedText = "";
+      let pdfError: unknown = null;
       
       try {
         const pdfParseModule = await import("pdf-parse");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const pdfParse = (pdfParseModule as any).default ?? pdfParseModule;
         const pdfData = await pdfParse(Buffer.from(pdfBuffer));
-        extractedText = pdfData.text;
-      } catch (pdfError) {
-        logger.warn("PDF text extraction failed", { error: pdfError });
+        extractedText = pdfData.text?.trim() || "";
+      } catch (err) {
+        pdfError = err;
+        logger.warn("PDF text extraction failed", { error: err });
       }
       
-      if (!extractedText) {
+      // Check if we got meaningful text (more than 50 chars of actual content)
+      const meaningfulText = extractedText.replace(/\s+/g, " ").trim();
+      
+      if (meaningfulText.length > 50) {
+        // Use text parsing for text-based PDFs
+        aiResult = await provider.parseText(extractedText, parseOptions);
+      } else {
+        // PDF is likely scanned/image-based - provide helpful guidance
+        logger.info("PDF has insufficient text content", { 
+          textLength: meaningfulText.length,
+          fileName: file.name,
+          hasError: !!pdfError
+        });
+        
         return NextResponse.json(
           { 
-            error: "Could not extract text from PDF. Try uploading as an image or use a text-based PDF.",
-            code: "PDF_EXTRACTION_FAILED"
+            error: "This PDF appears to be scanned or image-based and cannot be processed directly. Please try one of these options:\n\n1. **Take a screenshot** of the cutlist and upload as an image (PNG/JPG)\n2. **Export from your software** as a text-based PDF\n3. **Use the Excel/CSV import** if you have the data in spreadsheet format",
+            code: "PDF_NO_TEXT",
+            hint: "image_upload"
           },
           { status: 400 }
         );
       }
-      
-      aiResult = await provider.parseText(extractedText, parseOptions);
     } else {
       return NextResponse.json(
         { error: "Unsupported file type. Use images or PDFs." },
