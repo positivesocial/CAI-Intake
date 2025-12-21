@@ -130,6 +130,10 @@ export interface IntakeState {
   // Materials
   addMaterial: (material: MaterialDef) => void;
   removeMaterial: (materialId: string) => void;
+  setMaterials: (materials: MaterialDef[]) => void;
+  setEdgebands: (edgebands: EdgebandDef[]) => void;
+  loadOrganizationMaterials: () => Promise<void>;
+  loadOrganizationEdgebands: () => Promise<void>;
 
   // Selection
   selectPart: (partId: string) => void;
@@ -523,6 +527,95 @@ export const useIntakeStore = create<IntakeState>()(
             ),
           },
         })),
+
+      setMaterials: (materials) =>
+        set((state) => ({
+          currentCutlist: {
+            ...state.currentCutlist,
+            materials,
+          },
+        })),
+
+      setEdgebands: (edgebands) =>
+        set((state) => ({
+          currentCutlist: {
+            ...state.currentCutlist,
+            edgebands,
+          },
+        })),
+
+      loadOrganizationMaterials: async () => {
+        try {
+          const response = await fetch("/api/v1/materials");
+          if (response.ok) {
+            const data = await response.json();
+            const materials: MaterialDef[] = (data.materials || []).map((m: {
+              material_id: string;
+              name: string;
+              thickness_mm: number;
+              core_type?: string;
+              finish?: string;
+              grain?: string;
+              default_sheet?: { L: number; W: number };
+            }) => ({
+              material_id: m.material_id,
+              name: m.name,
+              thickness_mm: m.thickness_mm,
+              core_type: m.core_type,
+              finish: m.finish,
+              grain: m.grain,
+              default_sheet: m.default_sheet ? {
+                size: { L: m.default_sheet.L, W: m.default_sheet.W },
+                grained: m.grain === "length" || m.grain === "width",
+              } : undefined,
+            }));
+            if (materials.length > 0) {
+              set((state) => ({
+                currentCutlist: {
+                  ...state.currentCutlist,
+                  materials,
+                },
+              }));
+            }
+          }
+        } catch (error) {
+          console.error("Failed to load organization materials:", error);
+          // Keep default materials on error
+        }
+      },
+
+      loadOrganizationEdgebands: async () => {
+        try {
+          const response = await fetch("/api/v1/edgebands");
+          if (response.ok) {
+            const data = await response.json();
+            const edgebands: EdgebandDef[] = (data.edgebands || []).map((e: {
+              edgeband_id: string;
+              name: string;
+              thickness_mm: number;
+              width_mm?: number;
+              color_match_material_id?: string;
+            }) => ({
+              edgeband_id: e.edgeband_id,
+              name: e.name,
+              thickness_mm: e.thickness_mm,
+              width_mm: e.width_mm,
+              color_match_material_id: e.color_match_material_id,
+            }));
+            if (edgebands.length > 0) {
+              set((state) => ({
+                currentCutlist: {
+                  ...state.currentCutlist,
+                  edgebands,
+                },
+              }));
+            }
+          }
+        } catch (error) {
+          console.error("Failed to load organization edgebands:", error);
+          // Keep default edgebands on error
+        }
+      },
 
       // Selection
       selectPart: (partId) =>

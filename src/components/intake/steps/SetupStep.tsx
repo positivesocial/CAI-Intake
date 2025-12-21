@@ -84,15 +84,37 @@ export function SetupStep() {
     setCapabilities,
     goToNextStep,
     canProceedToIntake,
+    loadOrganizationMaterials,
+    loadOrganizationEdgebands,
   } = useIntakeStore();
 
   const nameInputRef = React.useRef<HTMLInputElement>(null);
+  const [loadingMaterials, setLoadingMaterials] = React.useState(false);
 
   // Focus name input on mount
   React.useEffect(() => {
     nameInputRef.current?.focus();
     nameInputRef.current?.select();
   }, []);
+
+  // Load organization materials and edgebands on mount
+  React.useEffect(() => {
+    const loadMaterials = async () => {
+      setLoadingMaterials(true);
+      try {
+        await Promise.all([
+          loadOrganizationMaterials(),
+          loadOrganizationEdgebands(),
+        ]);
+      } catch (error) {
+        console.error("Failed to load materials:", error);
+      } finally {
+        setLoadingMaterials(false);
+      }
+    };
+    
+    loadMaterials();
+  }, [loadOrganizationMaterials, loadOrganizationEdgebands]);
 
   const capabilities = currentCutlist.capabilities;
   const canProceed = canProceedToIntake();
@@ -251,6 +273,35 @@ export function SetupStep() {
           />
         </div>
       </section>
+
+      {/* Materials Info */}
+      <Card className="bg-[var(--muted)]/30">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-4 text-sm">
+            <Package className="h-5 w-5 text-[var(--muted-foreground)]" />
+            <div className="flex-1">
+              {loadingMaterials ? (
+                <span className="text-[var(--muted-foreground)]">Loading materials...</span>
+              ) : (
+                <span>
+                  <span className="font-medium">{currentCutlist.materials.length}</span>
+                  {" materials, "}
+                  <span className="font-medium">{currentCutlist.edgebands.length}</span>
+                  {" edgebands available"}
+                </span>
+              )}
+            </div>
+            <a
+              href="/materials"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--cai-teal)] hover:underline text-sm"
+            >
+              Manage Materials →
+            </a>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Navigation */}
       <StepNavigation
