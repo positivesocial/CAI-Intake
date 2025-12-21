@@ -17,6 +17,8 @@ import {
   Plus,
   Bell,
   Layers,
+  Cpu,
+  Code2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +57,19 @@ const NAV_ITEMS = [
   },
 ];
 
+const ADMIN_NAV_ITEMS = [
+  {
+    label: "Operations",
+    href: "/settings/operations",
+    icon: Cpu,
+  },
+  {
+    label: "Shortcodes",
+    href: "/settings/shortcodes",
+    icon: Code2,
+  },
+];
+
 const PLATFORM_NAV_ITEMS = [
   {
     label: "Platform Admin",
@@ -71,7 +86,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, setUser, isSuperAdmin } = useAuthStore();
+  const { user, logout, setUser, isSuperAdmin, isOrgAdmin } = useAuthStore();
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
 
@@ -260,6 +275,37 @@ export default function DashboardLayout({
               );
             })}
 
+            {/* Admin Section - Only visible to org admins */}
+            {(isOrgAdmin() || isSuperAdmin()) && (
+              <>
+                <div className="pt-4 pb-2">
+                  <p className="px-3 text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">
+                    Admin
+                  </p>
+                </div>
+                {ADMIN_NAV_ITEMS.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setIsSidebarOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+                        isActive
+                          ? "bg-[var(--cai-teal)]/10 text-[var(--cai-teal)]"
+                          : "hover:bg-[var(--muted)] text-[var(--foreground)]"
+                      )}
+                    >
+                      <Icon className="h-5 w-5" />
+                      <span className="font-medium">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </>
+            )}
+
             {/* Platform Admin Section - Only visible to super admins */}
             {isSuperAdmin() && (
               <>
@@ -275,11 +321,11 @@ export default function DashboardLayout({
                       key={item.href}
                       href={item.href}
                       onClick={() => setIsSidebarOpen(false)}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200 dark:from-purple-900/30 dark:to-indigo-900/30 dark:text-purple-300 dark:border-purple-700"
                     >
                       <Icon className="h-5 w-5" />
                       <span className="font-medium">{item.label}</span>
-                      <Badge className="ml-auto bg-purple-100 text-purple-700 text-xs">
+                      <Badge className="ml-auto bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-xs">
                         Admin
                       </Badge>
                     </Link>
