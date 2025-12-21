@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   Keyboard,
+  ClipboardPaste,
   FileSpreadsheet,
   Mic,
   Upload,
@@ -15,7 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  QuickParseField,
+  QuickAddField,
+  PasteParsePanel,
   ManualEntryForm,
   IntakeInbox,
   ExcelImport,
@@ -32,7 +34,13 @@ const INTAKE_MODES = [
     id: "manual",
     label: "Manual",
     icon: Keyboard,
-    description: "Type or paste parts",
+    description: "Spreadsheet entry",
+  },
+  {
+    id: "paste",
+    label: "Paste",
+    icon: ClipboardPaste,
+    description: "Parse text data",
   },
   {
     id: "excel",
@@ -82,7 +90,7 @@ export function IntakeStep() {
         value={activeMode}
         onValueChange={(v) => setActiveMode(v as typeof activeMode)}
       >
-        <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto p-1">
           {INTAKE_MODES.map((mode) => {
             const Icon = mode.icon;
             return (
@@ -98,14 +106,19 @@ export function IntakeStep() {
           })}
         </TabsList>
 
-        {/* Manual Entry */}
+        {/* Manual Entry with Quick Add */}
         <TabsContent value="manual" className="space-y-6 mt-4">
           <Card>
             <CardContent className="pt-6">
-              <QuickParseField />
+              <QuickAddField />
             </CardContent>
           </Card>
           <ManualEntryForm />
+        </TabsContent>
+        
+        {/* Paste & Parse */}
+        <TabsContent value="paste" className="mt-4">
+          <PasteParsePanel />
         </TabsContent>
 
         {/* Excel Import */}
