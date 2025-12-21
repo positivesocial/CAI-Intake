@@ -204,7 +204,6 @@ function parseRow(
  * Parse edge banding shortcode
  */
 function parseEdgeShortcode(code: string): CutPart["ops"]["edging"] {
-  const edging: NonNullable<CutPart["ops"]["edging"]> = {};
   const normalized = code.trim().toUpperCase();
   
   const mappings: Record<string, string[]> = {
@@ -223,14 +222,17 @@ function parseEdgeShortcode(code: string): CutPart["ops"]["edging"] {
     "2L1W": ["L1", "L2", "W1"],
   };
   
-  const edges = mappings[normalized];
-  if (edges) {
-    for (const edge of edges) {
-      edging[edge as keyof typeof edging] = "default";
-    }
+  const edgeList = mappings[normalized];
+  if (!edgeList || edgeList.length === 0) {
+    return undefined;
   }
   
-  return edging;
+  const edges: Record<string, { apply: boolean; edgeband_id?: string }> = {};
+  for (const edge of edgeList) {
+    edges[edge] = { apply: true };
+  }
+  
+  return { edges };
 }
 
 // ============================================================

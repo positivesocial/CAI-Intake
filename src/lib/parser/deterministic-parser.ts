@@ -306,30 +306,40 @@ function parseRow(
 function parseEdgebandShortcode(code: string): CutPart["ops"]["edging"] | undefined {
   const normalized = code.trim().toUpperCase();
   
-  // Common shortcode mappings
-  const edgeMappings: Record<string, { L1?: string; L2?: string; W1?: string; W2?: string }> = {
-    "0": {},
-    "-": {},
-    "NONE": {},
-    "L": { L1: "default" },
-    "L1": { L1: "default" },
-    "L2": { L2: "default" },
-    "W": { W1: "default" },
-    "W1": { W1: "default" },
-    "W2": { W2: "default" },
-    "2L": { L1: "default", L2: "default" },
-    "2W": { W1: "default", W2: "default" },
-    "LW": { L1: "default", W1: "default" },
-    "L2W": { L1: "default", W1: "default", W2: "default" },
-    "2L1W": { L1: "default", L2: "default", W1: "default" },
-    "2LW": { L1: "default", L2: "default", W1: "default" },
-    "2L2W": { L1: "default", L2: "default", W1: "default", W2: "default" },
-    "ALL": { L1: "default", L2: "default", W1: "default", W2: "default" },
-    "4": { L1: "default", L2: "default", W1: "default", W2: "default" },
-    "4S": { L1: "default", L2: "default", W1: "default", W2: "default" },
+  // Common shortcode mappings - list of edges to apply
+  const edgeMappings: Record<string, string[]> = {
+    "0": [],
+    "-": [],
+    "NONE": [],
+    "L": ["L1"],
+    "L1": ["L1"],
+    "L2": ["L2"],
+    "W": ["W1"],
+    "W1": ["W1"],
+    "W2": ["W2"],
+    "2L": ["L1", "L2"],
+    "2W": ["W1", "W2"],
+    "LW": ["L1", "W1"],
+    "L2W": ["L1", "W1", "W2"],
+    "2L1W": ["L1", "L2", "W1"],
+    "2LW": ["L1", "L2", "W1"],
+    "2L2W": ["L1", "L2", "W1", "W2"],
+    "ALL": ["L1", "L2", "W1", "W2"],
+    "4": ["L1", "L2", "W1", "W2"],
+    "4S": ["L1", "L2", "W1", "W2"],
   };
   
-  return edgeMappings[normalized];
+  const edgeList = edgeMappings[normalized];
+  if (!edgeList || edgeList.length === 0) {
+    return undefined;
+  }
+  
+  const edges: Record<string, { apply: boolean; edgeband_id?: string }> = {};
+  for (const edge of edgeList) {
+    edges[edge] = { apply: true };
+  }
+  
+  return { edges };
 }
 
 /**

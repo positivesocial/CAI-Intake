@@ -494,24 +494,24 @@ function parseNumber(value: string | undefined): number | null {
  * Parse edgebanding from row
  */
 function parseEdgebanding(row: RowData): CutPart["ops"]["edging"] | undefined {
-  const edging: NonNullable<CutPart["ops"]["edging"]> = {};
+  const edges: Record<string, { apply: boolean; edgeband_id?: string }> = {};
   
   // Per-side columns
-  if (row.eb_L1) edging.L1 = row.eb_L1;
-  if (row.eb_L2) edging.L2 = row.eb_L2;
-  if (row.eb_W1) edging.W1 = row.eb_W1;
-  if (row.eb_W2) edging.W2 = row.eb_W2;
+  if (row.eb_L1) edges.L1 = { apply: true, edgeband_id: row.eb_L1 };
+  if (row.eb_L2) edges.L2 = { apply: true, edgeband_id: row.eb_L2 };
+  if (row.eb_W1) edges.W1 = { apply: true, edgeband_id: row.eb_W1 };
+  if (row.eb_W2) edges.W2 = { apply: true, edgeband_id: row.eb_W2 };
   
   // Or a single shortcode column
   if (row.edgeband || row.eb || row.edge) {
     const code = row.edgeband || row.eb || row.edge;
-    const edges = parseEdgeCode(code);
-    for (const edge of edges) {
-      edging[edge] = "default";
+    const edgeList = parseEdgeCode(code);
+    for (const edge of edgeList) {
+      edges[edge] = { apply: true };
     }
   }
   
-  return Object.keys(edging).length > 0 ? edging : undefined;
+  return Object.keys(edges).length > 0 ? { edges } : undefined;
 }
 
 /**
