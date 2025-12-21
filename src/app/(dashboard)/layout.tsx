@@ -89,19 +89,29 @@ export default function DashboardLayout({
   const { user, isAuthenticated, logout, setUser, isSuperAdmin, isOrgAdmin } = useAuthStore();
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
-  const [isHydrated, setIsHydrated] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
 
-  // Wait for hydration before checking auth
+  // Wait for client-side mount to avoid SSR/hydration issues
   React.useEffect(() => {
-    setIsHydrated(true);
+    setMounted(true);
   }, []);
 
-  // Redirect to login if not authenticated (client-side protection for demo mode)
+  // In production (non-demo mode), redirect to login if not authenticated
+  // In demo mode, middleware allows all routes so we don't need this check
+  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+  
   React.useEffect(() => {
-    if (isHydrated && !isAuthenticated) {
-      router.push(`/login?redirectTo=${encodeURIComponent(pathname)}`);
-    }
-  }, [isHydrated, isAuthenticated, router, pathname]);
+    if (!mounted || isDemoMode) return;
+    
+    // Give persist middleware time to hydrate (500ms is safer)
+    const timer = setTimeout(() => {
+      if (!isAuthenticated) {
+        router.push(`/login?redirectTo=${encodeURIComponent(pathname)}`);
+      }
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [mounted, isDemoMode, isAuthenticated, router, pathname]);
 
   const handleSwitchUser = () => {
     if (user?.isSuperAdmin) {
@@ -118,13 +128,9 @@ export default function DashboardLayout({
     router.push("/login");
   };
 
-  // Show loading state while checking auth
-  if (!isHydrated || !isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
-        <div className="animate-pulse text-[var(--muted-foreground)]">Loading...</div>
-      </div>
-    );
+  // Show loading state while hydrating (only briefly needed)
+  if (!mounted) {
+    return null; // Render nothing during SSR
   }
 
   return (

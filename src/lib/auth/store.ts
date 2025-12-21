@@ -5,6 +5,7 @@
  * Integrates with Supabase for real authentication.
  */
 
+import * as React from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { AuthUser, SessionUser, UserPreferences, NotificationSettings } from "./types";
@@ -606,3 +607,27 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+// Helper hook to check if store has been hydrated from localStorage
+export const useAuthHydrated = () => {
+  const [hydrated, setHydrated] = React.useState(false);
+  
+  React.useEffect(() => {
+    // Check if persist has finished hydrating
+    const unsubFinishHydration = useAuthStore.persist.onFinishHydration(() => {
+      setHydrated(true);
+    });
+    
+    // If already hydrated (e.g., on client-side navigation)
+    if (useAuthStore.persist.hasHydrated()) {
+      setHydrated(true);
+    }
+    
+    return () => {
+      unsubFinishHydration();
+    };
+  }, []);
+  
+  return hydrated;
+};
+
