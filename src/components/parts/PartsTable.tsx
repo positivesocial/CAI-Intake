@@ -47,10 +47,225 @@ import {
 } from "@/components/ui/table";
 import { useIntakeStore } from "@/lib/store";
 import type { CutPart } from "@/lib/schema";
+import type { PartOps, GrooveOp, HoleOp } from "@/lib/schema/operations";
 import { cn } from "@/lib/utils";
 import { PartEditModal } from "./PartEditModal";
 import { useColumnOrder } from "@/hooks/use-column-order";
 import { useKeyboardShortcut } from "@/components/ui/keyboard-shortcuts-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+// ============================================================
+// SHORTCODE FORMATTERS FOR PARTOPS
+// ============================================================
+
+/**
+ * Format edging from PartOps to shortcode (2L2W, L1, etc.)
+ */
+function formatEdgingShortcode(ops: PartOps | undefined): string {
+  const edges = ops?.edging?.edges;
+  if (!edges) return "-";
+  
+  const applied = Object.entries(edges)
+    .filter(([, v]) => v?.apply)
+    .map(([k]) => k)
+    .sort();
+    
+  if (applied.length === 0) return "-";
+  
+  // Map to canonical codes
+  const key = applied.join(",");
+  const mapping: Record<string, string> = {
+    "L1": "L1",
+    "L2": "L2",
+    "W1": "W1",
+    "W2": "W2",
+    "L1,L2": "2L",
+    "W1,W2": "2W",
+    "L1,W1,W2": "L2W",
+    "L1,L2,W1": "2L1W",
+    "L1,L2,W1,W2": "2L2W",
+  };
+  
+  return mapping[key] ?? applied.join("+");
+}
+
+/**
+ * Format edging for tooltip description
+ */
+function formatEdgingDescription(ops: PartOps | undefined): string {
+  const edges = ops?.edging?.edges;
+  if (!edges) return "No edgebanding";
+  
+  const applied = Object.entries(edges)
+    .filter(([, v]) => v?.apply)
+    .map(([k, v]) => {
+      const edgeName: Record<string, string> = { L1: "Front", L2: "Back", W1: "Left", W2: "Right" };
+      let desc = edgeName[k] || k;
+      if (v?.thickness_mm) desc += ` (${v.thickness_mm}mm)`;
+      return desc;
+    });
+    
+  return applied.length > 0 ? applied.join(", ") : "No edgebanding";
+}
+
+/**
+ * Format grooves from PartOps to shortcode
+ */
+function formatGroovesShortcode(grooves: GrooveOp[] | undefined): string {
+  if (!grooves || grooves.length === 0) return "-";
+  
+  if (grooves.length === 1) {
+    const g = grooves[0];
+    return `G${g.side}-${g.width_mm ?? 4}-${g.offset_mm}`;
+  }
+  
+  // Check if all same width/offset
+  const firstWidth = grooves[0].width_mm ?? 4;
+  const firstOffset = grooves[0].offset_mm;
+  const allSame = grooves.every(g => 
+    (g.width_mm ?? 4) === firstWidth && g.offset_mm === firstOffset
+  );
+  
+  if (allSame) {
+    const sides = grooves.map(g => g.side).sort();
+    if (sides.length === 4) return `G-ALL-${firstWidth}-${firstOffset}`;
+    if (sides.includes("L1") && sides.includes("L2") && sides.length === 2) {
+      return `GL-${firstWidth}-${firstOffset}`;
+    }
+    if (sides.includes("W1") && sides.includes("W2") && sides.length === 2) {
+      return `GW-${firstWidth}-${firstOffset}`;
+    }
+  }
+  
+  return `${grooves.length}G`;
+}
+
+/**
+ * Format grooves for tooltip description
+ */
+function formatGroovesDescription(grooves: GrooveOp[] | undefined): string {
+  if (!grooves || grooves.length === 0) return "No grooves";
+  
+  return grooves.map(g => {
+    const sideName: Record<string, string> = { L1: "front", L2: "back", W1: "left", W2: "right" };
+    return `${g.width_mm ?? 4}mm on ${sideName[g.side] || g.side}, ${g.offset_mm}mm offset`;
+  }).join("\n");
+}
+
+/**
+ * Format holes from PartOps to shortcode
+ */
+function formatHolesShortcode(holes: HoleOp[] | undefined): string {
+  if (!holes || holes.length === 0) return "-";
+  
+  // Try to identify common patterns
+  const patterns: string[] = [];
+  
+  for (const h of holes) {
+    if (h.pattern_id) {
+      // Use pattern ID as shortcode
+      patterns.push(h.pattern_id.toUpperCase());
+    } else if (h.holes && h.holes.length > 0) {
+      // Count inline holes
+      const count = h.holes.length;
+      const avgDia = h.holes.reduce((sum, hole) => sum + hole.dia_mm, 0) / count;
+      
+      // Guess pattern type based on diameter
+      if (avgDia >= 30 && avgDia <= 40) {
+        patterns.push(`H${count}`); // Hinge holes
+      } else if (avgDia >= 4 && avgDia <= 6) {
+        patterns.push("SP"); // Shelf pins
+      } else {
+        patterns.push(`${count}H`);
+      }
+    }
+  }
+  
+  return patterns.length > 0 ? patterns.join(",") : `${holes.length}H`;
+}
+
+/**
+ * Format holes for tooltip description
+ */
+function formatHolesDescription(holes: HoleOp[] | undefined): string {
+  if (!holes || holes.length === 0) return "No holes";
+  
+  return holes.map(h => {
+    if (h.pattern_id) {
+      return `Pattern: ${h.pattern_id}`;
+    }
+    if (h.holes && h.holes.length > 0) {
+      const count = h.holes.length;
+      const dia = h.holes[0].dia_mm;
+      return `${count}× ${dia}mm holes`;
+    }
+    return "Hole operation";
+  }).join("\n");
+}
+
+/**
+ * Format CNC operations from PartOps to shortcode
+ */
+function formatCncShortcode(ops: PartOps | undefined): string {
+  const routing = ops?.routing || [];
+  const custom = ops?.custom_cnc_ops || [];
+  
+  if (routing.length === 0 && custom.length === 0) return "-";
+  
+  const codes: string[] = [];
+  
+  // Format routing operations
+  for (const r of routing) {
+    if (r.through) {
+      codes.push(`CUT-${r.region.L}x${r.region.W}`);
+    } else if (r.profile_id) {
+      codes.push(r.profile_id.toUpperCase());
+    } else {
+      codes.push(`PKT-${r.region.L}x${r.region.W}`);
+    }
+  }
+  
+  // Format custom CNC ops
+  for (const c of custom) {
+    codes.push(c.op_type.toUpperCase());
+  }
+  
+  // Limit display length
+  if (codes.length === 1) return codes[0];
+  if (codes.length <= 2) return codes.join(",");
+  return `${codes.length}CNC`;
+}
+
+/**
+ * Format CNC operations for tooltip description
+ */
+function formatCncDescription(ops: PartOps | undefined): string {
+  const routing = ops?.routing || [];
+  const custom = ops?.custom_cnc_ops || [];
+  
+  if (routing.length === 0 && custom.length === 0) return "No CNC operations";
+  
+  const lines: string[] = [];
+  
+  for (const r of routing) {
+    if (r.through) {
+      lines.push(`Cutout: ${r.region.L}×${r.region.W}mm`);
+    } else {
+      lines.push(`Pocket: ${r.region.L}×${r.region.W}mm, ${r.depth_mm ?? "?"}mm deep`);
+    }
+  }
+  
+  for (const c of custom) {
+    lines.push(`Custom: ${c.op_type}${c.notes ? ` - ${c.notes}` : ""}`);
+  }
+  
+  return lines.join("\n");
+}
 
 // Column definitions with capability requirements
 type ColumnKey = 
@@ -425,44 +640,86 @@ export function PartsTable() {
           <span className="text-[var(--muted-foreground)]">-</span>
         );
       case "edging": {
-        const edges = part.ops?.edging?.edges;
-        if (!edges) return <span className="text-[var(--muted-foreground)]">-</span>;
-        const applied = Object.entries(edges).filter(([, v]) => v?.apply).map(([k]) => k);
-        if (applied.length === 0) return <span className="text-[var(--muted-foreground)]">-</span>;
-        if (applied.length === 4) return <Badge className="bg-blue-100 text-blue-700 text-xs">4 edges</Badge>;
+        const code = formatEdgingShortcode(part.ops);
+        if (code === "-") return <span className="text-[var(--muted-foreground)]">-</span>;
+        
         return (
-          <span className="text-xs font-mono text-blue-600">
-            {applied.join(",")}
-          </span>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge 
+                  className={cn(
+                    "font-mono text-xs cursor-help",
+                    code === "2L2W" 
+                      ? "bg-blue-500 text-white" 
+                      : "bg-blue-100 text-blue-700"
+                  )}
+                >
+                  {code}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <p className="text-xs whitespace-pre-line">{formatEdgingDescription(part.ops)}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         );
       }
       case "grooves": {
-        const grooves = part.ops?.grooves;
-        if (!grooves || grooves.length === 0) return <span className="text-[var(--muted-foreground)]">-</span>;
+        const code = formatGroovesShortcode(part.ops?.grooves);
+        if (code === "-") return <span className="text-[var(--muted-foreground)]">-</span>;
+        
         return (
-          <Badge className="bg-amber-100 text-amber-700 text-xs">
-            {grooves.length} groove{grooves.length > 1 ? "s" : ""}
-          </Badge>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge className="bg-amber-100 text-amber-700 font-mono text-xs cursor-help">
+                  {code}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <p className="text-xs whitespace-pre-line">{formatGroovesDescription(part.ops?.grooves)}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         );
       }
       case "holes": {
-        const holes = part.ops?.holes;
-        if (!holes || holes.length === 0) return <span className="text-[var(--muted-foreground)]">-</span>;
+        const code = formatHolesShortcode(part.ops?.holes);
+        if (code === "-") return <span className="text-[var(--muted-foreground)]">-</span>;
+        
         return (
-          <Badge className="bg-purple-100 text-purple-700 text-xs">
-            {holes.length} hole{holes.length > 1 ? "s" : ""}
-          </Badge>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge className="bg-purple-100 text-purple-700 font-mono text-xs cursor-help">
+                  {code}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <p className="text-xs whitespace-pre-line">{formatHolesDescription(part.ops?.holes)}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         );
       }
       case "cnc": {
-        const routing = part.ops?.routing || [];
-        const customOps = part.ops?.custom_cnc_ops || [];
-        const total = routing.length + customOps.length;
-        if (total === 0) return <span className="text-[var(--muted-foreground)]">-</span>;
+        const code = formatCncShortcode(part.ops);
+        if (code === "-") return <span className="text-[var(--muted-foreground)]">-</span>;
+        
         return (
-          <Badge className="bg-emerald-100 text-emerald-700 text-xs">
-            {total} op{total > 1 ? "s" : ""}
-          </Badge>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge className="bg-emerald-100 text-emerald-700 font-mono text-xs cursor-help">
+                  {code}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <p className="text-xs whitespace-pre-line">{formatCncDescription(part.ops)}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         );
       }
       case "notes": {
