@@ -4,37 +4,77 @@
  * GET /api/v1/cutlists/:id/parts - Get parts
  * POST /api/v1/cutlists/:id/parts - Add parts
  * DELETE /api/v1/cutlists/:id/parts - Bulk delete parts
+ * PATCH /api/v1/cutlists/:id/parts - Bulk update parts
+ * 
+ * SECURITY: All operations verify organization ownership for defense-in-depth
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
+import { logger } from "@/lib/logger";
+import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
+import { SIZE_LIMITS } from "@/lib/security";
+import { applyRateLimit } from "@/lib/api-middleware";
 
-// Add parts schema
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Add parts schema with size limits
 const AddPartsSchema = z.object({
   parts: z.array(z.object({
-    part_id: z.string().min(1),
-    label: z.string().optional(),
-    qty: z.number().int().positive(),
-    size: z.object({ L: z.number().positive(), W: z.number().positive() }),
-    thickness_mm: z.number().positive(),
-    material_id: z.string().min(1),
-    grain: z.string().optional(),
+    part_id: z.string().min(1).max(100),
+    label: z.string().max(200).optional(),
+    qty: z.number().int().positive().max(10000),
+    size: z.object({ 
+      L: z.number().positive().max(100000), // Max 100m
+      W: z.number().positive().max(100000) 
+    }),
+    thickness_mm: z.number().positive().max(1000),
+    material_id: z.string().min(1).max(100),
+    grain: z.string().max(50).optional(),
     allow_rotation: z.boolean().optional(),
-    group_id: z.string().optional(),
+    group_id: z.string().max(100).optional(),
     ops: z.any().optional(),
     notes: z.any().optional(),
     audit: z.any().optional(),
-  })),
+  })).max(SIZE_LIMITS.MAX_PARTS_PER_BATCH || 1000),
 });
 
 // Bulk delete schema
 const BulkDeleteSchema = z.object({
-  part_ids: z.array(z.string()).min(1),
+  part_ids: z.array(z.string().max(100)).min(1).max(1000),
 });
 
 interface RouteParams {
   params: Promise<{ id: string }>;
+}
+
+/**
+ * Helper to verify cutlist ownership
+ */
+async function verifyCutlistAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  cutlistId: string,
+  organizationId: string,
+  isSuperAdmin: boolean
+): Promise<{ cutlist: { id: string; organization_id: string } | null; error: string | null }> {
+  let query = supabase
+    .from("cutlists")
+    .select("id, organization_id")
+    .eq("id", cutlistId);
+  
+  if (!isSuperAdmin) {
+    query = query.eq("organization_id", organizationId);
+  }
+  
+  const { data: cutlist, error } = await query.single();
+  
+  if (error || !cutlist) {
+    return { cutlist: null, error: "Cutlist not found or access denied" };
+  }
+  
+  return { cutlist, error: null };
 }
 
 export async function GET(
@@ -42,7 +82,19 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
+    // Apply rate limiting
+    const rateLimitResult = await applyRateLimit(request, undefined, "api");
+    if (!rateLimitResult.allowed) {
+      return rateLimitResult.response;
+    }
+
     const { id } = await params;
+    
+    // Validate UUID format
+    if (!UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: "Invalid cutlist ID format" }, { status: 400 });
+    }
+    
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
@@ -50,14 +102,31 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify cutlist access
-    const { data: cutlist, error: cutlistError } = await supabase
-      .from("cutlists")
-      .select("id")
-      .eq("id", id)
+    // Get user's organization
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id, role")
+      .eq("id", user.id)
       .single();
 
-    if (cutlistError || !cutlist) {
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
+    }
+
+    const isSuperAdmin = userData.role === "super_admin";
+
+    // Verify cutlist access - CRITICAL: check organization ownership
+    const { cutlist, error: accessError } = await verifyCutlistAccess(
+      supabase,
+      id,
+      userData.organization_id,
+      isSuperAdmin
+    );
+
+    if (accessError || !cutlist) {
       return NextResponse.json({ error: "Cutlist not found" }, { status: 404 });
     }
 
@@ -69,7 +138,7 @@ export async function GET(
       .order("created_at", { ascending: true });
 
     if (error) {
-      console.error("Failed to fetch parts:", error);
+      logger.error("Failed to fetch parts", error, { userId: user.id, cutlistId: id });
       return NextResponse.json(
         { error: "Failed to fetch parts" },
         { status: 500 }
@@ -118,7 +187,7 @@ export async function GET(
     });
 
   } catch (error) {
-    console.error("Parts GET error:", error);
+    logger.error("Parts GET error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -131,7 +200,19 @@ export async function POST(
   { params }: RouteParams
 ) {
   try {
+    // Apply rate limiting
+    const rateLimitResult = await applyRateLimit(request, undefined, "api");
+    if (!rateLimitResult.allowed) {
+      return rateLimitResult.response;
+    }
+
     const { id } = await params;
+    
+    // Validate UUID format
+    if (!UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: "Invalid cutlist ID format" }, { status: 400 });
+    }
+    
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
@@ -139,14 +220,31 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify cutlist access
-    const { data: cutlist, error: cutlistError } = await supabase
-      .from("cutlists")
-      .select("id")
-      .eq("id", id)
+    // Get user's organization
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id, role")
+      .eq("id", user.id)
       .single();
 
-    if (cutlistError || !cutlist) {
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
+    }
+
+    const isSuperAdmin = userData.role === "super_admin";
+
+    // Verify cutlist access - CRITICAL: check organization ownership
+    const { cutlist, error: accessError } = await verifyCutlistAccess(
+      supabase,
+      id,
+      userData.organization_id,
+      isSuperAdmin
+    );
+
+    if (accessError || !cutlist) {
       return NextResponse.json({ error: "Cutlist not found" }, { status: 404 });
     }
 
@@ -164,8 +262,7 @@ export async function POST(
     const { parts } = parseResult.data;
 
     // Insert parts
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: insertedParts, error } = await (supabase as any)
+    const { data: insertedParts, error } = await supabase
       .from("parts")
       .insert(
         parts.map(p => ({
@@ -188,7 +285,7 @@ export async function POST(
       .select();
 
     if (error) {
-      console.error("Failed to add parts:", error);
+      logger.error("Failed to add parts", error, { userId: user.id, cutlistId: id });
       return NextResponse.json(
         { error: "Failed to add parts" },
         { status: 500 }
@@ -229,6 +326,16 @@ export async function POST(
       created_at: p.created_at,
     })) ?? [];
 
+    // Audit log
+    await logAuditFromRequest(request, {
+      userId: user.id,
+      organizationId: cutlist.organization_id,
+      action: AUDIT_ACTIONS.PARTS_ADDED,
+      entityType: "cutlist",
+      entityId: id,
+      metadata: { partsCount: transformedParts.length },
+    });
+
     return NextResponse.json({
       success: true,
       parts: transformedParts,
@@ -236,7 +343,7 @@ export async function POST(
     }, { status: 201 });
 
   } catch (error) {
-    console.error("Parts POST error:", error);
+    logger.error("Parts POST error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -249,12 +356,52 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
+    // Apply rate limiting
+    const rateLimitResult = await applyRateLimit(request, undefined, "api");
+    if (!rateLimitResult.allowed) {
+      return rateLimitResult.response;
+    }
+
     const { id } = await params;
+    
+    // Validate UUID format
+    if (!UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: "Invalid cutlist ID format" }, { status: 400 });
+    }
+    
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user's organization
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
+    }
+
+    const isSuperAdmin = userData.role === "super_admin";
+
+    // Verify cutlist access - CRITICAL: check organization ownership
+    const { cutlist, error: accessError } = await verifyCutlistAccess(
+      supabase,
+      id,
+      userData.organization_id,
+      isSuperAdmin
+    );
+
+    if (accessError || !cutlist) {
+      return NextResponse.json({ error: "Cutlist not found" }, { status: 404 });
     }
 
     // Parse request body
@@ -270,28 +417,38 @@ export async function DELETE(
 
     const { part_ids } = parseResult.data;
 
-    // Delete parts
-    const { error } = await supabase
+    // Delete parts - cutlist_id constraint ensures we only delete from the verified cutlist
+    const { error, count } = await supabase
       .from("parts")
       .delete()
       .eq("cutlist_id", id)
       .in("part_id", part_ids);
 
     if (error) {
-      console.error("Failed to delete parts:", error);
+      logger.error("Failed to delete parts", error, { userId: user.id, cutlistId: id });
       return NextResponse.json(
         { error: "Failed to delete parts" },
         { status: 500 }
       );
     }
 
+    // Audit log
+    await logAuditFromRequest(request, {
+      userId: user.id,
+      organizationId: cutlist.organization_id,
+      action: AUDIT_ACTIONS.PARTS_DELETED,
+      entityType: "cutlist",
+      entityId: id,
+      metadata: { partIds: part_ids, count },
+    });
+
     return NextResponse.json({
       success: true,
-      deleted: part_ids.length,
+      deleted: count ?? part_ids.length,
     });
 
   } catch (error) {
-    console.error("Parts DELETE error:", error);
+    logger.error("Parts DELETE error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -299,21 +456,24 @@ export async function DELETE(
   }
 }
 
-// Bulk update schema
+// Bulk update schema with size limits
 const BulkUpdateSchema = z.object({
   updates: z.array(z.object({
-    part_id: z.string().min(1),
-    label: z.string().optional(),
-    qty: z.number().int().positive().optional(),
-    size: z.object({ L: z.number().positive(), W: z.number().positive() }).optional(),
-    thickness_mm: z.number().positive().optional(),
-    material_id: z.string().min(1).optional(),
-    grain: z.string().optional(),
+    part_id: z.string().min(1).max(100),
+    label: z.string().max(200).optional(),
+    qty: z.number().int().positive().max(10000).optional(),
+    size: z.object({ 
+      L: z.number().positive().max(100000), 
+      W: z.number().positive().max(100000) 
+    }).optional(),
+    thickness_mm: z.number().positive().max(1000).optional(),
+    material_id: z.string().min(1).max(100).optional(),
+    grain: z.string().max(50).optional(),
     allow_rotation: z.boolean().optional(),
-    group_id: z.string().nullable().optional(),
+    group_id: z.string().max(100).nullable().optional(),
     ops: z.any().optional(),
     notes: z.any().optional(),
-  })),
+  })).max(500), // Limit batch size for performance
 });
 
 export async function PATCH(
@@ -321,7 +481,19 @@ export async function PATCH(
   { params }: RouteParams
 ) {
   try {
+    // Apply rate limiting
+    const rateLimitResult = await applyRateLimit(request, undefined, "api");
+    if (!rateLimitResult.allowed) {
+      return rateLimitResult.response;
+    }
+
     const { id } = await params;
+    
+    // Validate UUID format
+    if (!UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: "Invalid cutlist ID format" }, { status: 400 });
+    }
+    
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
@@ -329,14 +501,31 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify cutlist access
-    const { data: cutlist, error: cutlistError } = await supabase
-      .from("cutlists")
-      .select("id")
-      .eq("id", id)
+    // Get user's organization
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id, role")
+      .eq("id", user.id)
       .single();
 
-    if (cutlistError || !cutlist) {
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
+    }
+
+    const isSuperAdmin = userData.role === "super_admin";
+
+    // Verify cutlist access - CRITICAL: check organization ownership
+    const { cutlist, error: accessError } = await verifyCutlistAccess(
+      supabase,
+      id,
+      userData.organization_id,
+      isSuperAdmin
+    );
+
+    if (accessError || !cutlist) {
       return NextResponse.json({ error: "Cutlist not found" }, { status: 404 });
     }
 
@@ -352,46 +541,68 @@ export async function PATCH(
     }
 
     const { updates } = parseResult.data;
+    
+    // PERFORMANCE: Batch updates using Promise.all with concurrency limit
+    // This is much faster than sequential updates (N+1 problem)
+    const BATCH_SIZE = 10; // Process 10 at a time to avoid overwhelming DB
     const results: Array<{ part_id: string; success: boolean; error?: string }> = [];
+    
+    for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+      const batch = updates.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async (update) => {
+          const updateData: Record<string, unknown> = {
+            updated_at: new Date().toISOString(),
+          };
+          
+          if (update.label !== undefined) updateData.label = update.label;
+          if (update.qty !== undefined) updateData.qty = update.qty;
+          if (update.size !== undefined) {
+            updateData.length_mm = update.size.L;
+            updateData.width_mm = update.size.W;
+          }
+          if (update.thickness_mm !== undefined) updateData.thickness_mm = update.thickness_mm;
+          if (update.material_id !== undefined) updateData.material_id = update.material_id;
+          if (update.grain !== undefined) updateData.grain = update.grain;
+          if (update.allow_rotation !== undefined) updateData.allow_rotation = update.allow_rotation;
+          if (update.group_id !== undefined) updateData.group_id = update.group_id;
+          if (update.ops !== undefined) updateData.ops = update.ops;
+          if (update.notes !== undefined) updateData.notes = update.notes;
 
-    // Update parts one by one (Supabase doesn't support bulk upsert easily)
-    for (const update of updates) {
-      const updateData: Record<string, unknown> = {};
-      
-      if (update.label !== undefined) updateData.label = update.label;
-      if (update.qty !== undefined) updateData.qty = update.qty;
-      if (update.size !== undefined) {
-        updateData.length_mm = update.size.L;
-        updateData.width_mm = update.size.W;
-      }
-      if (update.thickness_mm !== undefined) updateData.thickness_mm = update.thickness_mm;
-      if (update.material_id !== undefined) updateData.material_id = update.material_id;
-      if (update.grain !== undefined) updateData.grain = update.grain;
-      if (update.allow_rotation !== undefined) updateData.allow_rotation = update.allow_rotation;
-      if (update.group_id !== undefined) updateData.group_id = update.group_id;
-      if (update.ops !== undefined) updateData.ops = update.ops;
-      if (update.notes !== undefined) updateData.notes = update.notes;
+          // Only updated_at means no actual updates
+          if (Object.keys(updateData).length === 1) {
+            return { part_id: update.part_id, success: false, error: "No fields to update" };
+          }
 
-      if (Object.keys(updateData).length === 0) {
-        results.push({ part_id: update.part_id, success: false, error: "No fields to update" });
-        continue;
-      }
+          const { error } = await supabase
+            .from("parts")
+            .update(updateData)
+            .eq("cutlist_id", id)
+            .eq("part_id", update.part_id);
 
-      const { error } = await supabase
-        .from("parts")
-        .update(updateData)
-        .eq("cutlist_id", id)
-        .eq("part_id", update.part_id);
-
-      if (error) {
-        results.push({ part_id: update.part_id, success: false, error: error.message });
-      } else {
-        results.push({ part_id: update.part_id, success: true });
-      }
+          if (error) {
+            return { part_id: update.part_id, success: false, error: error.message };
+          }
+          return { part_id: update.part_id, success: true };
+        })
+      );
+      results.push(...batchResults);
     }
 
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
+
+    // Audit log
+    if (successCount > 0) {
+      await logAuditFromRequest(request, {
+        userId: user.id,
+        organizationId: cutlist.organization_id,
+        action: AUDIT_ACTIONS.PARTS_UPDATED,
+        entityType: "cutlist",
+        entityId: id,
+        metadata: { updatedCount: successCount, failedCount: failCount },
+      });
+    }
 
     return NextResponse.json({
       success: failCount === 0,
@@ -401,7 +612,7 @@ export async function PATCH(
     });
 
   } catch (error) {
-    console.error("Parts PATCH error:", error);
+    logger.error("Parts PATCH error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

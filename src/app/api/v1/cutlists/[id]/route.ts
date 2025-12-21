@@ -4,18 +4,23 @@
  * GET /api/v1/cutlists/:id - Get cutlist details
  * PUT /api/v1/cutlists/:id - Update cutlist
  * DELETE /api/v1/cutlists/:id - Delete cutlist
+ * 
+ * SECURITY: All operations verify organization ownership for defense-in-depth
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
+import { logger } from "@/lib/logger";
+import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
+import { applyRateLimit } from "@/lib/api-middleware";
 
 // Update cutlist schema
 const UpdateCutlistSchema = z.object({
-  name: z.string().min(1).optional(),
-  description: z.string().optional(),
-  job_ref: z.string().optional(),
-  client_ref: z.string().optional(),
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).optional(),
+  job_ref: z.string().max(100).optional(),
+  client_ref: z.string().max(100).optional(),
   status: z.enum(["draft", "pending", "processing", "completed", "archived"]).optional(),
   capabilities: z.object({
     core_parts: z.boolean().optional(),
@@ -29,6 +34,9 @@ const UpdateCutlistSchema = z.object({
   }).optional(),
 });
 
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -38,7 +46,19 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
+    // Apply rate limiting
+    const rateLimitResult = await applyRateLimit(request, undefined, "api");
+    if (!rateLimitResult.allowed) {
+      return rateLimitResult.response;
+    }
+
     const { id } = await params;
+    
+    // Validate UUID format to prevent injection
+    if (!UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: "Invalid cutlist ID format" }, { status: 400 });
+    }
+    
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
@@ -46,9 +66,24 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get cutlist with parts
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: cutlist, error } = await (supabase as any)
+    // Get user's organization for authorization check
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
+    }
+
+    const isSuperAdmin = userData.role === "super_admin";
+
+    // Get cutlist with parts - CRITICAL: filter by organization_id for multi-tenant isolation
+    let query = supabase
       .from("cutlists")
       .select(`
         *,
@@ -70,8 +105,14 @@ export async function GET(
           created_at
         )
       `)
-      .eq("id", id)
-      .single();
+      .eq("id", id);
+    
+    // Non-super-admins can only access their organization's cutlists
+    if (!isSuperAdmin) {
+      query = query.eq("organization_id", userData.organization_id);
+    }
+    
+    const { data: cutlist, error } = await query.single();
 
     if (error) {
       if (error.code === "PGRST116") {
@@ -140,12 +181,38 @@ export async function PUT(
   { params }: RouteParams
 ) {
   try {
+    // Apply rate limiting
+    const rateLimitResult = await applyRateLimit(request, undefined, "api");
+    if (!rateLimitResult.allowed) {
+      return rateLimitResult.response;
+    }
+
     const { id } = await params;
+    
+    // Validate UUID format
+    if (!UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: "Invalid cutlist ID format" }, { status: 400 });
+    }
+    
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user's organization for authorization
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
     }
 
     // Parse request body
@@ -160,26 +227,40 @@ export async function PUT(
     }
 
     const updateData = parseResult.data;
+    const isSuperAdmin = userData.role === "super_admin";
 
-    // Update cutlist
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: cutlist, error } = await (supabase as any)
+    // Update cutlist - CRITICAL: filter by organization_id
+    let query = supabase
       .from("cutlists")
-      .update(updateData)
-      .eq("id", id)
-      .select()
-      .single();
+      .update({ ...updateData, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    
+    if (!isSuperAdmin) {
+      query = query.eq("organization_id", userData.organization_id);
+    }
+    
+    const { data: cutlist, error } = await query.select().single();
 
     if (error) {
       if (error.code === "PGRST116") {
         return NextResponse.json({ error: "Cutlist not found" }, { status: 404 });
       }
-      console.error("Failed to update cutlist:", error);
+      logger.error("Failed to update cutlist", error, { userId: user.id, cutlistId: id });
       return NextResponse.json(
         { error: "Failed to update cutlist" },
         { status: 500 }
       );
     }
+
+    // Audit log
+    await logAuditFromRequest(request, {
+      userId: user.id,
+      organizationId: cutlist.organization_id,
+      action: AUDIT_ACTIONS.CUTLIST_UPDATED,
+      entityType: "cutlist",
+      entityId: cutlist.id,
+      metadata: { name: cutlist.name, updates: Object.keys(updateData) },
+    });
 
     return NextResponse.json({
       success: true,
@@ -187,7 +268,7 @@ export async function PUT(
     });
 
   } catch (error) {
-    console.error("Cutlist PUT error:", error);
+    logger.error("Cutlist PUT error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -200,7 +281,19 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
+    // Apply rate limiting
+    const rateLimitResult = await applyRateLimit(request, undefined, "api");
+    if (!rateLimitResult.allowed) {
+      return rateLimitResult.response;
+    }
+
     const { id } = await params;
+    
+    // Validate UUID format
+    if (!UUID_REGEX.test(id)) {
+      return NextResponse.json({ error: "Invalid cutlist ID format" }, { status: 400 });
+    }
+    
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
@@ -208,19 +301,75 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Delete cutlist (parts will cascade delete)
-    const { error } = await supabase
+    // Get user's organization for authorization
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
+    }
+
+    // Check permissions - only admins and managers can delete
+    if (!["super_admin", "org_admin", "manager"].includes(userData.role)) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to delete cutlists" },
+        { status: 403 }
+      );
+    }
+
+    const isSuperAdmin = userData.role === "super_admin";
+
+    // First get the cutlist to verify ownership and for audit log
+    let selectQuery = supabase
+      .from("cutlists")
+      .select("id, name, organization_id")
+      .eq("id", id);
+    
+    if (!isSuperAdmin) {
+      selectQuery = selectQuery.eq("organization_id", userData.organization_id);
+    }
+    
+    const { data: cutlist } = await selectQuery.single();
+    
+    if (!cutlist) {
+      return NextResponse.json({ error: "Cutlist not found" }, { status: 404 });
+    }
+
+    // Delete cutlist - CRITICAL: filter by organization_id (parts will cascade delete)
+    let deleteQuery = supabase
       .from("cutlists")
       .delete()
       .eq("id", id);
+    
+    if (!isSuperAdmin) {
+      deleteQuery = deleteQuery.eq("organization_id", userData.organization_id);
+    }
+    
+    const { error } = await deleteQuery;
 
     if (error) {
-      console.error("Failed to delete cutlist:", error);
+      logger.error("Failed to delete cutlist", error, { userId: user.id, cutlistId: id });
       return NextResponse.json(
         { error: "Failed to delete cutlist" },
         { status: 500 }
       );
     }
+
+    // Audit log
+    await logAuditFromRequest(request, {
+      userId: user.id,
+      organizationId: cutlist.organization_id,
+      action: AUDIT_ACTIONS.CUTLIST_DELETED,
+      entityType: "cutlist",
+      entityId: cutlist.id,
+      metadata: { name: cutlist.name },
+    });
 
     return NextResponse.json({
       success: true,
@@ -228,7 +377,7 @@ export async function DELETE(
     });
 
   } catch (error) {
-    console.error("Cutlist DELETE error:", error);
+    logger.error("Cutlist DELETE error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

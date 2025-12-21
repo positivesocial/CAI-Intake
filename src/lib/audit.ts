@@ -68,6 +68,9 @@ export const AUDIT_ACTIONS = {
   PART_UPDATED: "part.updated",
   PART_DELETED: "part.deleted",
   PARTS_IMPORTED: "parts.imported",
+  PARTS_ADDED: "parts.added",
+  PARTS_UPDATED: "parts.bulk_updated",
+  PARTS_DELETED: "parts.bulk_deleted",
   
   // Materials
   MATERIAL_CREATED: "material.created",

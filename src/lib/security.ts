@@ -217,8 +217,17 @@ export const SIZE_LIMITS = {
   /** Maximum parts per cutlist */
   PARTS_PER_CUTLIST: 10_000,
   
+  /** Maximum parts per batch operation */
+  MAX_PARTS_PER_BATCH: 1_000,
+  
+  /** Maximum parts per bulk update */
+  MAX_PARTS_PER_UPDATE: 500,
+  
   /** Maximum materials per organization */
   MATERIALS_PER_ORG: 1_000,
+  
+  /** Maximum edgebands per organization */
+  EDGEBANDS_PER_ORG: 500,
   
   /** Maximum search query length */
   SEARCH_QUERY: 500,
@@ -228,6 +237,9 @@ export const SIZE_LIMITS = {
   
   /** Maximum notes length */
   NOTES: 5_000,
+  
+  /** Maximum IDs in bulk operations */
+  BULK_IDS: 1_000,
 } as const;
 
 // =============================================================================
