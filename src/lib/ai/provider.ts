@@ -6,6 +6,7 @@
  */
 
 import type { CutPart } from "@/lib/schema";
+import type { LearningContext } from "@/lib/learning";
 
 // ============================================================
 // TYPES
@@ -26,6 +27,54 @@ export interface ParseOptions {
   defaultMaterialId?: string;
   /** Default thickness in mm */
   defaultThicknessMm?: number;
+  /** Learning context for adaptive parsing */
+  learningContext?: LearningContext;
+}
+
+// ============================================================
+// OCR-SPECIFIC TYPES
+// ============================================================
+
+export interface OCROptions extends ParseOptions {
+  /** Current page number (for multi-page documents) */
+  pageNumber?: number;
+  /** Total number of pages */
+  totalPages?: number;
+  /** Context from previous pages */
+  previousContext?: string;
+  /** Progress callback */
+  onProgress?: (progress: OCRProgress) => void;
+}
+
+export interface OCRProgress {
+  stage: "uploading" | "processing" | "extracting" | "parsing" | "complete";
+  percent: number;
+  currentPage?: number;
+  totalPages?: number;
+  message?: string;
+}
+
+export interface OCRResult extends AIParseResult {
+  /** Raw extracted text from OCR */
+  extractedText?: string;
+  /** Per-page confidence score */
+  pageConfidence?: number;
+  /** Detected document format */
+  detectedFormat?: "tabular" | "handwritten" | "mixed" | "structured";
+  /** Page-specific results for multi-page documents */
+  pageResults?: OCRPageResult[];
+  /** Whether learning context was applied */
+  learningApplied?: boolean;
+  /** Detected client template name */
+  detectedClient?: string;
+}
+
+export interface OCRPageResult {
+  pageNumber: number;
+  extractedText: string;
+  confidence: number;
+  partsCount: number;
+  parts: ParsedPartResult[];
 }
 
 export interface TemplateOCRConfig {
@@ -93,6 +142,12 @@ export interface AIProvider {
   
   /** Parse PDF document */
   parseDocument(pdfData: ArrayBuffer, extractedText?: string, options?: ParseOptions): Promise<AIParseResult>;
+  
+  /** OCR-optimized image parsing with progress tracking */
+  parseImageForOCR?(imageData: ArrayBuffer | string, options: OCROptions): Promise<OCRResult>;
+  
+  /** OCR-optimized multi-page document parsing */
+  parseDocumentForOCR?(pages: Array<ArrayBuffer | string>, options: OCROptions): Promise<OCRResult>;
 }
 
 // ============================================================

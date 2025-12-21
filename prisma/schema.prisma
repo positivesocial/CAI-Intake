@@ -33,15 +33,22 @@ model Organization {
   planExpiry DateTime? @map("plan_expiry")
 
   // Relationships
-  users       User[]
-  invitations Invitation[]
-  cutlists    Cutlist[]
-  materials   Material[]
-  edgebands   Edgeband[]
-  templates   Template[]
-  parseJobs   ParseJob[]
-  files       UploadedFile[]
-  auditLogs   AuditLog[]
+  users            User[]
+  invitations      Invitation[]
+  cutlists         Cutlist[]
+  materials        Material[]
+  edgebands        Edgeband[]
+  templates        Template[]
+  parseJobs        ParseJob[]
+  files            UploadedFile[]
+  auditLogs        AuditLog[]
+  
+  // Learning system
+  parserPatterns   ParserPattern[]
+  materialMappings MaterialMapping[]
+  clientTemplates  ClientTemplate[]
+  parseCorrections ParseCorrection[]
+  ocrJobs          OcrJob[]
 
   @@map("organizations")
 }
@@ -77,11 +84,13 @@ model User {
   roleId         String?      @map("role_id")
   role           Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
   
-  cutlists       Cutlist[]
-  parseJobs      ParseJob[]
-  sessions       Session[]
-  auditLogs      AuditLog[]
-  invitationsSent Invitation[] @relation("InvitedBy")
+  cutlists         Cutlist[]
+  parseJobs        ParseJob[]
+  sessions         Session[]
+  auditLogs        AuditLog[]
+  invitationsSent  Invitation[] @relation("InvitedBy")
+  parseCorrections ParseCorrection[]
+  ocrJobs          OcrJob[]
 
   @@map("users")
 }
@@ -266,14 +275,16 @@ model Cutlist {
   cncLibrary Json? @map("cnc_library")
 
   // Relationships
-  organizationId String       @map("organization_id")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userId         String?      @map("user_id")
-  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  parts          CutPart[]
-  parseJobs      ParseJob[]
-  optimizeJobs   OptimizeJob[]
-  exports        Export[]
+  organizationId   String       @map("organization_id")
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId           String?      @map("user_id")
+  user             User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  parts            CutPart[]
+  parseJobs        ParseJob[]
+  optimizeJobs     OptimizeJob[]
+  exports          Export[]
+  parseCorrections ParseCorrection[]
+  ocrJobs          OcrJob[]
 
   @@unique([organizationId, docId])
   @@index([organizationId])
@@ -352,14 +363,15 @@ model ParseJob {
   summary      Json? // { parsed_parts, confidence_avg, warnings, errors }
 
   // Relationships
-  organizationId String       @map("organization_id")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userId         String?      @map("user_id")
-  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  cutlistId      String?      @map("cutlist_id")
-  cutlist        Cutlist?     @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
-  fileId         String?      @map("file_id")
-  file           UploadedFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  organizationId   String       @map("organization_id")
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId           String?      @map("user_id")
+  user             User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  cutlistId        String?      @map("cutlist_id")
+  cutlist          Cutlist?     @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
+  fileId           String?      @map("file_id")
+  file             UploadedFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  parseCorrections ParseCorrection[]
 
   @@index([organizationId])
   @@index([status])
@@ -386,6 +398,7 @@ model UploadedFile {
   organizationId String       @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parseJobs      ParseJob[]
+  ocrJobs        OcrJob[]
 
   @@index([organizationId])
   @@map("uploaded_files")
@@ -469,4 +482,184 @@ model Template {
 
   @@unique([organizationId, templateId])
   @@map("templates")
+}
+
+// ============================================================
+// LEARNING SYSTEM
+// ============================================================
+
+model ParserPattern {
+  id              String    @id @default(cuid())
+  patternType     String    @map("pattern_type") // dimension_format, edge_notation, column_order, quantity_format
+  inputPattern    String    @map("input_pattern") // Regex or example pattern
+  outputMapping   Json      @map("output_mapping") // How to interpret the pattern
+  description     String?
+  confidence      Float     @default(0.5)
+  usageCount      Int       @default(0) @map("usage_count")
+  successCount    Int       @default(0) @map("success_count")
+  lastUsedAt      DateTime? @map("last_used_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  organizationId  String?      @map("organization_id") // null = global pattern
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  corrections     ParseCorrection[]
+
+  @@index([organizationId])
+  @@index([patternType])
+  @@index([confidence(sort: Desc)])
+  @@map("parser_patterns")
+}
+
+model MaterialMapping {
+  id              String    @id @default(cuid())
+  rawName         String    @map("raw_name") // What user typed: "PB BLACK CHERRY"
+  normalizedName  String    @map("normalized_name") // Cleaned version for matching
+  materialId      String    @map("material_id") // Canonical material ID
+  thicknessMm     Float?    @map("thickness_mm")
+  confidence      Float     @default(0.5)
+  usageCount      Int       @default(0) @map("usage_count")
+  lastUsedAt      DateTime? @map("last_used_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  // Relationships
+  organizationId  String?      @map("organization_id")
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, normalizedName])
+  @@index([organizationId])
+  @@index([normalizedName])
+  @@map("material_mappings")
+}
+
+model ClientTemplate {
+  id                 String    @id @default(cuid())
+  clientName         String    @map("client_name")
+  clientAliases      String[]  @default([]) @map("client_aliases")
+  columnOrder        String[]  @map("column_order") // ['label', 'length', 'width', 'qty', 'edge_L', 'edge_W']
+  edgeNotation       Json?     @map("edge_notation") // { "X": ["L1"], "XX": ["W1","W2"] }
+  grooveNotation     Json?     @map("groove_notation") // { "x": "W2" }
+  defaultMaterialId  String?   @map("default_material_id")
+  defaultThicknessMm Float?    @map("default_thickness_mm")
+  headerPatterns     String[]  @default([]) @map("header_patterns")
+  sampleRows         Json?     @map("sample_rows")
+  notes              String?
+  confidence         Float     @default(0.5)
+  usageCount         Int       @default(0) @map("usage_count")
+  successRate        Float     @default(0.5) @map("success_rate")
+  lastUsedAt         DateTime? @map("last_used_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  organizationId  String?      @map("organization_id")
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ocrJobs         OcrJob[]
+
+  @@index([organizationId])
+  @@index([clientName])
+  @@map("client_templates")
+}
+
+model ParseCorrection {
+  id              String   @id @default(cuid())
+  correctionType  String   @map("correction_type") // dimension, quantity, material, label, edge_banding, groove, cnc, rotation, grain, complete_reject
+  fieldPath       String?  @map("field_path") // JSON path to the field
+  originalValue   Json?    @map("original_value")
+  correctedValue  Json?    @map("corrected_value")
+  originalPart    Json?    @map("original_part")
+  correctedPart   Json?    @map("corrected_part")
+  sourceText      String?  @map("source_text")
+  sourceLineNumber Int?    @map("source_line_number")
+  sourceFileName  String?  @map("source_file_name")
+  patternExtracted Boolean @default(false) @map("pattern_extracted")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  organizationId  String?       @map("organization_id")
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId          String?       @map("user_id")
+  user            User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  parseJobId      String?       @map("parse_job_id")
+  parseJob        ParseJob?     @relation(fields: [parseJobId], references: [id], onDelete: SetNull)
+  cutlistId       String?       @map("cutlist_id")
+  cutlist         Cutlist?      @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
+  patternId       String?       @map("pattern_id")
+  pattern         ParserPattern? @relation(fields: [patternId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([correctionType])
+  @@index([createdAt(sort: Desc)])
+  @@map("parse_corrections")
+}
+
+// ============================================================
+// OCR JOBS
+// ============================================================
+
+model OcrJob {
+  id              String    @id @default(cuid())
+  filename        String
+  fileType        String?   @map("file_type") // pdf, image
+  fileSizeBytes   BigInt?   @map("file_size_bytes")
+  storagePath     String?   @map("storage_path")
+  provider        String    @default("openai") // openai, anthropic
+  status          String    @default("queued") // queued, uploading, processing, parsing, complete, error
+  totalPages      Int       @default(1) @map("total_pages")
+  currentPage     Int       @default(0) @map("current_page")
+  pagesProcessed  Int       @default(0) @map("pages_processed")
+  progressPercent Int       @default(0) @map("progress_percent")
+  stage           String?
+  extractedText   String?   @map("extracted_text")
+  detectedFormat  String?   @map("detected_format") // tabular, handwritten, mixed
+  partsCount      Int       @default(0) @map("parts_count")
+  confidence      Float?
+  learningApplied Boolean   @default(false) @map("learning_applied")
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  processingTimeMs Int?     @map("processing_time_ms")
+  errorMessage    String?   @map("error_message")
+  retryCount      Int       @default(0) @map("retry_count")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  organizationId     String?        @map("organization_id")
+  organization       Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId             String?        @map("user_id")
+  user               User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fileId             String?        @map("file_id")
+  file               UploadedFile?  @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  cutlistId          String?        @map("cutlist_id")
+  cutlist            Cutlist?       @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
+  clientTemplateId   String?        @map("client_template_id")
+  clientTemplate     ClientTemplate? @relation(fields: [clientTemplateId], references: [id], onDelete: SetNull)
+  pageResults        OcrPageResult[]
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("ocr_jobs")
+}
+
+model OcrPageResult {
+  id              String   @id @default(cuid())
+  pageNumber      Int      @map("page_number")
+  extractedText   String?  @map("extracted_text")
+  confidence      Float?
+  partsCount      Int      @default(0) @map("parts_count")
+  partsData       Json?    @map("parts_data")
+  processingTimeMs Int?    @map("processing_time_ms")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  ocrJobId String @map("ocr_job_id")
+  ocrJob   OcrJob @relation(fields: [ocrJobId], references: [id], onDelete: Cascade)
+
+  @@unique([ocrJobId, pageNumber])
+  @@index([ocrJobId])
+  @@map("ocr_page_results")
 }

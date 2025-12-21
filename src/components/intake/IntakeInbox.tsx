@@ -52,6 +52,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useIntakeStore, type ParsedPartWithStatus } from "@/lib/store";
 import { cn, generateId } from "@/lib/utils";
+import { recordCorrection, detectCorrections } from "@/lib/learning";
+import type { CutPart } from "@/lib/schema";
 
 // ============================================================
 // CONFIDENCE BADGE
@@ -1007,6 +1009,50 @@ export function IntakeInbox() {
     }
   }, [inboxParts, filter]);
 
+  // ============================================================
+  // LEARNING CORRECTION TRACKING
+  // ============================================================
+  
+  /**
+   * Wrapper around updateInboxPart that records corrections for learning
+   */
+  const updatePartWithCorrection = React.useCallback(
+    (partId: string, updates: Partial<CutPart>) => {
+      const originalPart = inboxParts.find((p) => p.part_id === partId);
+      if (!originalPart) return;
+
+      // Update the part first
+      updateInboxPart(partId, updates);
+
+      // Create the corrected part for comparison
+      const correctedPart: CutPart = {
+        ...originalPart,
+        ...updates,
+      };
+
+      // Detect what corrections were made
+      const corrections = detectCorrections(
+        originalPart,
+        correctedPart,
+        originalPart._originalText
+      );
+
+      // Record each correction (async, non-blocking)
+      if (corrections.length > 0) {
+        for (const correction of corrections) {
+          recordCorrection({
+            ...correction,
+            cutlistId: currentCutlist.doc_id,
+          }).catch((err) => {
+            // Non-blocking - just log errors
+            console.warn("Failed to record correction:", err);
+          });
+        }
+      }
+    },
+    [inboxParts, updateInboxPart, currentCutlist]
+  );
+
   // Keyboard navigation for the table
   const handleTableKeyDown = (e: React.KeyboardEvent) => {
     const maxIndex = filteredParts.length - 1;
@@ -1062,25 +1108,25 @@ export function IntakeInbox() {
   };
 
   const handleSetMaterialSelected = (materialId: string) => {
-    selectedIds.forEach((id) => updateInboxPart(id, { material_id: materialId }));
+    selectedIds.forEach((id) => updatePartWithCorrection(id, { material_id: materialId }));
   };
 
   const handleSetThicknessSelected = (thickness: number) => {
-    selectedIds.forEach((id) => updateInboxPart(id, { thickness_mm: thickness }));
+    selectedIds.forEach((id) => updatePartWithCorrection(id, { thickness_mm: thickness }));
   };
 
   const handleMultiplyQtySelected = (multiplier: number) => {
     selectedIds.forEach((id) => {
       const part = inboxParts.find((p) => p.part_id === id);
       if (part) {
-        updateInboxPart(id, { qty: Math.max(1, Math.round(part.qty * multiplier)) });
+        updatePartWithCorrection(id, { qty: Math.max(1, Math.round(part.qty * multiplier)) });
       }
     });
   };
 
   const handleToggleRotationSelected = (allow: boolean) => {
     selectedIds.forEach((id) => {
-      updateInboxPart(id, { 
+      updatePartWithCorrection(id, { 
         allow_rotation: allow,
         grain: allow ? "none" : "along_L",
       });
@@ -1098,7 +1144,7 @@ export function IntakeInbox() {
           return acc;
         }, {} as Record<string, { apply: boolean; edgeband_id?: string }>);
         
-        updateInboxPart(id, {
+        updatePartWithCorrection(id, {
           ops: {
             ...part.ops,
             edging: { edges: edgingConfig },
@@ -1113,7 +1159,7 @@ export function IntakeInbox() {
       const part = inboxParts.find((p) => p.part_id === id);
       if (part) {
         const { edging, ...restOps } = part.ops || {};
-        updateInboxPart(id, {
+        updatePartWithCorrection(id, {
           ops: Object.keys(restOps).length > 0 ? restOps : undefined,
         });
       }
@@ -1134,7 +1180,7 @@ export function IntakeInbox() {
           width_mm: 4,
         };
         
-        updateInboxPart(id, {
+        updatePartWithCorrection(id, {
           ops: {
             ...part.ops,
             grooves: [...existingGrooves, newGroove],
@@ -1149,7 +1195,7 @@ export function IntakeInbox() {
       const part = inboxParts.find((p) => p.part_id === id);
       if (part) {
         const { grooves, ...restOps } = part.ops || {};
-        updateInboxPart(id, {
+        updatePartWithCorrection(id, {
           ops: Object.keys(restOps).length > 0 ? restOps : undefined,
         });
       }
@@ -1167,7 +1213,7 @@ export function IntakeInbox() {
           notes: pattern,
         };
         
-        updateInboxPart(id, {
+        updatePartWithCorrection(id, {
           ops: {
             ...part.ops,
             holes: [holeOp],
@@ -1182,7 +1228,7 @@ export function IntakeInbox() {
       const part = inboxParts.find((p) => p.part_id === id);
       if (part) {
         const { holes, ...restOps } = part.ops || {};
-        updateInboxPart(id, {
+        updatePartWithCorrection(id, {
           ops: Object.keys(restOps).length > 0 ? restOps : undefined,
         });
       }
@@ -1200,7 +1246,7 @@ export function IntakeInbox() {
           notes: `CNC: ${program}`,
         };
         
-        updateInboxPart(id, {
+        updatePartWithCorrection(id, {
           ops: {
             ...part.ops,
             custom_cnc_ops: [cncOp],
@@ -1215,7 +1261,7 @@ export function IntakeInbox() {
       const part = inboxParts.find((p) => p.part_id === id);
       if (part) {
         const { custom_cnc_ops, routing, ...restOps } = part.ops || {};
-        updateInboxPart(id, {
+        updatePartWithCorrection(id, {
           ops: Object.keys(restOps).length > 0 ? restOps : undefined,
         });
       }
@@ -1236,7 +1282,7 @@ export function IntakeInbox() {
   const handleSwapDimensions = (partId: string) => {
     const part = inboxParts.find((p) => p.part_id === partId);
     if (part) {
-      updateInboxPart(partId, {
+      updatePartWithCorrection(partId, {
         size: { L: part.size.W, W: part.size.L },
       });
     }
@@ -1256,7 +1302,7 @@ export function IntakeInbox() {
       });
     }
     
-    // Update original to qty=1
+    // Update original to qty=1 (this is more of a split, not a correction, so use regular update)
     updateInboxPart(part.part_id, { qty: 1 });
     
     // Add the new parts
@@ -1370,7 +1416,7 @@ export function IntakeInbox() {
                 onFocus={() => setFocusedIndex(index)}
                 onAccept={() => acceptInboxPart(part.part_id)}
                 onReject={() => rejectInboxPart(part.part_id)}
-                onUpdate={(updates) => updateInboxPart(part.part_id, updates)}
+                onUpdate={(updates) => updatePartWithCorrection(part.part_id, updates)}
                 onDuplicate={() => handleDuplicate(part)}
                 onSwapDimensions={() => handleSwapDimensions(part.part_id)}
                 onSplitQuantity={() => handleSplitQuantity(part)}

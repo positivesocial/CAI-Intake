@@ -22,6 +22,7 @@ import {
   parseEdges,
   type EdgeId,
 } from "../parser/parser-utils";
+import type { LearningContext } from "../learning";
 
 /**
  * Parse options for text parsing
@@ -39,6 +40,8 @@ export interface TextParseOptions {
   sourceMethod?: IngestionMethod;
   /** Minimum confidence for auto-accept */
   minConfidence?: number;
+  /** Learning context for adaptive parsing */
+  learningContext?: LearningContext;
 }
 
 /**
@@ -189,10 +192,17 @@ function shouldSkipLine(line: string): boolean {
  * Parse tabular/spreadsheet-style line
  * Handles tab or multi-space separated columns
  */
+/**
+ * Escape special regex characters for learning pattern matching
+ */
+function escapeRegexForLearning(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function parseTabularLine(
   line: string,
   options: TextParseOptions
-): { L: number; W: number; qty: number; label: string; edges: string[]; hasGroove: boolean; confidence: number } | null {
+): { L: number; W: number; qty: number; label: string; edges: string[]; hasGroove: boolean; confidence: number; materialHint?: string } | null {
   // Split by tabs or 2+ spaces
   const parts = line.split(/\t|(?:\s{2,})/).map(p => p.trim()).filter(p => p);
   
@@ -217,6 +227,7 @@ function parseTabularLine(
   let edges: string[] = [];
   let hasGroove = false;
   let confidence = 0.8;
+  let materialHint: string | undefined;
   
   // Find numeric columns (potential dimensions and qty)
   const numericIndices: number[] = [];
@@ -332,10 +343,31 @@ function parseTabularLine(
     }
   }
   
+  // Look for material hints in the text
+  const materialKeywords = ["melamine", "mel", "mdf", "plywood", "ply", "pb", "particleboard", "oak", "cherry", "walnut", "white", "black"];
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+    for (const keyword of materialKeywords) {
+      if (lower.includes(keyword)) {
+        materialHint = part;
+        break;
+      }
+    }
+    if (materialHint) break;
+  }
+  
+  // Also check full line for material patterns like "PB BLACK CHERRY"
+  if (!materialHint) {
+    const matMatch = line.match(/\b(PB|MDF|PLY|melamine|plywood)\s+\w+(?:\s+\w+)?/i);
+    if (matMatch) {
+      materialHint = matMatch[0];
+    }
+  }
+  
   // Remove duplicates from edges
   edges = [...new Set(edges)];
   
-  return { L, W, qty, label, edges, hasGroove, confidence };
+  return { L, W, qty, label, edges, hasGroove, confidence, materialHint };
 }
 
 /**
@@ -344,7 +376,7 @@ function parseTabularLine(
 function parseSpaceSeparatedLine(
   parts: string[],
   options: TextParseOptions
-): { L: number; W: number; qty: number; label: string; edges: string[]; hasGroove: boolean; confidence: number } | null {
+): { L: number; W: number; qty: number; label: string; edges: string[]; hasGroove: boolean; confidence: number; materialHint?: string } | null {
   // Similar logic to tabular but for single-space separated
   let label = "";
   let L = 0;
@@ -352,6 +384,7 @@ function parseSpaceSeparatedLine(
   let qty = 1;
   let edges: string[] = [];
   let hasGroove = false;
+  let materialHint: string | undefined;
   
   // Collect all numbers and their positions
   const numbers: { value: number; index: number }[] = [];
@@ -406,9 +439,22 @@ function parseSpaceSeparatedLine(
     if (parts[i] === "x") hasGroove = true;
   }
   
+  // Look for material hints
+  const materialKeywords = ["melamine", "mel", "mdf", "plywood", "ply", "pb", "particleboard", "oak", "cherry", "walnut", "white", "black"];
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+    for (const keyword of materialKeywords) {
+      if (lower.includes(keyword)) {
+        materialHint = part;
+        break;
+      }
+    }
+    if (materialHint) break;
+  }
+  
   edges = [...new Set(edges)];
   
-  return { L, W, qty, label, edges, hasGroove, confidence: 0.75 };
+  return { L, W, qty, label, edges, hasGroove, confidence: 0.75, materialHint };
 }
 
 /**
@@ -573,6 +619,7 @@ export function parseTextLine(
   const warnings: string[] = [];
   const errors: string[] = [];
   let overallConfidence = 1.0;
+  const learningContext = options.learningContext;
   
   // Clean up the text
   const cleanText = text.trim();
@@ -603,15 +650,65 @@ export function parseTextLine(
   // Try tabular parsing first (for spreadsheet-style data)
   const tabularResult = parseTabularLine(cleanText, options);
   if (tabularResult && tabularResult.L > 0 && tabularResult.W > 0) {
-    const { L, W, qty, label, edges, hasGroove, confidence } = tabularResult;
+    const { L, W, qty, label, edges, hasGroove, confidence, materialHint } = tabularResult;
+    
+    // Apply learning context material mapping
+    let materialId = options.defaultMaterialId ?? "default";
+    let thickness = options.defaultThicknessMm ?? DEFAULTS.THICKNESS_MM;
+    
+    if (materialHint && learningContext?.enabled) {
+      const normalizedMaterial = materialHint.toLowerCase().replace(/\s+/g, " ").trim();
+      const mapping = learningContext.materialMappings.get(normalizedMaterial);
+      if (mapping) {
+        materialId = mapping.materialId;
+        if (mapping.thicknessMm) {
+          thickness = mapping.thicknessMm;
+        }
+        overallConfidence = Math.min(overallConfidence, mapping.confidence + 0.2);
+        warnings.push(`Applied material mapping: "${materialHint}" → ${mapping.materialId}`);
+      }
+    }
+    
+    // Apply learning context edge notation patterns
+    let enhancedEdges = [...edges];
+    let enhancedGrooves: string[] = hasGroove ? ["W2"] : [];
+    
+    if (learningContext?.enabled && learningContext.parserPatterns.size > 0) {
+      // Check each part of the cleaned text for edge notation patterns
+      const edgePatterns = learningContext.parserPatterns.get("edge_notation") || [];
+      const groovePatterns = learningContext.parserPatterns.get("groove_notation") || [];
+      
+      for (const pattern of edgePatterns) {
+        const regex = new RegExp(`\\b${escapeRegexForLearning(pattern.inputPattern)}\\b`, "i");
+        if (regex.test(cleanText)) {
+          const mapping = pattern.outputMapping as { edges?: string[]; groove?: string };
+          if (mapping.edges) {
+            enhancedEdges.push(...mapping.edges.filter(e => !enhancedEdges.includes(e)));
+          }
+          if (mapping.groove && !enhancedGrooves.includes(mapping.groove)) {
+            enhancedGrooves.push(mapping.groove);
+          }
+        }
+      }
+      
+      for (const pattern of groovePatterns) {
+        const regex = new RegExp(`\\b${escapeRegexForLearning(pattern.inputPattern)}\\b`, "i");
+        if (regex.test(cleanText)) {
+          const mapping = pattern.outputMapping as { groove?: string };
+          if (mapping.groove && !enhancedGrooves.includes(mapping.groove)) {
+            enhancedGrooves.push(mapping.groove);
+          }
+        }
+      }
+    }
     
     const part: CutPart = {
       part_id: generateId("P"),
       label: label || undefined,
       qty,
       size: { L, W },
-      thickness_mm: options.defaultThicknessMm ?? DEFAULTS.THICKNESS_MM,
-      material_id: options.defaultMaterialId ?? "default",
+      thickness_mm: thickness,
+      material_id: materialId,
       grain: "none",
       allow_rotation: true,
       audit: {
@@ -623,10 +720,10 @@ export function parseTextLine(
     };
     
     // Add edging if found
-    if (edges.length > 0) {
+    if (enhancedEdges.length > 0) {
       part.ops = {
         edging: {
-          edges: edges.reduce((acc, edge) => {
+          edges: enhancedEdges.reduce((acc, edge) => {
             acc[edge] = { apply: true };
             return acc;
           }, {} as Record<string, { apply: boolean }>),
@@ -635,16 +732,16 @@ export function parseTextLine(
     }
     
     // Add groove if found
-    if (hasGroove) {
+    if (enhancedGrooves.length > 0) {
       part.ops = {
         ...part.ops,
-        grooves: [{
+        grooves: enhancedGrooves.map((side) => ({
           groove_id: generateId("GRV"),
-          side: "W2" as const,
+          side: side as "L1" | "L2" | "W1" | "W2",
           offset_mm: 10,
           depth_mm: 8,
           width_mm: 4,
-        }],
+        })),
       };
     }
     

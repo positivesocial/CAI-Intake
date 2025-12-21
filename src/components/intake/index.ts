@@ -9,6 +9,8 @@ export * from "./IntakeInbox";
 export * from "./ExcelImport";
 export * from "./VoiceDictation";
 export * from "./FileUpload";
+export * from "./FileUploadQueue";
+export * from "./OCRProviderSelect";
 export * from "./TemplateGenerator";
 export * from "./ParserModeToggle";
 export * from "./StatsSidebar";
