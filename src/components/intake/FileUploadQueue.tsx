@@ -19,25 +19,18 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
-  Pause,
-  Play,
   Trash2,
+  Pause,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useIntakeStore, type ParsedPartWithStatus } from "@/lib/store";
 import { parseTextBatch } from "@/lib/parsers/text-parser";
 import { cn } from "@/lib/utils";
-import { getOrCreateProvider, setAIProvider, type AIParseResult, type ParsedPartResult, type AIProviderType } from "@/lib/ai";
+import { getResilientProvider, type ResilientProgress } from "@/lib/ai/resilient-provider";
+import type { AIParseResult } from "@/lib/ai/provider";
 import { detectQRCode, type QRDetectionResult } from "@/lib/ai/template-ocr";
 import { uploadFile, BUCKETS } from "@/lib/supabase/storage";
 import { getLearningContext, type LearningContext } from "@/lib/learning";
@@ -94,7 +87,6 @@ interface UploadedFile {
 
 interface FileUploadQueueProps {
   maxConcurrent?: number;
-  defaultProvider?: AIProviderType;
   organizationId?: string;
 }
 
@@ -206,14 +198,12 @@ function formatTime(ms: number): string {
 
 export function FileUploadQueue({
   maxConcurrent = 2,
-  defaultProvider = "openai",
   organizationId,
 }: FileUploadQueueProps) {
   const addToInbox = useIntakeStore((state) => state.addToInbox);
 
   const [files, setFiles] = React.useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = React.useState(false);
-  const [provider, setProvider] = React.useState<AIProviderType>(defaultProvider);
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [showCompleted, setShowCompleted] = React.useState(true);
   const [learningContext, setLearningContext] = React.useState<LearningContext | null>(null);
@@ -394,28 +384,31 @@ export function FileUploadQueue({
             },
           });
 
-          try {
-            // Set the selected provider
-            await setAIProvider(provider);
-            const aiProvider = await getOrCreateProvider();
+          // Use resilient provider (Claude primary, GPT fallback)
+          const resilientProvider = getResilientProvider();
 
-            if (!aiProvider.isConfigured()) {
-              throw new Error(`${provider === "openai" ? "OpenAI" : "Anthropic"} API key not configured.`);
-            }
-
-            // Progress to parsing stage
+          // Progress callback for visual feedback
+          const onProgress = (progress: ResilientProgress) => {
             updateFileProgress(uploadedFile.id, {
               progress: {
                 ...uploadedFile.progress,
-                stage: "parsing",
+                stage: progress.stage === "parsing" ? "parsing" : "extracting",
                 uploadPercent: 100,
-                processPercent: 100,
-                parsePercent: 20,
+                processPercent: progress.stage === "extracting" ? progress.percent : 100,
+                parsePercent: progress.stage === "parsing" ? progress.percent : 0,
+                currentPage: progress.currentPage,
+                totalPages: progress.totalPages,
                 startTime,
               },
             });
+          };
 
-            let aiResult: AIParseResult;
+          try {
+            // Type for extended result with metadata
+            type ExtendedParseResult = AIParseResult & { 
+              metadata?: { provider: string; usedFallback: boolean } 
+            };
+            let aiResult: ExtendedParseResult;
 
             if (uploadedFile.type === "image") {
               const imageBuffer = await uploadedFile.file.arrayBuffer();
@@ -423,105 +416,67 @@ export function FileUploadQueue({
               const mimeType = uploadedFile.file.type || "image/jpeg";
               const dataUrl = `data:${mimeType};base64,${base64}`;
 
-              updateFileProgress(uploadedFile.id, {
-                progress: {
-                  ...uploadedFile.progress,
-                  stage: "parsing",
-                  uploadPercent: 100,
-                  processPercent: 100,
-                  parsePercent: 50,
-                  startTime,
-                },
-              });
-
-              aiResult = await aiProvider.parseImage(dataUrl, {
+              aiResult = await resilientProvider.parseImageResilient(dataUrl, {
                 extractMetadata: true,
                 confidence: "balanced",
                 templateId: qrResult?.templateId,
                 templateConfig: qrResult?.templateConfig,
                 defaultMaterialId: "MAT-WHITE-18",
                 defaultThicknessMm: 18,
+                learningContext: learningContext || undefined,
+                onProgress,
               });
             } else {
-              // PDF processing
+              // PDF processing - extract text first
               const pdfBuffer = await uploadedFile.file.arrayBuffer();
               let extractedText = "";
+              let totalPages = 1;
 
-              // Get page count first
               try {
                 const pdfParseModule = await import("pdf-parse");
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const pdfParse = (pdfParseModule as any).default ?? pdfParseModule;
                 const pdfData = await pdfParse(Buffer.from(pdfBuffer));
                 extractedText = pdfData.text;
+                totalPages = pdfData.numpages || 1;
 
                 // Update with page info
-                const totalPages = pdfData.numpages || 1;
-                updateFileProgress(uploadedFile.id, {
-                  progress: {
-                    ...uploadedFile.progress,
-                    stage: "extracting",
-                    uploadPercent: 100,
-                    processPercent: 50,
-                    totalPages,
-                    currentPage: 1,
-                    startTime,
-                  },
+                onProgress({
+                  stage: "extracting",
+                  percent: 50,
+                  totalPages,
+                  currentPage: 1,
+                  provider: "claude",
                 });
 
-                // Process text progressively
+                // Simulate page processing
                 for (let page = 1; page <= totalPages; page++) {
-                  updateFileProgress(uploadedFile.id, {
-                    progress: {
-                      ...uploadedFile.progress,
-                      stage: "extracting",
-                      uploadPercent: 100,
-                      processPercent: 30 + Math.round((page / totalPages) * 70),
-                      totalPages,
-                      currentPage: page,
-                      startTime,
-                    },
+                  onProgress({
+                    stage: "extracting",
+                    percent: 30 + Math.round((page / totalPages) * 70),
+                    totalPages,
+                    currentPage: page,
+                    provider: "claude",
                   });
-                  // Small delay for visual feedback
                   await new Promise(r => setTimeout(r, 100));
                 }
               } catch {
                 throw new Error("Could not extract text from PDF.");
               }
 
-              updateFileProgress(uploadedFile.id, {
-                progress: {
-                  ...uploadedFile.progress,
-                  stage: "parsing",
-                  uploadPercent: 100,
-                  processPercent: 100,
-                  parsePercent: 30,
-                  startTime,
-                },
-              });
-
-              if (extractedText) {
-                aiResult = await aiProvider.parseText(extractedText, {
-                  extractMetadata: true,
-                  confidence: "balanced",
-                  defaultMaterialId: "MAT-WHITE-18",
-                  defaultThicknessMm: 18,
-                });
-              } else {
+              if (!extractedText) {
                 throw new Error("No text extracted from PDF.");
               }
-            }
 
-            updateFileProgress(uploadedFile.id, {
-              progress: {
-                ...uploadedFile.progress,
-                stage: "parsing",
-                uploadPercent: 100,
-                processPercent: 100,
-                parsePercent: 90,
-                startTime,
-              },
-            });
+              aiResult = await resilientProvider.parseTextResilient(extractedText, {
+                extractMetadata: true,
+                confidence: "balanced",
+                defaultMaterialId: "MAT-WHITE-18",
+                defaultThicknessMm: 18,
+                learningContext: learningContext || undefined,
+                onProgress,
+              });
+            }
 
             if (!aiResult.success) {
               throw new Error(aiResult.errors.join(", ") || "AI parsing failed");
@@ -534,9 +489,13 @@ export function FileUploadQueue({
             }));
 
             confidence = aiResult.totalConfidence;
+            const providerUsed = aiResult.metadata?.provider || "claude";
+            const usedFallback = aiResult.metadata?.usedFallback;
             method = qrResult?.templateId
               ? `AI + Template (${qrResult.templateId})`
-              : `${provider === "openai" ? "GPT-4" : "Claude"} Vision`;
+              : usedFallback
+                ? `${providerUsed === "gpt" ? "GPT-4" : "Claude"} (fallback)`
+                : `${providerUsed === "claude" ? "Claude" : "GPT-4"} Vision`;
 
             // Count metadata
             for (const p of aiResult.parts) {
@@ -700,24 +659,19 @@ export function FileUploadQueue({
             <Badge variant="teal">AI-Powered</Badge>
           </div>
           
-          {/* Provider selector */}
-          <Select value={provider} onValueChange={(v) => setProvider(v as AIProviderType)}>
-            <SelectTrigger className="w-[140px] h-8">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="openai">
-                <div className="flex items-center gap-2">
-                  <span className="text-green-600">●</span> OpenAI
-                </div>
-              </SelectItem>
-              <SelectItem value="anthropic">
-                <div className="flex items-center gap-2">
-                  <span className="text-purple-600">●</span> Claude
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Provider indicator - Claude primary, GPT fallback */}
+          <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+              <span>Claude</span>
+            </div>
+            <span className="text-[var(--border)]">→</span>
+            <div className="flex items-center gap-1 opacity-60">
+              <span className="w-2 h-2 rounded-full bg-green-500"></span>
+              <span>GPT</span>
+            </div>
+            <Badge variant="outline" className="ml-1">Auto-fallback</Badge>
+          </div>
         </div>
         
         <p className="text-sm text-[var(--muted-foreground)] mt-1">
@@ -1013,7 +967,7 @@ export function FileUploadQueue({
         <div className="text-xs text-[var(--muted-foreground)] bg-[var(--muted)] rounded-lg p-3">
           <p className="font-medium mb-1">Supported file types:</p>
           <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">PDF ({provider === "openai" ? "GPT-4 Vision" : "Claude Vision"})</Badge>
+            <Badge variant="outline">PDF (Claude + GPT fallback)</Badge>
             <Badge variant="outline">Images (AI Vision)</Badge>
             <Badge variant="outline">TXT (text parsing)</Badge>
             <Badge variant="outline">CSV (structured data)</Badge>

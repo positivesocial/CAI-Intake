@@ -12,7 +12,7 @@ import type { LearningContext } from "@/lib/learning";
 // TYPES
 // ============================================================
 
-export type AIProviderType = "openai" | "anthropic";
+export type AIProviderType = "openai" | "anthropic" | "resilient";
 
 export interface ParseOptions {
   /** Extract additional metadata (grooving, CNC, edgebanding) */
