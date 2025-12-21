@@ -194,16 +194,17 @@ async function parseExcel(buffer: ArrayBuffer): Promise<{
     throw new Error("No sheet found in Excel file");
   }
   
-  const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { 
+  const data = XLSX.utils.sheet_to_json<unknown[]>(sheet, { 
     defval: "",
     header: 1 // Get as 2D array
-  }) as unknown[][];
+  });
   
   if (data.length === 0) {
     throw new Error("No data found in Excel file");
   }
   
-  const headers = (data[0] || []).map(h => String(h || "").trim());
+  const firstRow = data[0] as unknown[] || [];
+  const headers = firstRow.map(h => String(h || "").trim());
   const sampleRows = data.slice(1, 6).map(row => 
     (row as unknown[]).map(cell => String(cell || "").trim())
   );
