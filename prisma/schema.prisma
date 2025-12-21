@@ -49,6 +49,11 @@ model Organization {
   clientTemplates  ClientTemplate[]
   parseCorrections ParseCorrection[]
   ocrJobs          OcrJob[]
+  
+  // Operations libraries
+  holePatterns     HolePattern[]
+  grooveProfiles   GrooveProfile[]
+  routingProfiles  RoutingProfile[]
 
   @@map("organizations")
 }
@@ -662,4 +667,145 @@ model OcrPageResult {
   @@unique([ocrJobId, pageNumber])
   @@index([ocrJobId])
   @@map("ocr_page_results")
+}
+
+// ============================================================
+// OPERATIONS LIBRARIES
+// ============================================================
+
+model HolePattern {
+  id               String   @id @default(cuid())
+  patternId        String   @map("pattern_id")
+  name             String
+  description      String?
+  
+  // Pattern type
+  kind             String   // hinge, shelf_pins, handle, knob, drawer_slide, cam_lock, dowel, system32, custom
+  
+  // Hole specifications (JSONB array)
+  // Each hole: { x: number, y: number, dia_mm: number, depth_mm?: number, through?: boolean }
+  holes            Json     @default("[]")
+  
+  // Reference positioning
+  refEdge          String?  @map("ref_edge") // L1, L2, W1, W2
+  refCorner        String?  @map("ref_corner") // top_left, top_right, bottom_left, bottom_right
+  
+  // Parametric settings for System 32
+  parametricConfig Json?    @map("parametric_config")
+  
+  // Hardware reference
+  hardwareId       String?  @map("hardware_id")
+  hardwareBrand    String?  @map("hardware_brand")
+  hardwareModel    String?  @map("hardware_model")
+  
+  // Metadata
+  isSystem         Boolean  @default(false) @map("is_system")
+  isActive         Boolean  @default(true) @map("is_active")
+  usageCount       Int      @default(0) @map("usage_count")
+  metadata         Json?
+  
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  organizationId   String       @map("organization_id")
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, patternId])
+  @@index([organizationId])
+  @@index([kind])
+  @@index([usageCount(sort: Desc)])
+  @@map("hole_patterns")
+}
+
+model GrooveProfile {
+  id                     String   @id @default(cuid())
+  profileId              String   @map("profile_id")
+  name                   String
+  description            String?
+  
+  // Groove specifications
+  widthMm                Float    @map("width_mm")
+  depthMm                Float    @map("depth_mm")
+  
+  // Purpose/type
+  purpose                String?  // back_panel, drawer_bottom, light_profile, glass_panel, divider, custom
+  
+  // Default positioning
+  defaultOffsetMm        Float?   @default(10) @map("default_offset_mm")
+  defaultFace            String?  @default("back") @map("default_face") // front, back
+  
+  // Stopped groove settings
+  allowStopped           Boolean  @default(true) @map("allow_stopped")
+  defaultStartOffsetMm   Float?   @default(0) @map("default_start_offset_mm")
+  defaultEndOffsetMm     Float?   @default(0) @map("default_end_offset_mm")
+  
+  // Tooling
+  toolDiaMm              Float?   @map("tool_dia_mm")
+  toolId                 String?  @map("tool_id")
+  feedRate               Int?     @map("feed_rate")
+  
+  // Metadata
+  isSystem               Boolean  @default(false) @map("is_system")
+  isActive               Boolean  @default(true) @map("is_active")
+  usageCount             Int      @default(0) @map("usage_count")
+  metadata               Json?
+  
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  organizationId         String       @map("organization_id")
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, profileId])
+  @@index([organizationId])
+  @@index([purpose])
+  @@index([usageCount(sort: Desc)])
+  @@map("groove_profiles")
+}
+
+model RoutingProfile {
+  id               String   @id @default(cuid())
+  profileId        String   @map("profile_id")
+  name             String
+  description      String?
+  
+  // Profile type
+  profileType      String   @map("profile_type") // edge_profile, pocket, cutout, rebate, chamfer, radius, contour, drill_array, text, custom
+  
+  // Profile specifications (JSONB for flexibility)
+  specifications   Json     @default("{}")
+  
+  // Tooling
+  toolDiaMm        Float?   @map("tool_dia_mm")
+  toolId           String?  @map("tool_id")
+  toolType         String?  @map("tool_type") // straight, spiral_up, spiral_down, compression, vbit, ballnose, ogee
+  feedRate         Int?     @map("feed_rate")
+  plungeRate       Int?     @map("plunge_rate")
+  spindleSpeed     Int?     @map("spindle_speed")
+  stepDownMm       Float?   @map("step_down_mm")
+  
+  // Output/export
+  dxfLayer         String?  @map("dxf_layer")
+  gcodeTemplate    String?  @map("gcode_template")
+  
+  // Metadata
+  isSystem         Boolean  @default(false) @map("is_system")
+  isActive         Boolean  @default(true) @map("is_active")
+  usageCount       Int      @default(0) @map("usage_count")
+  metadata         Json?
+  
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  organizationId   String       @map("organization_id")
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, profileId])
+  @@index([organizationId])
+  @@index([profileType])
+  @@index([usageCount(sort: Desc)])
+  @@map("routing_profiles")
 }
