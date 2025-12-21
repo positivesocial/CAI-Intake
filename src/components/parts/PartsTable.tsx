@@ -52,18 +52,28 @@ import { PartEditModal } from "./PartEditModal";
 import { useColumnOrder } from "@/hooks/use-column-order";
 import { useKeyboardShortcut } from "@/components/ui/keyboard-shortcuts-dialog";
 
-// Column definitions
-type ColumnKey = "label" | "L" | "W" | "thickness_mm" | "qty" | "material_id" | "rotate" | "group_id" | "edging";
+// Column definitions with capability requirements
+type ColumnKey = 
+  | "label" | "L" | "W" | "thickness_mm" | "qty" | "material_id" | "rotate" 
+  | "group_id" | "edging" | "grooves" | "holes" | "cnc" | "notes";
 type SortField = "label" | "qty" | "L" | "W" | "material_id";
 
-const COLUMN_DEFS: Record<ColumnKey, {
+// Capability keys that match CutlistCapabilities
+type CapabilityKey = "edging" | "grooves" | "cnc_holes" | "cnc_routing" | "custom_cnc" | "advanced_grouping" | "part_notes";
+
+interface ColumnDef {
   header: string;
   sortable?: SortField;
   align?: "left" | "right" | "center";
   width?: string;
   advancedOnly?: boolean;
-  edgingOnly?: boolean;
-}> = {
+  /** Show only when specific capability is enabled */
+  requiresCapability?: CapabilityKey | CapabilityKey[];
+  /** Color hint for operation columns */
+  colorClass?: string;
+}
+
+const COLUMN_DEFS: Record<ColumnKey, ColumnDef> = {
   label: { header: "Label", sortable: "label", align: "left" },
   L: { header: "Length", sortable: "L", align: "right" },
   W: { header: "Width", sortable: "W", align: "right" },
@@ -71,12 +81,17 @@ const COLUMN_DEFS: Record<ColumnKey, {
   qty: { header: "Qty", sortable: "qty", align: "right" },
   material_id: { header: "Material", sortable: "material_id", align: "left" },
   rotate: { header: "Rotate", align: "center" },
-  group_id: { header: "Group", align: "left", advancedOnly: true },
-  edging: { header: "Edging", align: "left", edgingOnly: true },
+  group_id: { header: "Group", align: "left", advancedOnly: true, requiresCapability: "advanced_grouping" },
+  edging: { header: "Edging", align: "center", requiresCapability: "edging", colorClass: "text-blue-600" },
+  grooves: { header: "Grooves", align: "center", requiresCapability: "grooves", colorClass: "text-amber-600" },
+  holes: { header: "Holes", align: "center", requiresCapability: "cnc_holes", colorClass: "text-purple-600" },
+  cnc: { header: "CNC", align: "center", requiresCapability: ["cnc_routing", "custom_cnc"], colorClass: "text-emerald-600" },
+  notes: { header: "Notes", align: "left", requiresCapability: "part_notes" },
 };
 
 const DEFAULT_COLUMN_ORDER: ColumnKey[] = [
-  "label", "L", "W", "thickness_mm", "qty", "material_id", "rotate", "group_id", "edging"
+  "label", "L", "W", "thickness_mm", "qty", "material_id", "rotate", 
+  "edging", "grooves", "holes", "cnc", "group_id", "notes"
 ];
 
 // Sortable header cell component
@@ -88,7 +103,7 @@ function SortableTableHead({
   onSort,
 }: {
   id: string;
-  column: typeof COLUMN_DEFS[ColumnKey];
+  column: ColumnDef;
   sortField: SortField;
   sortDirection: "asc" | "desc";
   onSort: (field: SortField) => void;
@@ -118,7 +133,8 @@ function SortableTableHead({
       className={cn(
         column.align === "right" && "text-right",
         column.align === "center" && "text-center",
-        isDragging && "opacity-80 bg-[var(--cai-teal)]/10 shadow-lg"
+        isDragging && "opacity-80 bg-[var(--cai-teal)]/10 shadow-lg",
+        column.colorClass
       )}
     >
       <div className={cn(
@@ -154,7 +170,7 @@ function SortableTableHead({
             )} />
           </Button>
         ) : (
-          <span>{column.header}</span>
+          <span className="text-xs font-medium">{column.header}</span>
         )}
       </div>
     </TableHead>
@@ -244,15 +260,27 @@ export function PartsTable() {
     clearSelection();
   });
 
+  // Helper to check if a capability is enabled
+  const isCapabilityEnabled = React.useCallback((cap: CapabilityKey | CapabilityKey[]): boolean => {
+    const caps = currentCutlist.capabilities;
+    if (Array.isArray(cap)) {
+      // If any of the capabilities is enabled, show the column
+      return cap.some(c => caps[c as keyof typeof caps]);
+    }
+    return !!caps[cap as keyof typeof caps];
+  }, [currentCutlist.capabilities]);
+
   // Filter visible columns based on mode and capabilities
   const visibleColumns = React.useMemo(() => {
     return columnOrder.filter((col) => {
       const def = COLUMN_DEFS[col];
-      if (def.advancedOnly && !isAdvancedMode) return false;
-      if (def.edgingOnly && !currentCutlist.capabilities.edging) return false;
+      // Hide advanced-only columns in simple mode (unless they have a capability requirement)
+      if (def.advancedOnly && !isAdvancedMode && !def.requiresCapability) return false;
+      // Hide columns that require a specific capability unless that capability is enabled
+      if (def.requiresCapability && !isCapabilityEnabled(def.requiresCapability)) return false;
       return true;
     });
-  }, [columnOrder, isAdvancedMode, currentCutlist.capabilities.edging]);
+  }, [columnOrder, isAdvancedMode, isCapabilityEnabled]);
 
   // DnD sensors
   const sensors = useSensors(
@@ -396,17 +424,59 @@ export function PartsTable() {
         ) : (
           <span className="text-[var(--muted-foreground)]">-</span>
         );
-      case "edging":
-        return part.ops?.edging?.edges ? (
-          <span className="text-xs font-mono">
-            {Object.entries(part.ops.edging.edges)
-              .filter(([, v]) => v?.apply)
-              .map(([k]) => k)
-              .join(", ") || "-"}
+      case "edging": {
+        const edges = part.ops?.edging?.edges;
+        if (!edges) return <span className="text-[var(--muted-foreground)]">-</span>;
+        const applied = Object.entries(edges).filter(([, v]) => v?.apply).map(([k]) => k);
+        if (applied.length === 0) return <span className="text-[var(--muted-foreground)]">-</span>;
+        if (applied.length === 4) return <Badge className="bg-blue-100 text-blue-700 text-xs">4 edges</Badge>;
+        return (
+          <span className="text-xs font-mono text-blue-600">
+            {applied.join(",")}
           </span>
-        ) : (
-          <span className="text-[var(--muted-foreground)]">-</span>
         );
+      }
+      case "grooves": {
+        const grooves = part.ops?.grooves;
+        if (!grooves || grooves.length === 0) return <span className="text-[var(--muted-foreground)]">-</span>;
+        return (
+          <Badge className="bg-amber-100 text-amber-700 text-xs">
+            {grooves.length} groove{grooves.length > 1 ? "s" : ""}
+          </Badge>
+        );
+      }
+      case "holes": {
+        const holes = part.ops?.holes;
+        if (!holes || holes.length === 0) return <span className="text-[var(--muted-foreground)]">-</span>;
+        return (
+          <Badge className="bg-purple-100 text-purple-700 text-xs">
+            {holes.length} hole{holes.length > 1 ? "s" : ""}
+          </Badge>
+        );
+      }
+      case "cnc": {
+        const routing = part.ops?.routing || [];
+        const customOps = part.ops?.custom_cnc_ops || [];
+        const total = routing.length + customOps.length;
+        if (total === 0) return <span className="text-[var(--muted-foreground)]">-</span>;
+        return (
+          <Badge className="bg-emerald-100 text-emerald-700 text-xs">
+            {total} op{total > 1 ? "s" : ""}
+          </Badge>
+        );
+      }
+      case "notes": {
+        const notes = part.notes;
+        if (!notes) return <span className="text-[var(--muted-foreground)]">-</span>;
+        // Combine all note types
+        const noteText = notes.operator || notes.cnc || notes.design || "";
+        if (!noteText) return <span className="text-[var(--muted-foreground)]">-</span>;
+        return (
+          <span className="text-xs truncate max-w-[100px] inline-block" title={noteText}>
+            {noteText.length > 20 ? noteText.slice(0, 20) + "…" : noteText}
+          </span>
+        );
+      }
       default:
         return null;
     }
