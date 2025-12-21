@@ -7,10 +7,75 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/server";
 import { z } from "zod";
 import { sanitizeLikePattern, SIZE_LIMITS } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
+
+// Demo mode mock materials
+const DEMO_MATERIALS = [
+  {
+    id: "demo-mat-1",
+    material_id: "MAT-WHITE-18",
+    name: "18mm White Melamine PB",
+    thickness_mm: 18,
+    core_type: "particleboard",
+    grain: "none",
+    finish: "melamine",
+    color_code: "#FFFFFF",
+    default_sheet: { L: 2440, W: 1220 },
+    supplier: "Demo Supplier",
+    sku: "WM-18-2440",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: "demo-mat-2",
+    material_id: "MAT-WHITE-16",
+    name: "16mm White Melamine PB",
+    thickness_mm: 16,
+    core_type: "particleboard",
+    grain: "none",
+    finish: "melamine",
+    color_code: "#FFFFFF",
+    default_sheet: { L: 2440, W: 1220 },
+    supplier: "Demo Supplier",
+    sku: "WM-16-2440",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: "demo-mat-3",
+    material_id: "MAT-OAK-18",
+    name: "18mm Natural Oak Veneer",
+    thickness_mm: 18,
+    core_type: "mdf",
+    grain: "length",
+    finish: "veneer",
+    color_code: "#DEB887",
+    default_sheet: { L: 2440, W: 1220 },
+    supplier: "Demo Supplier",
+    sku: "OV-18-2440",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: "demo-mat-4",
+    material_id: "MAT-BLACK-18",
+    name: "18mm Black Melamine PB",
+    thickness_mm: 18,
+    core_type: "particleboard",
+    grain: "none",
+    finish: "melamine",
+    color_code: "#1A1A1A",
+    default_sheet: { L: 2440, W: 1220 },
+    supplier: "Demo Supplier",
+    sku: "BM-18-2440",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
 
 // Create material schema
 const CreateMaterialSchema = z.object({
@@ -32,12 +97,42 @@ const CreateMaterialSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Check for demo mode
+    const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
     
-    if (authError || !user) {
+    if (isDemoMode) {
+      // Return demo materials
+      const searchParams = request.nextUrl.searchParams;
+      const search = searchParams.get("search")?.toLowerCase();
+      const thickness = searchParams.get("thickness");
+      
+      let filteredMaterials = [...DEMO_MATERIALS];
+      
+      if (search) {
+        filteredMaterials = filteredMaterials.filter(m => 
+          m.name.toLowerCase().includes(search) || 
+          m.material_id.toLowerCase().includes(search)
+        );
+      }
+      if (thickness) {
+        filteredMaterials = filteredMaterials.filter(m => 
+          m.thickness_mm === parseFloat(thickness)
+        );
+      }
+      
+      return NextResponse.json({
+        materials: filteredMaterials,
+        count: filteredMaterials.length,
+      });
+    }
+
+    // Production mode - use Supabase
+    const user = await getUser();
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const supabase = await createClient();
 
     // Get user's organization
     const { data: userData } = await supabase
