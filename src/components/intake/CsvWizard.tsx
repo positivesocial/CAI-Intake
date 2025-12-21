@@ -355,7 +355,7 @@ export function CsvWizard({
                 <Badge variant="outline" className="text-xs">Medium</Badge>
               )}
               {detectionConfidence < 50 && (
-                <Badge variant="destructive" className="text-xs">Low</Badge>
+                <Badge variant="error" className="text-xs">Low</Badge>
               )}
             </div>
           )}
@@ -542,7 +542,7 @@ export function CsvWizard({
                     Required fields mapped
                   </Badge>
                 ) : (
-                  <Badge variant="destructive" className="gap-1">
+                  <Badge variant="error" className="gap-1">
                     <AlertCircle className="h-3 w-3" />
                     Missing required fields
                   </Badge>
