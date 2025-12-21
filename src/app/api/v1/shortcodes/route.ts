@@ -21,6 +21,57 @@ interface ProfileData {
 }
 
 // ============================================================
+// DEMO DATA
+// ============================================================
+
+const DEMO_SHORTCODES = [
+  {
+    id: "demo-sc1",
+    org_id: "demo-org-id",
+    shortcode: "L2",
+    display_name: "2mm ABS White",
+    service_type: "edgebanding",
+    default_specs: { thickness_mm: 2, material: "ABS", color: "White" },
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: "demo-sc2",
+    org_id: "demo-org-id",
+    shortcode: "L1",
+    display_name: "1mm PVC Oak",
+    service_type: "edgebanding",
+    default_specs: { thickness_mm: 1, material: "PVC", color: "Oak" },
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: "demo-sc3",
+    org_id: "demo-org-id",
+    shortcode: "S32",
+    display_name: "System 32 Holes",
+    service_type: "holes",
+    default_specs: { diameter_mm: 5, depth_mm: 13, spacing_mm: 32 },
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: "demo-sc4",
+    org_id: "demo-org-id",
+    shortcode: "BP",
+    display_name: "Back Panel Groove",
+    service_type: "grooves",
+    default_specs: { width_mm: 4, depth_mm: 8 },
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
+
+// ============================================================
 // VALIDATION
 // ============================================================
 
@@ -57,6 +108,23 @@ export async function GET(request: NextRequest) {
     const user = await getUser();
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // In demo mode, return mock data
+    const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+    if (isDemoMode) {
+      const { searchParams } = new URL(request.url);
+      const serviceType = searchParams.get("service_type");
+      
+      let shortcodes = [...DEMO_SHORTCODES];
+      if (serviceType) {
+        shortcodes = shortcodes.filter(s => s.service_type === serviceType);
+      }
+      
+      return NextResponse.json({
+        shortcodes,
+        total: shortcodes.length,
+      });
     }
 
     const supabase = getClient();

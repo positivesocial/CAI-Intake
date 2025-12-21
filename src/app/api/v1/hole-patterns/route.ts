@@ -6,17 +6,91 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import type { HolePatternInput } from "@/lib/operations/types";
+
+// Demo data for development/testing - matches HolePattern type
+const DEMO_PATTERNS = [
+  {
+    pattern_id: "sys32-shelf",
+    organization_id: "demo-org-id",
+    name: "System 32 Shelf Pins",
+    kind: "shelf_pin",
+    description: "Standard 32mm system holes for adjustable shelves",
+    holes: [
+      { x_mm: 0, y_mm: 37, diameter_mm: 5, depth_mm: 13 },
+      { x_mm: 0, y_mm: 69, diameter_mm: 5, depth_mm: 13 },
+      { x_mm: 0, y_mm: 101, diameter_mm: 5, depth_mm: 13 },
+    ],
+    ref_edge: "bottom",
+    usage_count: 156,
+    is_active: true,
+    is_system: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    pattern_id: "blum-hinge-35",
+    organization_id: "demo-org-id",
+    name: "Blum Hinge 35mm",
+    kind: "hinge",
+    description: "35mm cup hole for Blum clip-top hinges",
+    holes: [
+      { x_mm: 22, y_mm: 0, diameter_mm: 35, depth_mm: 13 },
+    ],
+    ref_edge: "top",
+    hardware_brand: "Blum",
+    hardware_model: "Clip-Top",
+    usage_count: 89,
+    is_active: true,
+    is_system: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    pattern_id: "cam-lock-15",
+    organization_id: "demo-org-id",
+    name: "Cam Lock 15mm",
+    kind: "cam_lock",
+    description: "15mm hole for cam lock fasteners",
+    holes: [
+      { x_mm: 34, y_mm: 8, diameter_mm: 15, depth_mm: 12.5 },
+    ],
+    ref_edge: "top",
+    usage_count: 67,
+    is_active: true,
+    is_system: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const user = await getUser();
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // In demo mode, return mock data
+    const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+    if (isDemoMode) {
+      const { searchParams } = new URL(request.url);
+      const kind = searchParams.get("kind");
+      
+      let patterns = [...DEMO_PATTERNS];
+      if (kind) {
+        patterns = patterns.filter(p => p.kind === kind);
+      }
+      
+      return NextResponse.json({
+        patterns,
+        total: patterns.length,
+      });
+    }
+
+    const supabase = await createClient();
 
     // Get user's organization
     const { data: userData } = await supabase
