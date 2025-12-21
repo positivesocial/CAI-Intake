@@ -13,6 +13,7 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { applyRateLimit } from "@/lib/api-middleware";
 import type { CutPart } from "@/lib/schema";
+import type { EdgeEdgingOps } from "@/lib/schema/operations";
 import { generateId } from "@/lib/utils";
 
 // ============================================================
@@ -203,7 +204,7 @@ function parseRow(
 /**
  * Parse edge banding shortcode
  */
-function parseEdgeShortcode(code: string): CutPart["ops"]["edging"] {
+function parseEdgeShortcode(code: string): EdgeEdgingOps | undefined {
   const normalized = code.trim().toUpperCase();
   
   const mappings: Record<string, string[]> = {

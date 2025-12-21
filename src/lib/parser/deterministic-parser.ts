@@ -6,6 +6,7 @@
  */
 
 import type { CutPart } from "@/lib/schema";
+import type { EdgeEdgingOps } from "@/lib/schema/operations";
 import { generateId } from "@/lib/utils";
 import type { SourceFormatHint } from "./format-detector";
 
@@ -303,7 +304,7 @@ function parseRow(
 /**
  * Parse edgebanding shortcode to edge specification
  */
-function parseEdgebandShortcode(code: string): CutPart["ops"]["edging"] | undefined {
+function parseEdgebandShortcode(code: string): EdgeEdgingOps | undefined {
   const normalized = code.trim().toUpperCase();
   
   // Common shortcode mappings - list of edges to apply

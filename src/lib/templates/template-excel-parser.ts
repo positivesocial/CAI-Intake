@@ -7,6 +7,7 @@
 
 import * as XLSX from "xlsx";
 import type { CutPart } from "@/lib/schema";
+import type { EdgeEdgingOps } from "@/lib/schema/operations";
 import { generateId } from "@/lib/utils";
 import type { TemplateMetadata } from "./template-detector";
 import { parseEdgeCode } from "@/lib/services/canonical-shortcodes";
@@ -493,7 +494,7 @@ function parseNumber(value: string | undefined): number | null {
 /**
  * Parse edgebanding from row
  */
-function parseEdgebanding(row: RowData): CutPart["ops"]["edging"] | undefined {
+function parseEdgebanding(row: RowData): EdgeEdgingOps | undefined {
   const edges: Record<string, { apply: boolean; edgeband_id?: string }> = {};
   
   // Per-side columns
