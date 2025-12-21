@@ -130,17 +130,39 @@ export async function POST(request: NextRequest) {
         });
         
         try {
-          // Dynamic import of pdf-to-img
-          const { pdf } = await import("pdf-to-img");
+          // Use pdfjs-dist to render PDF pages to images
+          const pdfjsLib = await import("pdfjs-dist");
+          const { createCanvas } = await import("canvas");
           
-          // Convert PDF pages to images
+          // Load PDF document
+          const loadingTask = pdfjsLib.getDocument({
+            data: new Uint8Array(pdfBuffer),
+            useSystemFonts: true,
+          });
+          const pdfDoc = await loadingTask.promise;
+          
           const pdfImages: string[] = [];
-          const pdfDoc = await pdf(Buffer.from(pdfBuffer), { scale: 2 });
+          const numPages = Math.min(pdfDoc.numPages, 5); // Limit to 5 pages
           
-          for await (const image of pdfDoc) {
-            // Convert to base64 data URL
-            const base64 = Buffer.from(image).toString("base64");
-            pdfImages.push(`data:image/png;base64,${base64}`);
+          for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            const page = await pdfDoc.getPage(pageNum);
+            const scale = 2.0; // Higher resolution for better OCR
+            const viewport = page.getViewport({ scale });
+            
+            // Create canvas
+            const canvas = createCanvas(viewport.width, viewport.height);
+            const context = canvas.getContext("2d");
+            
+            // Render PDF page to canvas
+            await page.render({
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              canvasContext: context as any,
+              viewport,
+            }).promise;
+            
+            // Convert to base64 PNG
+            const imageData = canvas.toDataURL("image/png");
+            pdfImages.push(imageData);
           }
           
           if (pdfImages.length === 0) {
@@ -149,15 +171,14 @@ export async function POST(request: NextRequest) {
           
           logger.info("PDF converted to images", { pageCount: pdfImages.length });
           
-          // Process first page (or all pages for multi-page cutlists)
-          // For now, process first page only to avoid rate limits
+          // Process first page
           aiResult = await provider.parseImage(pdfImages[0], parseOptions);
           
           // If multi-page PDF, process additional pages and merge results
           if (pdfImages.length > 1 && aiResult.success) {
             logger.info("Processing additional PDF pages", { remaining: pdfImages.length - 1 });
             
-            for (let i = 1; i < Math.min(pdfImages.length, 5); i++) { // Limit to 5 pages
+            for (let i = 1; i < pdfImages.length; i++) {
               try {
                 const pageResult = await provider.parseImage(pdfImages[i], parseOptions);
                 if (pageResult.success) {
