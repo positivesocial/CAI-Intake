@@ -3,14 +3,11 @@
  * Provides offline support and caching for the PWA.
  */
 
-const CACHE_NAME = 'cai-intake-v1';
+const CACHE_NAME = 'cai-intake-v2';
 const OFFLINE_URL = '/offline.html';
 
-// Assets to cache on install
+// Static assets to cache (NOT pages that may redirect)
 const PRECACHE_ASSETS = [
-  '/',
-  '/dashboard',
-  '/intake',
   '/offline.html',
   '/branding/logo-icon.svg',
   '/branding/logo-full.svg',
@@ -63,6 +60,45 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Skip auth-related URLs entirely (Safari redirect issue)
+  if (event.request.url.includes('/login') || 
+      event.request.url.includes('/auth') ||
+      event.request.url.includes('redirectTo')) {
+    return;
+  }
+
+  // For navigation requests, use network-first strategy
+  // Safari has issues with cached redirects from service workers
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // Don't cache redirects - Safari can't handle them from SW
+          if (response.redirected || response.status !== 200 || response.type !== 'basic') {
+            return response;
+          }
+          // Cache successful, non-redirect navigation responses
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+          });
+          return response;
+        })
+        .catch(() => {
+          // Network failed, try cache then offline page
+          return caches.match(event.request)
+            .then((cachedResponse) => {
+              if (cachedResponse) {
+                return cachedResponse;
+              }
+              return caches.match(OFFLINE_URL);
+            });
+        })
+    );
+    return;
+  }
+
+  // For other requests (assets), use cache-first strategy
   event.respondWith(
     caches.match(event.request)
       .then((cachedResponse) => {
@@ -72,7 +108,8 @@ self.addEventListener('fetch', (event) => {
           event.waitUntil(
             fetch(event.request)
               .then((response) => {
-                if (response && response.status === 200) {
+                // Don't cache redirects
+                if (response && response.status === 200 && !response.redirected) {
                   const responseClone = response.clone();
                   caches.open(CACHE_NAME).then((cache) => {
                     cache.put(event.request, responseClone);
@@ -89,8 +126,8 @@ self.addEventListener('fetch', (event) => {
         // No cache, try network
         return fetch(event.request)
           .then((response) => {
-            // Don't cache non-successful responses
-            if (!response || response.status !== 200 || response.type !== 'basic') {
+            // Don't cache non-successful or redirect responses
+            if (!response || response.status !== 200 || response.type !== 'basic' || response.redirected) {
               return response;
             }
 
@@ -103,10 +140,7 @@ self.addEventListener('fetch', (event) => {
             return response;
           })
           .catch(() => {
-            // Network failed, show offline page for navigation requests
-            if (event.request.mode === 'navigate') {
-              return caches.match(OFFLINE_URL);
-            }
+            // Network failed for non-navigation request
             return new Response('Offline', { status: 503 });
           });
       })
@@ -138,8 +172,8 @@ self.addEventListener('push', (event) => {
   
   const options = {
     body: data.body || 'You have a new notification',
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-72.png',
+    icon: '/branding/logo-icon.svg',
+    badge: '/branding/logo-icon.svg',
     vibrate: [100, 50, 100],
     data: {
       url: data.url || '/dashboard',
@@ -185,6 +219,3 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 console.log('[SW] Service worker loaded');
-
-
-
