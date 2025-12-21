@@ -148,6 +148,14 @@ export interface IntakeState {
   setCapabilities: (capabilities: Partial<CutlistCapabilities>) => void;
   resetCutlist: () => void;
   
+  // Save/Load
+  saveCutlist: () => Promise<{ success: boolean; cutlistId?: string; error?: string }>;
+  saveCutlistAsDraft: () => Promise<{ success: boolean; cutlistId?: string; error?: string }>;
+  loadCutlist: (cutlistId: string) => Promise<{ success: boolean; error?: string }>;
+  isSaving: boolean;
+  lastSavedAt: string | null;
+  savedCutlistId: string | null;
+  
   // AI settings
   setAIProvider: (provider: AIProviderType) => void;
   setAISettings: (settings: Partial<AISettings>) => void;
@@ -236,6 +244,9 @@ const getInitialState = () => ({
   undoStack: [] as UndoableAction[],
   redoStack: [] as UndoableAction[],
   clipboard: [] as CutPart[],
+  isSaving: false,
+  lastSavedAt: null as string | null,
+  savedCutlistId: null as string | null,
 });
 
 // ============================================================
@@ -682,7 +693,230 @@ export const useIntakeStore = create<IntakeState>()(
           },
         })),
 
-      resetCutlist: () => set(getInitialState()),
+      resetCutlist: () => {
+        set({
+          ...getInitialState(),
+          savedCutlistId: null,
+          lastSavedAt: null,
+        });
+      },
+
+      // Save/Load cutlist to database
+      saveCutlist: async () => {
+        const state = get();
+        if (state.isSaving) {
+          return { success: false, error: "Already saving" };
+        }
+
+        set({ isSaving: true });
+
+        try {
+          const { currentCutlist, savedCutlistId } = state;
+
+          // If already saved, update existing
+          if (savedCutlistId) {
+            const response = await fetch(`/api/v1/cutlists/${savedCutlistId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: currentCutlist.name,
+                capabilities: currentCutlist.capabilities,
+                status: "completed",
+              }),
+            });
+
+            if (!response.ok) {
+              const data = await response.json();
+              set({ isSaving: false });
+              return { success: false, error: data.error || "Failed to update cutlist" };
+            }
+
+            // Update parts
+            if (currentCutlist.parts.length > 0) {
+              await fetch(`/api/v1/cutlists/${savedCutlistId}/parts`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  parts: currentCutlist.parts.map(p => ({
+                    part_id: p.part_id,
+                    label: p.label,
+                    qty: p.qty,
+                    size: p.size,
+                    thickness_mm: p.thickness_mm,
+                    material_id: p.material_id,
+                    grain: p.grain,
+                    allow_rotation: p.allow_rotation,
+                    group_id: p.group_id,
+                    ops: p.ops,
+                    notes: p.notes,
+                    audit: p.audit,
+                  })),
+                }),
+              });
+            }
+
+            set({ 
+              isSaving: false, 
+              lastSavedAt: new Date().toISOString() 
+            });
+            return { success: true, cutlistId: savedCutlistId };
+          }
+
+          // Create new cutlist
+          const response = await fetch("/api/v1/cutlists", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: currentCutlist.name,
+              capabilities: currentCutlist.capabilities,
+              parts: currentCutlist.parts.map(p => ({
+                part_id: p.part_id,
+                label: p.label,
+                qty: p.qty,
+                size: p.size,
+                thickness_mm: p.thickness_mm,
+                material_id: p.material_id,
+                grain: p.grain,
+                allow_rotation: p.allow_rotation,
+                group_id: p.group_id,
+                ops: p.ops,
+                notes: p.notes,
+              })),
+            }),
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            set({ isSaving: false });
+            return { success: false, error: data.error || "Failed to save cutlist" };
+          }
+
+          const data = await response.json();
+          set({ 
+            isSaving: false, 
+            savedCutlistId: data.cutlist.id,
+            lastSavedAt: new Date().toISOString(),
+          });
+          return { success: true, cutlistId: data.cutlist.id };
+        } catch (error) {
+          console.error("Save cutlist error:", error);
+          set({ isSaving: false });
+          return { success: false, error: "Network error" };
+        }
+      },
+
+      saveCutlistAsDraft: async () => {
+        const state = get();
+        if (state.isSaving) {
+          return { success: false, error: "Already saving" };
+        }
+
+        set({ isSaving: true });
+
+        try {
+          const { currentCutlist, savedCutlistId } = state;
+
+          // If already saved, update existing as draft
+          if (savedCutlistId) {
+            const response = await fetch(`/api/v1/cutlists/${savedCutlistId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: currentCutlist.name,
+                capabilities: currentCutlist.capabilities,
+                status: "draft",
+              }),
+            });
+
+            if (!response.ok) {
+              const data = await response.json();
+              set({ isSaving: false });
+              return { success: false, error: data.error || "Failed to save draft" };
+            }
+
+            set({ 
+              isSaving: false, 
+              lastSavedAt: new Date().toISOString() 
+            });
+            return { success: true, cutlistId: savedCutlistId };
+          }
+
+          // Create new draft cutlist
+          const response = await fetch("/api/v1/cutlists", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: currentCutlist.name || "Untitled Draft",
+              capabilities: currentCutlist.capabilities,
+              parts: currentCutlist.parts.map(p => ({
+                part_id: p.part_id,
+                label: p.label,
+                qty: p.qty,
+                size: p.size,
+                thickness_mm: p.thickness_mm,
+                material_id: p.material_id,
+                grain: p.grain,
+                allow_rotation: p.allow_rotation,
+                group_id: p.group_id,
+                ops: p.ops,
+                notes: p.notes,
+              })),
+            }),
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            set({ isSaving: false });
+            return { success: false, error: data.error || "Failed to save draft" };
+          }
+
+          const data = await response.json();
+          set({ 
+            isSaving: false, 
+            savedCutlistId: data.cutlist.id,
+            lastSavedAt: new Date().toISOString(),
+          });
+          return { success: true, cutlistId: data.cutlist.id };
+        } catch (error) {
+          console.error("Save draft error:", error);
+          set({ isSaving: false });
+          return { success: false, error: "Network error" };
+        }
+      },
+
+      loadCutlist: async (cutlistId: string) => {
+        try {
+          const response = await fetch(`/api/v1/cutlists/${cutlistId}`);
+          
+          if (!response.ok) {
+            const data = await response.json();
+            return { success: false, error: data.error || "Failed to load cutlist" };
+          }
+
+          const data = await response.json();
+          const cutlist = data.cutlist;
+
+          set((state) => ({
+            currentCutlist: {
+              doc_id: cutlist.doc_id || cutlist.id,
+              name: cutlist.name,
+              parts: cutlist.parts || [],
+              materials: state.currentCutlist.materials, // Keep loaded materials
+              edgebands: state.currentCutlist.edgebands,
+              capabilities: cutlist.capabilities || defaultCapabilities,
+            },
+            savedCutlistId: cutlist.id,
+            lastSavedAt: cutlist.updated_at,
+            currentStep: cutlist.parts?.length > 0 ? "review" : "intake",
+            inboxParts: [],
+          }));
+
+          return { success: true };
+        } catch (error) {
+          console.error("Load cutlist error:", error);
+          return { success: false, error: "Network error" };
+        }
+      },
       
       // AI settings
       setAIProvider: (provider) =>

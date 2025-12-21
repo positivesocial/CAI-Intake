@@ -15,6 +15,10 @@ import {
   Ruler,
   Activity,
   FileDown,
+  Save,
+  Cloud,
+  CloudOff,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,9 +42,15 @@ export function ExportStep() {
     currentCutlist,
     goToPreviousStep,
     resetCutlist,
+    saveCutlist,
+    saveCutlistAsDraft,
+    isSaving,
+    lastSavedAt,
+    savedCutlistId,
   } = useIntakeStore();
 
   const [exportStatus, setExportStatus] = React.useState<string | null>(null);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
 
   const totalParts = currentCutlist.parts.length;
   const totalPieces = currentCutlist.parts.reduce((sum, p) => sum + p.qty, 0);
@@ -49,6 +59,29 @@ export function ExportStep() {
     0
   ) / 1_000_000;
   const materialsCount = new Set(currentCutlist.parts.map((p) => p.material_id)).size;
+
+  // Handle save to database
+  const handleSave = async () => {
+    setSaveError(null);
+    const result = await saveCutlist();
+    if (!result.success) {
+      setSaveError(result.error || "Failed to save");
+    } else {
+      setExportStatus("Cutlist saved successfully!");
+      setTimeout(() => setExportStatus(null), 3000);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    setSaveError(null);
+    const result = await saveCutlistAsDraft();
+    if (!result.success) {
+      setSaveError(result.error || "Failed to save draft");
+    } else {
+      setExportStatus("Draft saved!");
+      setTimeout(() => setExportStatus(null), 3000);
+    }
+  };
 
   const exportOptions: ExportOption[] = [
     {
@@ -228,6 +261,70 @@ export function ExportStep() {
             value={`${totalArea.toFixed(2)} m²`}
           />
         </div>
+      </section>
+
+      {/* Save to Database Section */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">Save Cutlist</h3>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Save to your organization&apos;s database for later access
+            </p>
+          </div>
+          {lastSavedAt && (
+            <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+              <Cloud className="h-4 w-4 text-green-500" />
+              <span>Last saved: {new Date(lastSavedAt).toLocaleTimeString()}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3">
+          <Button
+            onClick={handleSave}
+            disabled={totalParts === 0 || isSaving}
+            className="flex-1"
+            variant="primary"
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            {savedCutlistId ? "Update Saved Cutlist" : "Save Cutlist"}
+          </Button>
+          <Button
+            onClick={handleSaveDraft}
+            disabled={isSaving}
+            variant="outline"
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CloudOff className="h-4 w-4 mr-2" />
+            )}
+            Save as Draft
+          </Button>
+        </div>
+
+        {saveError && (
+          <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/30 p-3 rounded-lg">
+            {saveError}
+          </div>
+        )}
+
+        {savedCutlistId && (
+          <div className="text-sm text-[var(--muted-foreground)] bg-[var(--muted)]/30 p-3 rounded-lg">
+            <span className="font-medium">Cutlist ID:</span> {savedCutlistId}
+            <a 
+              href={`/cutlists?id=${savedCutlistId}`}
+              className="ml-2 text-[var(--cai-teal)] hover:underline"
+            >
+              View in Cutlists →
+            </a>
+          </div>
+        )}
       </section>
 
       {/* Export Options */}
