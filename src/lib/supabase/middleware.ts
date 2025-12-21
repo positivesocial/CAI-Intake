@@ -10,7 +10,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 /**
  * Update the Supabase auth session
- * Call this in your proxy.ts (Next.js 16+)
+ * Call this in your middleware.ts
  */
 export async function updateSession(request: NextRequest) {
   // Check if Supabase is configured

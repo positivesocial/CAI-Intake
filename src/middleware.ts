@@ -1,13 +1,14 @@
 /**
- * CAI Intake - Next.js Proxy
- * 
- * Next.js 16+ uses proxy.ts instead of middleware.ts
+ * CAI Intake - Next.js Middleware
  * 
  * Handles:
  * - Supabase session refresh
  * - Protected route access control
  * - Super admin route protection
  * - Demo mode bypass
+ * 
+ * Note: The deprecation warning for middleware.ts in Next.js 16 dev mode
+ * can be ignored - Vercel's production build still requires middleware.ts
  */
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -41,7 +42,7 @@ const PUBLIC_ROUTES = [
   "/api/health",
 ];
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow API routes to handle their own auth
