@@ -257,7 +257,7 @@ function HolePatternsTab() {
                 </TableRow>
               ) : (
                 filteredPatterns.map((pattern) => (
-                  <TableRow key={pattern.id}>
+                  <TableRow key={pattern.pattern_id}>
                     <TableCell className="font-mono text-xs">{pattern.pattern_id}</TableCell>
                     <TableCell className="font-medium">{pattern.name}</TableCell>
                     <TableCell>
@@ -601,7 +601,7 @@ function GrooveProfilesTab() {
                 </TableRow>
               ) : (
                 filteredProfiles.map((profile) => (
-                  <TableRow key={profile.id}>
+                  <TableRow key={profile.profile_id}>
                     <TableCell className="font-mono text-xs">{profile.profile_id}</TableCell>
                     <TableCell className="font-medium">{profile.name}</TableCell>
                     <TableCell>
@@ -968,7 +968,7 @@ function RoutingProfilesTab() {
                 </TableRow>
               ) : (
                 filteredProfiles.map((profile) => (
-                  <TableRow key={profile.id}>
+                  <TableRow key={profile.profile_id}>
                     <TableCell className="font-mono text-xs">{profile.profile_id}</TableCell>
                     <TableCell className="font-medium">{profile.name}</TableCell>
                     <TableCell>
