@@ -247,9 +247,9 @@ export function ExcelImport() {
         {/* Step 1: Upload */}
         {step === "upload" && (
           <div className="space-y-4">
-            <div
-              className="border-2 border-dashed border-[var(--border)] rounded-xl p-8 text-center hover:border-[var(--cai-teal)] transition-colors cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
+            <label
+              htmlFor="excel-csv-file-input"
+              className="block border-2 border-dashed border-[var(--border)] rounded-xl p-8 text-center hover:border-[var(--cai-teal)] transition-colors cursor-pointer"
             >
               <Upload className="h-12 w-12 mx-auto text-[var(--muted-foreground)] mb-4" />
               <p className="text-lg font-medium mb-1">
@@ -258,11 +258,12 @@ export function ExcelImport() {
               <p className="text-sm text-[var(--muted-foreground)]">
                 Supports CSV, TSV, and tab-delimited files
               </p>
-            </div>
+            </label>
             <input
+              id="excel-csv-file-input"
               ref={fileInputRef}
               type="file"
-              accept=".csv,.tsv,.txt"
+              accept=".csv,.tsv,.txt,.xlsx,.xls"
               className="hidden"
               onChange={handleFileUpload}
             />
