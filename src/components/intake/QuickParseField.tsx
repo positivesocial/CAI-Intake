@@ -9,7 +9,8 @@ import { parseTextBatch, type TextParseResult } from "@/lib/parsers/text-parser"
 import { useIntakeStore, type ParsedPartWithStatus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { ParserModeToggle, type ParserMode } from "./ParserModeToggle";
-import { getOrCreateProvider, type AIParseResult, type ParsedPartResult } from "@/lib/ai";
+import { type ParsedPartResult } from "@/lib/ai";
+import { toast } from "sonner";
 
 interface QuickParseFieldProps {
   defaultMaterialId?: string;
@@ -77,39 +78,53 @@ export function QuickParseField({
     setAIError(null);
     
     try {
-      const provider = await getOrCreateProvider();
-      
-      if (!provider.isConfigured()) {
-        setAIError(`${aiProvider === "openai" ? "OpenAI" : "Anthropic"} API key not configured. Please add your API key in settings.`);
-        return;
-      }
-
-      const result: AIParseResult = await provider.parseText(text, {
-        extractMetadata: true,
-        confidence: "balanced",
-        defaultMaterialId,
-        defaultThicknessMm,
+      // Call server-side API for AI parsing
+      const response = await fetch("/api/v1/parse-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          options: {
+            extractMetadata: true,
+            confidence: "balanced",
+            defaultMaterialId,
+            defaultThicknessMm,
+          },
+        }),
       });
 
-      if (!result.success && result.errors.length > 0) {
-        setAIError(result.errors.join(", "));
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.code === "AI_NOT_CONFIGURED") {
+          toast.error("AI processing is not available", {
+            description: "Please contact your system administrator to configure AI services.",
+          });
+        }
+        setAIError(data.error || "AI parsing failed");
         return;
       }
 
-      const inboxParts: ParsedPartWithStatus[] = result.parts.map((r) => ({
+      if (!data.success) {
+        setAIError("AI parsing failed");
+        return;
+      }
+
+      const parts = data.parts as ParsedPartResult[];
+      const inboxParts: ParsedPartWithStatus[] = parts.map((r) => ({
         ...r.part,
         _status: r.confidence >= 0.85 ? "pending" : "pending",
         _originalText: r.originalText,
       }));
 
       addToInbox(inboxParts);
-      onParsed?.(result.parts);
+      onParsed?.(parts);
 
       setLastResults({
-        count: result.parts.length,
-        errors: result.errors.length,
-        confidence: result.totalConfidence,
-        processingTime: result.processingTime,
+        count: parts.length,
+        errors: 0,
+        confidence: data.totalConfidence,
+        processingTime: data.processingTimeMs,
         mode: "ai",
       });
 
@@ -117,7 +132,7 @@ export function QuickParseField({
     } catch (error) {
       setAIError(error instanceof Error ? error.message : "AI parsing failed");
     }
-  }, [text, defaultMaterialId, defaultThicknessMm, aiProvider, addToInbox, onParsed]);
+  }, [text, defaultMaterialId, defaultThicknessMm, addToInbox, onParsed]);
 
   const handleParse = React.useCallback(async () => {
     if (!text.trim()) return;
