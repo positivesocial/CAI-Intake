@@ -2,7 +2,8 @@
  * CAI Intake - Text Parser
  * 
  * Parses free-form text input into canonical CutPart objects.
- * Handles manual entry field input, copy-paste text, and voice transcripts.
+ * Handles manual entry field input, copy-paste text, voice transcripts,
+ * and TABULAR/SPREADSHEET data with column detection.
  */
 
 import { CutPart, GrainMode, IngestionMethod } from "../schema";
@@ -119,6 +120,22 @@ const LABEL_PATTERNS = [
   /"([^"]+)"|'([^']+)'/,
 ];
 
+// Header row detection patterns
+const HEADER_PATTERNS = [
+  /\b(length|width|height|qty|quantity|pcs|pieces|description|component|part|label|name|l\s*\/?\s*h|w\s*\/?\s*b|edge|edging|groove|cnc)\b/i,
+  /\bno\.?\s*$/i,
+  /^#$/,
+];
+
+// Skip line patterns (headers, totals, etc.)
+const SKIP_LINE_PATTERNS = [
+  /^(no|#|item|component|description|part|label|length|width|qty|edge|total|sum|count)\s*$/i,
+  /^\d+\s*$/,  // Just a number alone
+  /^[-=_]+$/,  // Separator lines
+  /^(client|job|date|board|material|edging|updated|revision)/i,
+  /^\s*$/,     // Empty lines
+];
+
 /**
  * Convert units to mm
  */
@@ -131,6 +148,267 @@ function toMm(value: number, units: "mm" | "cm" | "inch"): number {
     case "inch":
       return value * 25.4;
   }
+}
+
+/**
+ * Detect if a line looks like a header row
+ */
+function isHeaderLine(line: string): boolean {
+  const lowerLine = line.toLowerCase();
+  // Check if multiple header keywords appear
+  let headerMatches = 0;
+  for (const pattern of HEADER_PATTERNS) {
+    if (pattern.test(lowerLine)) {
+      headerMatches++;
+    }
+  }
+  return headerMatches >= 2;
+}
+
+/**
+ * Detect if a line should be skipped
+ */
+function shouldSkipLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+  
+  for (const pattern of SKIP_LINE_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return true;
+    }
+  }
+  
+  // Skip lines that are mostly non-alphanumeric
+  const alphanumeric = trimmed.replace(/[^a-zA-Z0-9]/g, '');
+  if (alphanumeric.length < 2) return true;
+  
+  return false;
+}
+
+/**
+ * Parse tabular/spreadsheet-style line
+ * Handles tab or multi-space separated columns
+ */
+function parseTabularLine(
+  line: string,
+  options: TextParseOptions
+): { L: number; W: number; qty: number; label: string; edges: string[]; hasGroove: boolean; confidence: number } | null {
+  // Split by tabs or 2+ spaces
+  const parts = line.split(/\t|(?:\s{2,})/).map(p => p.trim()).filter(p => p);
+  
+  if (parts.length < 3) {
+    // Try splitting by single spaces but be smarter about it
+    const spaceParts = line.trim().split(/\s+/);
+    if (spaceParts.length >= 3) {
+      return parseSpaceSeparatedLine(spaceParts, options);
+    }
+    return null;
+  }
+  
+  // Try to identify columns
+  // Common patterns:
+  // [No] [Label] [L] [W] [Qty] [Edge columns...]
+  // [Label] [L] [W] [Qty] [Edge columns...]
+  
+  let label = "";
+  let L = 0;
+  let W = 0;
+  let qty = 1;
+  let edges: string[] = [];
+  let hasGroove = false;
+  let confidence = 0.8;
+  
+  // Find numeric columns (potential dimensions and qty)
+  const numericIndices: number[] = [];
+  const numericValues: number[] = [];
+  
+  for (let i = 0; i < parts.length; i++) {
+    const num = parseFloat(parts[i].replace(/,/g, ''));
+    if (!isNaN(num) && num > 0) {
+      numericIndices.push(i);
+      numericValues.push(num);
+    }
+  }
+  
+  if (numericValues.length < 2) {
+    return null; // Need at least L and W
+  }
+  
+  // Determine which numbers are L, W, Qty
+  // Typically: larger numbers are dimensions, smaller numbers are qty
+  // Look for patterns in the data
+  
+  // If first column is a small number (1-999), it's likely a row number
+  const firstNum = numericValues[0];
+  const isFirstRowNumber = firstNum < 1000 && Number.isInteger(firstNum) && numericIndices[0] === 0;
+  
+  let dimensionStartIndex = isFirstRowNumber ? 1 : 0;
+  
+  // Get the dimension candidates
+  const dimCandidates = numericValues.slice(dimensionStartIndex);
+  const dimIndices = numericIndices.slice(dimensionStartIndex);
+  
+  if (dimCandidates.length >= 2) {
+    // First two large numbers are likely L and W
+    // A dimension is typically > 50mm and < 3000mm
+    const isDimension = (n: number) => n >= 50 && n <= 3000;
+    
+    let foundL = false;
+    let foundW = false;
+    
+    for (let i = 0; i < dimCandidates.length && (!foundL || !foundW); i++) {
+      const val = dimCandidates[i];
+      if (isDimension(val)) {
+        if (!foundL) {
+          L = val;
+          foundL = true;
+        } else if (!foundW) {
+          W = val;
+          foundW = true;
+        }
+      } else if (foundL && foundW && val >= 1 && val <= 500) {
+        // Likely quantity
+        qty = Math.round(val);
+      }
+    }
+    
+    // If we didn't find valid dimensions using the range check,
+    // just use the first two numbers as L and W
+    if (!foundL || !foundW) {
+      if (dimCandidates.length >= 2) {
+        L = dimCandidates[0];
+        W = dimCandidates[1];
+        foundL = true;
+        foundW = true;
+        
+        // Third number might be qty if it's small
+        if (dimCandidates.length >= 3 && dimCandidates[2] <= 500) {
+          qty = Math.round(dimCandidates[2]);
+        }
+      }
+    }
+    
+    if (!foundL || !foundW) {
+      return null;
+    }
+  } else {
+    return null;
+  }
+  
+  // Extract label from non-numeric parts before dimensions
+  const firstDimIndex = numericIndices[dimensionStartIndex];
+  if (firstDimIndex > 0) {
+    const labelParts: string[] = [];
+    for (let i = isFirstRowNumber ? 1 : 0; i < firstDimIndex; i++) {
+      if (!/^\d+$/.test(parts[i])) {
+        labelParts.push(parts[i]);
+      }
+    }
+    label = labelParts.join(" ").trim();
+  }
+  
+  // Look for edge banding indicators (X, XX, x)
+  // These typically appear after dimensions
+  const qtyIndex = numericIndices[dimensionStartIndex + 2] ?? firstDimIndex + 3;
+  for (let i = qtyIndex + 1; i < parts.length; i++) {
+    const part = parts[i].toUpperCase().trim();
+    if (part === "X" || part === "XX") {
+      // Map position to edge
+      const edgeIndex = i - qtyIndex - 1;
+      if (edgeIndex === 0) edges.push("L1");
+      else if (edgeIndex === 1) edges.push("W1");
+      else if (edgeIndex === 2) edges.push("L2");
+      else if (edgeIndex === 3) edges.push("W2");
+      
+      if (part === "XX") {
+        // XX means both edges on that dimension
+        if (edgeIndex === 0 || edgeIndex === 2) edges.push("L2");
+        if (edgeIndex === 1 || edgeIndex === 3) edges.push("W2");
+      }
+    }
+    // Check for groove indicator (lowercase x often means groove)
+    if (parts[i] === "x" || parts[i].toLowerCase().includes("groove")) {
+      hasGroove = true;
+    }
+  }
+  
+  // Remove duplicates from edges
+  edges = [...new Set(edges)];
+  
+  return { L, W, qty, label, edges, hasGroove, confidence };
+}
+
+/**
+ * Parse space-separated line (fallback for simple space separation)
+ */
+function parseSpaceSeparatedLine(
+  parts: string[],
+  options: TextParseOptions
+): { L: number; W: number; qty: number; label: string; edges: string[]; hasGroove: boolean; confidence: number } | null {
+  // Similar logic to tabular but for single-space separated
+  let label = "";
+  let L = 0;
+  let W = 0;
+  let qty = 1;
+  let edges: string[] = [];
+  let hasGroove = false;
+  
+  // Collect all numbers and their positions
+  const numbers: { value: number; index: number }[] = [];
+  const textParts: { text: string; index: number }[] = [];
+  
+  for (let i = 0; i < parts.length; i++) {
+    const num = parseFloat(parts[i].replace(/,/g, ''));
+    if (!isNaN(num) && parts[i].match(/^\d+(?:\.\d+)?$/)) {
+      numbers.push({ value: num, index: i });
+    } else {
+      textParts.push({ text: parts[i], index: i });
+    }
+  }
+  
+  if (numbers.length < 2) return null;
+  
+  // Check if first number is a row number (small integer at position 0)
+  let startIdx = 0;
+  if (numbers[0].index === 0 && numbers[0].value < 1000 && Number.isInteger(numbers[0].value)) {
+    startIdx = 1;
+  }
+  
+  if (numbers.length - startIdx < 2) return null;
+  
+  // Assign L, W, and optionally qty
+  L = numbers[startIdx].value;
+  W = numbers[startIdx + 1].value;
+  
+  if (numbers.length - startIdx >= 3 && numbers[startIdx + 2].value <= 500) {
+    qty = Math.round(numbers[startIdx + 2].value);
+  }
+  
+  // Build label from text before first dimension
+  const firstDimIdx = numbers[startIdx].index;
+  label = textParts
+    .filter(t => t.index < firstDimIdx)
+    .map(t => t.text)
+    .join(" ")
+    .trim();
+  
+  // Check for edge indicators after qty
+  const afterQtyIdx = numbers[startIdx + (qty > 1 ? 2 : 1)]?.index ?? firstDimIdx + 2;
+  for (let i = afterQtyIdx + 1; i < parts.length; i++) {
+    const part = parts[i].toUpperCase();
+    if (part === "X" || part === "XX") {
+      const pos = i - afterQtyIdx - 1;
+      if (pos === 0) edges.push("L1");
+      if (pos === 1) edges.push("W1");
+      if (pos === 2) edges.push("L2");
+      if (pos === 3) edges.push("W2");
+    }
+    if (parts[i] === "x") hasGroove = true;
+  }
+  
+  edges = [...new Set(edges)];
+  
+  return { L, W, qty, label, edges, hasGroove, confidence: 0.75 };
 }
 
 /**
@@ -297,7 +575,7 @@ export function parseTextLine(
   let overallConfidence = 1.0;
   
   // Clean up the text
-  const cleanText = text.trim().replace(/\s+/g, " ");
+  const cleanText = text.trim();
   
   if (!cleanText) {
     errors.push("Empty input");
@@ -310,8 +588,80 @@ export function parseTextLine(
     };
   }
   
+  // Skip header lines and other non-data lines
+  if (isHeaderLine(cleanText) || shouldSkipLine(cleanText)) {
+    errors.push("Header or non-data line");
+    return {
+      part: createEmptyPart(options),
+      confidence: 0,
+      warnings,
+      errors,
+      originalText: text,
+    };
+  }
+  
+  // Try tabular parsing first (for spreadsheet-style data)
+  const tabularResult = parseTabularLine(cleanText, options);
+  if (tabularResult && tabularResult.L > 0 && tabularResult.W > 0) {
+    const { L, W, qty, label, edges, hasGroove, confidence } = tabularResult;
+    
+    const part: CutPart = {
+      part_id: generateId("P"),
+      label: label || undefined,
+      qty,
+      size: { L, W },
+      thickness_mm: options.defaultThicknessMm ?? DEFAULTS.THICKNESS_MM,
+      material_id: options.defaultMaterialId ?? "default",
+      grain: "none",
+      allow_rotation: true,
+      audit: {
+        source_method: options.sourceMethod ?? "paste_parser",
+        parsed_text_snippet: cleanText.substring(0, 100),
+        confidence,
+        human_verified: false,
+      },
+    };
+    
+    // Add edging if found
+    if (edges.length > 0) {
+      part.ops = {
+        edging: {
+          edges: edges.reduce((acc, edge) => {
+            acc[edge] = { apply: true };
+            return acc;
+          }, {} as Record<string, { apply: boolean }>),
+        },
+      };
+    }
+    
+    // Add groove if found
+    if (hasGroove) {
+      part.ops = {
+        ...part.ops,
+        grooves: [{
+          groove_id: generateId("GRV"),
+          side: "W2" as const,
+          offset_mm: 10,
+          depth_mm: 8,
+          width_mm: 4,
+        }],
+      };
+    }
+    
+    return {
+      part,
+      confidence,
+      warnings,
+      errors,
+      originalText: text,
+    };
+  }
+  
+  // Fall back to original pattern-based parsing
+  const normalizedText = cleanText.replace(/\s+/g, " ");
+  
   // Extract dimensions
-  const dims = extractDimensions(cleanText, options);
+  const dims = extractDimensions(normalizedText, options);
   if (!dims) {
     errors.push("Could not extract dimensions (expected format: LxW, e.g., 720x560)");
     return {
@@ -325,30 +675,30 @@ export function parseTextLine(
   overallConfidence *= dims.confidence;
   
   // Extract quantity
-  const { qty, confidence: qtyConf } = extractQuantity(cleanText);
+  const { qty, confidence: qtyConf } = extractQuantity(normalizedText);
   overallConfidence *= qtyConf;
   if (qtyConf < 0.7) {
     warnings.push("Quantity not specified, defaulting to 1");
   }
   
   // Extract grain and rotation
-  const { grain, allowRotation, confidence: grainConf } = extractGrain(cleanText);
+  const { grain, allowRotation, confidence: grainConf } = extractGrain(normalizedText);
   if (grainConf < 0.7) {
     // Don't reduce confidence much for grain - it's optional
     overallConfidence *= 0.95;
   }
   
   // Extract label
-  const label = extractLabel(cleanText);
+  const label = extractLabel(normalizedText);
   
   // Extract material hint
-  const materialHint = extractMaterialHint(cleanText);
+  const materialHint = extractMaterialHint(normalizedText);
   
   // Extract thickness (if specified in text)
-  const parsedThickness = extractThickness(cleanText);
+  const parsedThickness = extractThickness(normalizedText);
   
   // Extract edge banding
-  const edges = extractEdgeBanding(cleanText);
+  const edges = extractEdgeBanding(normalizedText);
   
   // Build the part
   const part: CutPart = {
@@ -362,7 +712,7 @@ export function parseTextLine(
     allow_rotation: allowRotation,
     audit: {
       source_method: options.sourceMethod ?? "paste_parser",
-      parsed_text_snippet: cleanText.substring(0, 100),
+      parsed_text_snippet: normalizedText.substring(0, 100),
       confidence: overallConfidence,
       warnings: warnings.length > 0 ? warnings : undefined,
       errors: errors.length > 0 ? errors : undefined,
@@ -435,9 +785,13 @@ export function parseTextBatch(
   
   for (const line of lines) {
     const result = parseTextLine(line, options);
-    results.push(result);
-    totalConfidence += result.confidence;
-    if (result.errors.length > 0) {
+    
+    // Only include results that parsed successfully
+    if (result.errors.length === 0 && result.part.size.L > 0 && result.part.size.W > 0) {
+      results.push(result);
+      totalConfidence += result.confidence;
+    } else if (result.errors.length > 0 && !result.errors.includes("Header or non-data line")) {
+      // Count actual errors, not skipped lines
       errorCount++;
     }
   }
@@ -502,4 +856,3 @@ export function validateParsedPart(
   
   return { valid, suggestions };
 }
-
