@@ -494,8 +494,8 @@ export function FileUploadQueue({
             method = qrResult?.templateId
               ? `AI + Template (${qrResult.templateId})`
               : usedFallback
-                ? `${providerUsed === "gpt" ? "GPT-4" : "Claude"} (fallback)`
-                : `${providerUsed === "claude" ? "Claude" : "GPT-4"} Vision`;
+                ? `${providerUsed === "gpt" ? "GPT-5.2" : "Claude Opus 4.5"} (fallback)`
+                : `${providerUsed === "claude" ? "Claude Opus 4.5" : "GPT-5.2"} Vision`;
 
             // Count metadata
             for (const p of aiResult.parts) {
@@ -659,16 +659,16 @@ export function FileUploadQueue({
             <Badge variant="teal">AI-Powered</Badge>
           </div>
           
-          {/* Provider indicator - Claude primary, GPT fallback */}
+          {/* Provider indicator - Claude Opus 4.5 primary, GPT-5.2 fallback */}
           <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
             <div className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-              <span>Claude</span>
+              <span>Opus 4.5</span>
             </div>
             <span className="text-[var(--border)]">→</span>
             <div className="flex items-center gap-1 opacity-60">
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
-              <span>GPT</span>
+              <span>GPT-5.2</span>
             </div>
             <Badge variant="outline" className="ml-1">Auto-fallback</Badge>
           </div>
@@ -967,7 +967,7 @@ export function FileUploadQueue({
         <div className="text-xs text-[var(--muted-foreground)] bg-[var(--muted)] rounded-lg p-3">
           <p className="font-medium mb-1">Supported file types:</p>
           <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">PDF (Claude + GPT fallback)</Badge>
+            <Badge variant="outline">PDF (Opus 4.5 + GPT-5.2)</Badge>
             <Badge variant="outline">Images (AI Vision)</Badge>
             <Badge variant="outline">TXT (text parsing)</Badge>
             <Badge variant="outline">CSV (structured data)</Badge>

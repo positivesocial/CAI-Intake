@@ -1,10 +1,33 @@
 /**
  * CAI Intake - Anthropic Claude Provider Implementation
  * 
- * Uses Claude 3.5 Sonnet for text parsing and image analysis.
+ * Uses Claude Opus 4.5 for text parsing and image analysis.
+ * This is Anthropic's most powerful model for vision and OCR tasks.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+
+// ============================================================
+// MODEL CONFIGURATION
+// ============================================================
+
+/**
+ * Claude model to use for all operations.
+ * 
+ * Available models (as of Dec 2025):
+ * - claude-4-opus-20251124  : Most powerful, best for complex OCR/vision (current)
+ * - claude-4-sonnet-20251201: Balanced speed/quality
+ * - claude-3-5-sonnet-20241022: Previous generation (deprecated)
+ * 
+ * Update this constant to switch models across all operations.
+ */
+const CLAUDE_MODEL = "claude-4-opus-20251124";
+
+/**
+ * Maximum tokens for response generation.
+ * Opus 4.5 supports up to 128K context, 8K output.
+ */
+const MAX_TOKENS = 8000;
 import { generateId } from "@/lib/utils";
 import type { CutPart } from "@/lib/schema";
 import {
@@ -74,8 +97,8 @@ export class AnthropicProvider implements AIProvider {
       });
 
       const response = await client.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 4000,
+        model: CLAUDE_MODEL,
+        max_tokens: MAX_TOKENS,
         system: ANTHROPIC_SYSTEM_PROMPT,
         messages: [
           {
@@ -147,8 +170,8 @@ export class AnthropicProvider implements AIProvider {
       }
 
       const response = await client.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 4000,
+        model: CLAUDE_MODEL,
+        max_tokens: MAX_TOKENS,
         system: ANTHROPIC_SYSTEM_PROMPT,
         messages: [
           {
@@ -275,8 +298,8 @@ export class AnthropicProvider implements AIProvider {
       });
 
       const response = await client.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 4000,
+        model: CLAUDE_MODEL,
+        max_tokens: MAX_TOKENS,
         system: ANTHROPIC_SYSTEM_PROMPT,
         messages: [
           {

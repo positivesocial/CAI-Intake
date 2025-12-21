@@ -1,10 +1,34 @@
 /**
  * CAI Intake - OpenAI Provider Implementation
  * 
- * Uses GPT-4o for text parsing and GPT-4 Vision for image analysis.
+ * Uses GPT-5.2 for text parsing and vision/OCR tasks.
+ * This is OpenAI's most powerful model with enhanced reasoning.
  */
 
 import OpenAI from "openai";
+
+// ============================================================
+// MODEL CONFIGURATION
+// ============================================================
+
+/**
+ * GPT model to use for all operations.
+ * 
+ * Available models (as of Dec 2025):
+ * - gpt-5.2         : Most powerful, "thinking" mode for complex tasks (current)
+ * - gpt-5.2-codex   : Specialized for code generation
+ * - gpt-4o          : Previous flagship model (deprecated for OCR)
+ * - gpt-4-turbo     : Legacy model
+ * 
+ * Update this constant to switch models across all operations.
+ */
+const GPT_MODEL = "gpt-5.2";
+
+/**
+ * Maximum tokens for response generation.
+ * GPT-5.2 supports up to 256K context, 16K output.
+ */
+const MAX_TOKENS = 8000;
 import { generateId } from "@/lib/utils";
 import type { CutPart } from "@/lib/schema";
 import {
@@ -74,13 +98,13 @@ export class OpenAIProvider implements AIProvider {
       });
 
       const response = await client.chat.completions.create({
-        model: "gpt-4o",
+        model: GPT_MODEL,
         messages: [
           { role: "system", content: OPENAI_SYSTEM_PROMPT },
           { role: "user", content: `${prompt}\n\n---\n\nINPUT DATA:\n${text}` },
         ],
         temperature: 0.1,
-        max_tokens: 4000,
+        max_tokens: MAX_TOKENS,
         response_format: { type: "json_object" },
       });
 
@@ -143,7 +167,7 @@ export class OpenAIProvider implements AIProvider {
       }
 
       const response = await client.chat.completions.create({
-        model: "gpt-4o",
+        model: GPT_MODEL,
         messages: [
           { role: "system", content: OPENAI_SYSTEM_PROMPT },
           {
@@ -155,7 +179,7 @@ export class OpenAIProvider implements AIProvider {
           },
         ],
         temperature: 0.1,
-        max_tokens: 4000,
+        max_tokens: MAX_TOKENS,
       });
 
       const rawResponse = response.choices[0]?.message?.content || "";
@@ -256,7 +280,7 @@ export class OpenAIProvider implements AIProvider {
       });
 
       const response = await client.chat.completions.create({
-        model: "gpt-4o",
+        model: GPT_MODEL,
         messages: [
           { role: "system", content: OPENAI_SYSTEM_PROMPT },
           {
@@ -268,7 +292,7 @@ export class OpenAIProvider implements AIProvider {
           },
         ],
         temperature: 0.1,
-        max_tokens: 4000,
+        max_tokens: MAX_TOKENS,
       });
 
       options.onProgress?.({

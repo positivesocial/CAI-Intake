@@ -257,7 +257,7 @@ export class ResilientAIProvider implements AIProvider {
       stage: "fallback",
       provider: "openai",
       percent: 50,
-      message: "Falling back to GPT-4 Vision...",
+      message: "Falling back to GPT-5.2...",
       itemsCompleted: 0,
       totalItems: 1,
       failedOver: true,
@@ -337,7 +337,7 @@ export class ResilientAIProvider implements AIProvider {
         stage: "fallback",
         provider: "openai",
         percent: Math.round((state.completedIndices.size / totalPages) * 100),
-        message: `Falling back to GPT-4 for ${remainingIndices.length} remaining pages...`,
+        message: `Falling back to GPT-5.2 for ${remainingIndices.length} remaining pages...`,
         itemsCompleted: state.completedIndices.size,
         totalItems: totalPages,
         failedOver: true,
@@ -536,7 +536,7 @@ export class ResilientAIProvider implements AIProvider {
       stage: "parsing",
       provider: "gpt",
       percent: 50,
-      message: "Falling back to GPT-4...",
+      message: "Falling back to GPT-5.2...",
       failedOver: true,
     });
 
@@ -621,7 +621,7 @@ export class ResilientAIProvider implements AIProvider {
       stage: "parsing",
       provider: "gpt",
       percent: 50,
-      message: "Falling back to GPT-4...",
+      message: "Falling back to GPT-5.2...",
       failedOver: true,
     });
 
