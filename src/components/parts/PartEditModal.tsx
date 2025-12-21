@@ -49,8 +49,8 @@ export function PartEditModal({ partId, onClose }: PartEditModalProps) {
 
   // Corrections tracking for learning from user edits
   const { trackOriginal, recordChanges } = useCorrections({
-    organizationId: user?.organizationId,
-    userId: user?.id,
+    organizationId: user?.organizationId ?? undefined,
+    userId: user?.id ?? undefined,
     showLearningToast: true,
     enabled: true,
   });
