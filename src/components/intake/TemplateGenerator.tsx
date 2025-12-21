@@ -83,13 +83,15 @@ export function TemplateGenerator() {
       material_id: m.material_id,
       name: m.name,
       thickness_mm: m.thickness_mm,
-      code: m.code || m.material_id.slice(0, 8).toUpperCase(),
+      // Generate a short code from material_id or SKU if available
+      code: (m as { sku?: string }).sku || m.material_id.slice(0, 8).toUpperCase(),
     })),
     edgebands: currentCutlist.edgebands?.map(e => ({
       edgeband_id: e.edgeband_id,
       name: e.name,
       thickness_mm: e.thickness_mm,
-      code: e.code || e.edgeband_id.slice(0, 8).toUpperCase(),
+      // Generate a short code from edgeband_id
+      code: e.edgeband_id.slice(0, 8).toUpperCase(),
     })),
     // TODO: Load from org's libraries
     grooveProfiles: config.includeGrooves ? [
