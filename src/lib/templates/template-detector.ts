@@ -317,11 +317,7 @@ export async function detectTemplateQR(
         type: DocType.TEMPLATE_IMAGE,
         metadata: {
           templateId: qrResult.templateId,
-          version: qrResult.templateVersion,
-          orgId: undefined, // orgId extracted from template config if available
-          capabilities: qrResult.templateConfig?.capabilities,
-          fieldOrder: qrResult.templateConfig?.fieldOrder,
-          hasShortcodes: qrResult.templateConfig?.hasShortcodes,
+          version: qrResult.templateVersion ?? qrResult.templateConfig?.version,
         },
         confidence: 0.95,
         method: "qr_code",
