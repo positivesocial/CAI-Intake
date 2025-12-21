@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PartsTable } from "@/components/parts";
-import { StatsSidebar } from "@/components/intake";
+import { StatsSidebar, ProjectMergePanel } from "@/components/intake";
 import { useIntakeStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { StepNavigation } from "@/components/ui/stepper";
@@ -39,6 +39,9 @@ export function ReviewStep() {
 
   return (
     <div className="space-y-6">
+      {/* Project Merge Panel - shows when there are unmerged multi-page uploads */}
+      <ProjectMergePanel />
+
       {/* Header with actions */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">

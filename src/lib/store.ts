@@ -77,6 +77,26 @@ export interface ProjectTracking {
   date?: string;
 }
 
+/** Upload batch for tracking multi-file/multi-page uploads */
+export interface UploadBatch {
+  /** Unique batch ID */
+  batch_id: string;
+  /** Project code extracted from template or entered by user */
+  project_code: string;
+  /** Page/file number within the batch */
+  page_number: number;
+  /** Total pages in the batch (if known) */
+  total_pages?: number;
+  /** Source file name */
+  source_file?: string;
+  /** Upload timestamp */
+  uploaded_at: string;
+  /** Part IDs in this batch */
+  part_ids: string[];
+  /** Is this batch merged into another? */
+  merged_into?: string;
+}
+
 export interface IntakeState {
   // Current cutlist being edited
   currentCutlist: {
@@ -92,6 +112,9 @@ export interface IntakeState {
 
   // Intake inbox - parts waiting for review
   inboxParts: ParsedPartWithStatus[];
+
+  // Upload batches for project tracking
+  uploadBatches: UploadBatch[];
 
   // Active intake mode
   activeMode: IntakeMode;
@@ -146,6 +169,12 @@ export interface IntakeState {
   rejectInboxPart: (partId: string) => void;
   clearInbox: () => void;
   updateInboxPart: (partId: string, updates: Partial<ParsedPartWithStatus>) => void;
+  
+  // Upload batch management
+  addUploadBatch: (batch: Omit<UploadBatch, "batch_id" | "uploaded_at">) => string;
+  getProjectBatches: (projectCode: string) => UploadBatch[];
+  mergeProjectBatches: (projectCode: string) => void;
+  getUnmergedProjects: () => { project_code: string; batches: UploadBatch[]; total_parts: number }[];
 
   // Materials
   addMaterial: (material: MaterialDef) => void;
@@ -257,6 +286,7 @@ const getInitialState = () => ({
     capabilities: defaultCapabilities,
   },
   inboxParts: [],
+  uploadBatches: [] as UploadBatch[],
   activeMode: "manual" as IntakeMode,
   currentStep: "setup" as StepId,
   isAdvancedMode: false,
@@ -540,6 +570,86 @@ export const useIntakeStore = create<IntakeState>()(
             p.part_id === partId ? { ...p, ...updates } : p
           ),
         })),
+
+      // Upload batch management for project tracking
+      addUploadBatch: (batch) => {
+        const batch_id = generateId("BATCH");
+        set((state) => ({
+          uploadBatches: [
+            ...state.uploadBatches,
+            {
+              ...batch,
+              batch_id,
+              uploaded_at: new Date().toISOString(),
+            },
+          ],
+        }));
+        return batch_id;
+      },
+
+      getProjectBatches: (projectCode) => {
+        const state = get();
+        return state.uploadBatches.filter(
+          (b) => b.project_code === projectCode && !b.merged_into
+        );
+      },
+
+      mergeProjectBatches: (projectCode) => {
+        const state = get();
+        const batches = state.uploadBatches.filter(
+          (b) => b.project_code === projectCode && !b.merged_into
+        );
+        
+        if (batches.length <= 1) return;
+        
+        // Sort by page number
+        batches.sort((a, b) => a.page_number - b.page_number);
+        
+        // Get all part IDs from all batches
+        const allPartIds = batches.flatMap((b) => b.part_ids);
+        
+        // Mark all but first as merged
+        const primaryBatchId = batches[0].batch_id;
+        
+        set((state) => ({
+          uploadBatches: state.uploadBatches.map((b) =>
+            b.project_code === projectCode && b.batch_id !== primaryBatchId
+              ? { ...b, merged_into: primaryBatchId }
+              : b.batch_id === primaryBatchId
+              ? { ...b, part_ids: allPartIds }
+              : b
+          ),
+        }));
+      },
+
+      getUnmergedProjects: () => {
+        const state = get();
+        const projectMap = new Map<string, { batches: UploadBatch[]; part_ids: Set<string> }>();
+        
+        for (const batch of state.uploadBatches) {
+          if (batch.merged_into) continue;
+          
+          const existing = projectMap.get(batch.project_code);
+          if (existing) {
+            existing.batches.push(batch);
+            batch.part_ids.forEach((id) => existing.part_ids.add(id));
+          } else {
+            projectMap.set(batch.project_code, {
+              batches: [batch],
+              part_ids: new Set(batch.part_ids),
+            });
+          }
+        }
+        
+        // Only return projects with multiple batches
+        return Array.from(projectMap.entries())
+          .filter(([, data]) => data.batches.length > 1)
+          .map(([project_code, data]) => ({
+            project_code,
+            batches: data.batches.sort((a, b) => a.page_number - b.page_number),
+            total_parts: data.part_ids.size,
+          }));
+      },
 
       // Materials
       addMaterial: (material) =>

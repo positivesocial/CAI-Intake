@@ -14,6 +14,7 @@ export * from "./OCRProviderSelect";
 export * from "./TemplateGenerator";
 export * from "./ParserModeToggle";
 export * from "./StatsSidebar";
+export * from "./ProjectMergePanel";
 
 // Step Components for Stepper Workflow
 export * from "./steps";
