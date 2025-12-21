@@ -586,7 +586,23 @@ interface MassEditToolbarProps {
   onSetMaterial: (materialId: string) => void;
   onSetThickness: (thickness: number) => void;
   onMultiplyQty: (multiplier: number) => void;
+  onSetEdging: (edges: ("L1" | "L2" | "W1" | "W2")[]) => void;
+  onClearEdging: () => void;
+  onAddGroove: (side: "L1" | "L2" | "W1" | "W2") => void;
+  onClearGrooves: () => void;
+  onSetHolePattern: (pattern: string) => void;
+  onClearHoles: () => void;
+  onSetCncProgram: (program: string) => void;
+  onClearCnc: () => void;
+  onToggleRotation: (allow: boolean) => void;
   materials: { material_id: string; name: string; thickness_mm: number }[];
+  capabilities: {
+    edging?: boolean;
+    grooves?: boolean;
+    cnc_holes?: boolean;
+    cnc_routing?: boolean;
+    custom_cnc?: boolean;
+  };
 }
 
 function MassEditToolbar({
@@ -599,132 +615,281 @@ function MassEditToolbar({
   onSetMaterial,
   onSetThickness,
   onMultiplyQty,
+  onSetEdging,
+  onClearEdging,
+  onAddGroove,
+  onClearGrooves,
+  onSetHolePattern,
+  onClearHoles,
+  onSetCncProgram,
+  onClearCnc,
+  onToggleRotation,
   materials,
+  capabilities,
 }: MassEditToolbarProps) {
   const allSelected = selectedCount === totalCount && totalCount > 0;
   const someSelected = selectedCount > 0 && selectedCount < totalCount;
+  
+  const hasOpsEnabled = capabilities.edging || capabilities.grooves || capabilities.cnc_holes || capabilities.cnc_routing || capabilities.custom_cnc;
 
   return (
-    <div className="flex items-center gap-3 p-3 bg-[var(--muted)] border-b border-[var(--border)]">
-      {/* Selection controls */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={allSelected || someSelected ? onSelectNone : onSelectAll}
-          className={cn(
-            "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
-            allSelected
-              ? "bg-[var(--cai-teal)] border-[var(--cai-teal)]"
-              : someSelected
-              ? "bg-[var(--cai-teal)]/50 border-[var(--cai-teal)]"
-              : "border-[var(--border)] hover:border-[var(--cai-teal)]/50"
-          )}
-        >
-          {allSelected && <Check className="w-3 h-3 text-white" />}
-          {someSelected && <div className="w-2 h-0.5 bg-white" />}
-        </button>
-        <span className="text-sm text-[var(--muted-foreground)]">
-          {selectedCount > 0 ? (
-            <>{selectedCount} of {totalCount} selected</>
-          ) : (
-            <>{totalCount} parts</>
-          )}
-        </span>
+    <div className="flex flex-col border-b border-[var(--border)]">
+      {/* Main toolbar row */}
+      <div className="flex items-center gap-3 p-3 bg-[var(--muted)]">
+        {/* Selection controls */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={allSelected || someSelected ? onSelectNone : onSelectAll}
+            className={cn(
+              "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+              allSelected
+                ? "bg-[var(--cai-teal)] border-[var(--cai-teal)]"
+                : someSelected
+                ? "bg-[var(--cai-teal)]/50 border-[var(--cai-teal)]"
+                : "border-[var(--border)] hover:border-[var(--cai-teal)]/50"
+            )}
+          >
+            {allSelected && <Check className="w-3 h-3 text-white" />}
+            {someSelected && <div className="w-2 h-0.5 bg-white" />}
+          </button>
+          <span className="text-sm text-[var(--muted-foreground)]">
+            {selectedCount > 0 ? (
+              <>{selectedCount} of {totalCount} selected</>
+            ) : (
+              <>{totalCount} parts</>
+            )}
+          </span>
+        </div>
+
+        {selectedCount > 0 && (
+          <>
+            <div className="w-px h-6 bg-[var(--border)]" />
+
+            {/* Quick actions */}
+            <div className="flex items-center gap-1">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                      onClick={onAcceptSelected}
+                    >
+                      <Check className="h-4 w-4 mr-1" />
+                      Accept
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Accept {selectedCount} parts</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={onRejectSelected}
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Reject
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Reject {selectedCount} parts</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            <div className="w-px h-6 bg-[var(--border)]" />
+
+            {/* Basic mass edit controls */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-[var(--muted-foreground)]">Set:</span>
+
+              {/* Material */}
+              <Select onValueChange={onSetMaterial}>
+                <SelectTrigger className="h-8 w-[130px] text-xs">
+                  <SelectValue placeholder="Material..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {materials.map((m) => (
+                    <SelectItem key={m.material_id} value={m.material_id}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Thickness */}
+              <Select onValueChange={(v) => onSetThickness(parseFloat(v))}>
+                <SelectTrigger className="h-8 w-[70px] text-xs">
+                  <SelectValue placeholder="T..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {[12, 15, 16, 18, 19, 22, 25].map((t) => (
+                    <SelectItem key={t} value={t.toString()}>
+                      {t}mm
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Qty multiplier */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-xs">
+                    Qty ×
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => onMultiplyQty(2)}>× 2</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onMultiplyQty(3)}>× 3</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onMultiplyQty(4)}>× 4</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => onMultiplyQty(0.5)}>÷ 2 (halve)</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Rotation toggle */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-xs">
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Rotation
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => onToggleRotation(true)}>
+                    <Check className="h-4 w-4 mr-2 text-green-600" />
+                    Allow rotation
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onToggleRotation(false)}>
+                    <X className="h-4 w-4 mr-2 text-red-600" />
+                    Lock rotation
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </>
+        )}
       </div>
-
-      {selectedCount > 0 && (
-        <>
-          <div className="w-px h-6 bg-[var(--border)]" />
-
-          {/* Quick actions */}
-          <div className="flex items-center gap-1">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                    onClick={onAcceptSelected}
-                  >
-                    <Check className="h-4 w-4 mr-1" />
-                    Accept
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Accept {selectedCount} parts</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={onRejectSelected}
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Reject
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Reject {selectedCount} parts</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-
-          <div className="w-px h-6 bg-[var(--border)]" />
-
-          {/* Mass edit controls */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-[var(--muted-foreground)]">Set:</span>
-
-            {/* Material */}
-            <Select onValueChange={onSetMaterial}>
-              <SelectTrigger className="h-8 w-[140px] text-xs">
-                <SelectValue placeholder="Material..." />
-              </SelectTrigger>
-              <SelectContent>
-                {materials.map((m) => (
-                  <SelectItem key={m.material_id} value={m.material_id}>
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Thickness */}
-            <Select onValueChange={(v) => onSetThickness(parseFloat(v))}>
-              <SelectTrigger className="h-8 w-[80px] text-xs">
-                <SelectValue placeholder="T..." />
-              </SelectTrigger>
-              <SelectContent>
-                {[12, 15, 16, 18, 19, 22, 25].map((t) => (
-                  <SelectItem key={t} value={t.toString()}>
-                    {t}mm
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Qty multiplier */}
+      
+      {/* Operations toolbar row - only shown when parts selected and ops enabled */}
+      {selectedCount > 0 && hasOpsEnabled && (
+        <div className="flex items-center gap-3 px-3 py-2 bg-[var(--muted)]/50 border-t border-[var(--border)]">
+          <span className="text-xs text-[var(--muted-foreground)]">Operations:</span>
+          
+          {/* Edgebanding */}
+          {capabilities.edging && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 text-xs">
-                  Qty ×
+                <Button variant="outline" size="sm" className="h-7 text-xs text-blue-600 border-blue-200 hover:bg-blue-50">
+                  <Layers className="h-3 w-3 mr-1" />
+                  Edging
                   <ChevronDown className="h-3 w-3 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => onMultiplyQty(2)}>× 2</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onMultiplyQty(3)}>× 3</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onMultiplyQty(4)}>× 4</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetEdging(["L1", "L2", "W1", "W2"])}>
+                  All edges (L1, L2, W1, W2)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetEdging(["L1", "L2"])}>
+                  Long edges only (L1, L2)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetEdging(["W1", "W2"])}>
+                  Short edges only (W1, W2)
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onMultiplyQty(0.5)}>÷ 2 (halve)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetEdging(["L1"])}>L1 only</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetEdging(["L2"])}>L2 only</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetEdging(["W1"])}>W1 only</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetEdging(["W2"])}>W2 only</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onClearEdging} className="text-red-600">
+                  <X className="h-4 w-4 mr-2" />
+                  Clear all edging
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-        </>
+          )}
+          
+          {/* Grooves */}
+          {capabilities.grooves && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 text-xs text-amber-600 border-amber-200 hover:bg-amber-50">
+                  <Layers className="h-3 w-3 mr-1" />
+                  Groove
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => onAddGroove("L1")}>Add groove on L1</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onAddGroove("L2")}>Add groove on L2</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onAddGroove("W1")}>Add groove on W1</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onAddGroove("W2")}>Add groove on W2 (back panel)</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onClearGrooves} className="text-red-600">
+                  <X className="h-4 w-4 mr-2" />
+                  Clear all grooves
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          
+          {/* Holes */}
+          {capabilities.cnc_holes && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 text-xs text-purple-600 border-purple-200 hover:bg-purple-50">
+                  <Layers className="h-3 w-3 mr-1" />
+                  Holes
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => onSetHolePattern("32mm system")}>32mm system holes</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetHolePattern("shelf pins")}>Shelf pin holes</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetHolePattern("hinge cups")}>Hinge cup holes</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetHolePattern("drawer slides")}>Drawer slide holes</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onClearHoles} className="text-red-600">
+                  <X className="h-4 w-4 mr-2" />
+                  Clear all holes
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          
+          {/* CNC Programs */}
+          {(capabilities.cnc_routing || capabilities.custom_cnc) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+                  <Wand2 className="h-3 w-3 mr-1" />
+                  CNC
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => onSetCncProgram("DOOR-STD")}>Door standard profile</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetCncProgram("DRAWER-FRONT")}>Drawer front profile</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetCncProgram("SHELF-PROFILE")}>Shelf edge profile</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSetCncProgram("POCKET-HINGE")}>Hinge pocket</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onClearCnc} className="text-red-600">
+                  <X className="h-4 w-4 mr-2" />
+                  Clear CNC operations
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       )}
     </div>
   );
@@ -913,6 +1078,150 @@ export function IntakeInbox() {
     });
   };
 
+  const handleToggleRotationSelected = (allow: boolean) => {
+    selectedIds.forEach((id) => {
+      updateInboxPart(id, { 
+        allow_rotation: allow,
+        grain: allow ? "none" : "along_L",
+      });
+    });
+  };
+
+  // Edgebanding mass operations
+  const handleSetEdgingSelected = (edges: ("L1" | "L2" | "W1" | "W2")[]) => {
+    const defaultEdgebandId = currentCutlist.edgebands?.[0]?.edgeband_id || "EB-WHITE-0.8";
+    selectedIds.forEach((id) => {
+      const part = inboxParts.find((p) => p.part_id === id);
+      if (part) {
+        const edgingConfig = edges.reduce((acc, edge) => {
+          acc[edge] = { apply: true, edgeband_id: defaultEdgebandId };
+          return acc;
+        }, {} as Record<string, { apply: boolean; edgeband_id?: string }>);
+        
+        updateInboxPart(id, {
+          ops: {
+            ...part.ops,
+            edging: { edges: edgingConfig },
+          },
+        });
+      }
+    });
+  };
+
+  const handleClearEdgingSelected = () => {
+    selectedIds.forEach((id) => {
+      const part = inboxParts.find((p) => p.part_id === id);
+      if (part) {
+        const { edging, ...restOps } = part.ops || {};
+        updateInboxPart(id, {
+          ops: Object.keys(restOps).length > 0 ? restOps : undefined,
+        });
+      }
+    });
+  };
+
+  // Groove mass operations
+  const handleAddGrooveSelected = (side: "L1" | "L2" | "W1" | "W2") => {
+    selectedIds.forEach((id) => {
+      const part = inboxParts.find((p) => p.part_id === id);
+      if (part) {
+        const existingGrooves = part.ops?.grooves || [];
+        const newGroove = {
+          groove_id: generateId("GRV"),
+          side,
+          offset_mm: 10,
+          depth_mm: 8,
+          width_mm: 4,
+        };
+        
+        updateInboxPart(id, {
+          ops: {
+            ...part.ops,
+            grooves: [...existingGrooves, newGroove],
+          },
+        });
+      }
+    });
+  };
+
+  const handleClearGroovesSelected = () => {
+    selectedIds.forEach((id) => {
+      const part = inboxParts.find((p) => p.part_id === id);
+      if (part) {
+        const { grooves, ...restOps } = part.ops || {};
+        updateInboxPart(id, {
+          ops: Object.keys(restOps).length > 0 ? restOps : undefined,
+        });
+      }
+    });
+  };
+
+  // Holes mass operations
+  const handleSetHolePatternSelected = (pattern: string) => {
+    selectedIds.forEach((id) => {
+      const part = inboxParts.find((p) => p.part_id === id);
+      if (part) {
+        const holeOp = {
+          pattern_id: pattern.includes("32") ? "SYS32" : undefined,
+          face: "front" as const,
+          notes: pattern,
+        };
+        
+        updateInboxPart(id, {
+          ops: {
+            ...part.ops,
+            holes: [holeOp],
+          },
+        });
+      }
+    });
+  };
+
+  const handleClearHolesSelected = () => {
+    selectedIds.forEach((id) => {
+      const part = inboxParts.find((p) => p.part_id === id);
+      if (part) {
+        const { holes, ...restOps } = part.ops || {};
+        updateInboxPart(id, {
+          ops: Object.keys(restOps).length > 0 ? restOps : undefined,
+        });
+      }
+    });
+  };
+
+  // CNC mass operations
+  const handleSetCncProgramSelected = (program: string) => {
+    selectedIds.forEach((id) => {
+      const part = inboxParts.find((p) => p.part_id === id);
+      if (part) {
+        const cncOp = {
+          op_type: "program",
+          payload: { program_name: program },
+          notes: `CNC: ${program}`,
+        };
+        
+        updateInboxPart(id, {
+          ops: {
+            ...part.ops,
+            custom_cnc_ops: [cncOp],
+          },
+        });
+      }
+    });
+  };
+
+  const handleClearCncSelected = () => {
+    selectedIds.forEach((id) => {
+      const part = inboxParts.find((p) => p.part_id === id);
+      if (part) {
+        const { custom_cnc_ops, routing, ...restOps } = part.ops || {};
+        updateInboxPart(id, {
+          ops: Object.keys(restOps).length > 0 ? restOps : undefined,
+        });
+      }
+    });
+  };
+
   // Part actions
   const handleDuplicate = (part: ParsedPartWithStatus) => {
     const newPart: ParsedPartWithStatus = {
@@ -1019,7 +1328,17 @@ export function IntakeInbox() {
         onSetMaterial={handleSetMaterialSelected}
         onSetThickness={handleSetThicknessSelected}
         onMultiplyQty={handleMultiplyQtySelected}
+        onSetEdging={handleSetEdgingSelected}
+        onClearEdging={handleClearEdgingSelected}
+        onAddGroove={handleAddGrooveSelected}
+        onClearGrooves={handleClearGroovesSelected}
+        onSetHolePattern={handleSetHolePatternSelected}
+        onClearHoles={handleClearHolesSelected}
+        onSetCncProgram={handleSetCncProgramSelected}
+        onClearCnc={handleClearCncSelected}
+        onToggleRotation={handleToggleRotationSelected}
         materials={materials}
+        capabilities={currentCutlist.capabilities}
       />
 
       {/* Table */}
