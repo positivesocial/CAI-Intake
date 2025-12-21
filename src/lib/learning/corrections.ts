@@ -25,6 +25,22 @@ import type { CutPart } from "@/lib/schema";
 export async function recordCorrection(
   correction: Omit<ParseCorrection, "id" | "createdAt">
 ): Promise<ParseCorrection | null> {
+  // In demo mode, skip database operations and return a mock result
+  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+  if (isDemoMode) {
+    // Still analyze the correction for learning patterns (in-memory only)
+    const analysis = analyzeCorrection(correction);
+    console.log("[Demo] Would record correction:", correction.correctionType, analysis);
+    
+    // Return a mock result
+    return {
+      id: `demo-${Date.now()}`,
+      ...correction,
+      createdAt: new Date(),
+      patternExtracted: analysis.autoLearn,
+    };
+  }
+
   const supabase = getClient();
   if (!supabase) {
     console.warn("Cannot record correction: Supabase not available");
