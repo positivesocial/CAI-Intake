@@ -273,12 +273,13 @@ function LoginForm() {
           
           <div className="grid gap-2">
             {/* Super Admin */}
-            <button
-              type="button"
-              onClick={() => handleDemoLogin("super_admin")}
-              disabled={isLoading}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => !isLoading && handleDemoLogin("super_admin")}
+              onKeyDown={(e) => e.key === "Enter" && !isLoading && handleDemoLogin("super_admin")}
               className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] transition-colors text-left",
+                "w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] transition-colors text-left cursor-pointer",
                 isLoading && "opacity-50 cursor-not-allowed"
               )}
             >
@@ -294,25 +295,33 @@ function LoginForm() {
                   super@caiintake.com
                 </p>
               </div>
-              <button
-                type="button"
+              <span
+                role="button"
+                tabIndex={0}
                 onClick={(e) => {
                   e.stopPropagation();
                   fillCredentials("super@caiintake.com", "SuperAdmin123!");
                 }}
-                className="text-xs text-[var(--cai-teal)] hover:underline shrink-0"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.stopPropagation();
+                    fillCredentials("super@caiintake.com", "SuperAdmin123!");
+                  }
+                }}
+                className="text-xs text-[var(--cai-teal)] hover:underline shrink-0 cursor-pointer"
               >
-                Copy creds
-              </button>
-            </button>
+                Fill form
+              </span>
+            </div>
 
             {/* Org Admin */}
-            <button
-              type="button"
-              onClick={() => handleDemoLogin("org_admin")}
-              disabled={isLoading}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => !isLoading && handleDemoLogin("org_admin")}
+              onKeyDown={(e) => e.key === "Enter" && !isLoading && handleDemoLogin("org_admin")}
               className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] transition-colors text-left",
+                "w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] transition-colors text-left cursor-pointer",
                 isLoading && "opacity-50 cursor-not-allowed"
               )}
             >
@@ -328,25 +337,33 @@ function LoginForm() {
                   admin@acmecabinets.com
                 </p>
               </div>
-              <button
-                type="button"
+              <span
+                role="button"
+                tabIndex={0}
                 onClick={(e) => {
                   e.stopPropagation();
                   fillCredentials("admin@acmecabinets.com", "OrgAdmin123!");
                 }}
-                className="text-xs text-[var(--cai-teal)] hover:underline shrink-0"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.stopPropagation();
+                    fillCredentials("admin@acmecabinets.com", "OrgAdmin123!");
+                  }
+                }}
+                className="text-xs text-[var(--cai-teal)] hover:underline shrink-0 cursor-pointer"
               >
-                Copy creds
-              </button>
-            </button>
+                Fill form
+              </span>
+            </div>
 
             {/* Operator */}
-            <button
-              type="button"
-              onClick={() => handleDemoLogin("operator")}
-              disabled={isLoading}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => !isLoading && handleDemoLogin("operator")}
+              onKeyDown={(e) => e.key === "Enter" && !isLoading && handleDemoLogin("operator")}
               className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] transition-colors text-left",
+                "w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] transition-colors text-left cursor-pointer",
                 isLoading && "opacity-50 cursor-not-allowed"
               )}
             >
@@ -362,17 +379,24 @@ function LoginForm() {
                   operator@acmecabinets.com
                 </p>
               </div>
-              <button
-                type="button"
+              <span
+                role="button"
+                tabIndex={0}
                 onClick={(e) => {
                   e.stopPropagation();
                   fillCredentials("operator@acmecabinets.com", "Operator123!");
                 }}
-                className="text-xs text-[var(--cai-teal)] hover:underline shrink-0"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.stopPropagation();
+                    fillCredentials("operator@acmecabinets.com", "Operator123!");
+                  }
+                }}
+                className="text-xs text-[var(--cai-teal)] hover:underline shrink-0 cursor-pointer"
               >
-                Copy creds
-              </button>
-            </button>
+                Fill form
+              </span>
+            </div>
           </div>
 
           <div className="pt-2 border-t border-[var(--border)]">
