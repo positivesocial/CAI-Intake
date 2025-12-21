@@ -25,6 +25,8 @@ import {
   Moon,
   Monitor,
   Check,
+  Wrench,
+  Code2,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -55,6 +57,22 @@ const SETTINGS_SECTIONS = [
     label: "AI Parsing",
     icon: Sparkles,
     description: "AI provider and parsing settings",
+  },
+  {
+    id: "operations",
+    label: "Operations Library",
+    icon: Wrench,
+    description: "Hole patterns, grooves, and routing profiles",
+    adminOnly: true,
+    href: "/settings/operations",
+  },
+  {
+    id: "shortcodes",
+    label: "Shortcodes",
+    icon: Code2,
+    description: "Configure shortcode mappings for parsing",
+    adminOnly: true,
+    href: "/settings/shortcodes",
   },
   {
     id: "organization",
@@ -796,6 +814,56 @@ export default function SettingsPage() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Operations Library Section (Admin Only) */}
+            {activeSection === "operations" && isOrgAdmin() && (
+              <Link href="/settings/operations">
+                <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                        <Wrench className="h-8 w-8 text-orange-600 dark:text-orange-400" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold">
+                          Operations Library
+                        </h3>
+                        <p className="text-[var(--muted-foreground)]">
+                          Manage hole patterns, groove profiles, and routing profiles
+                          for CNC operations
+                        </p>
+                      </div>
+                      <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+
+            {/* Shortcodes Section (Admin Only) */}
+            {activeSection === "shortcodes" && isOrgAdmin() && (
+              <Link href="/settings/shortcodes">
+                <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                        <Code2 className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold">
+                          Shortcode Configuration
+                        </h3>
+                        <p className="text-[var(--muted-foreground)]">
+                          Configure shortcode mappings for edge banding, grooves,
+                          holes, and CNC operations
+                        </p>
+                      </div>
+                      <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             )}
 
             {/* Organization Section (Admin Only) */}
