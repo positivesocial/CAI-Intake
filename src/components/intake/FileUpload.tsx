@@ -392,7 +392,6 @@ export function FileUpload() {
       <CardContent className="space-y-4">
         {/* Drop zone */}
         <label
-          htmlFor="smart-file-upload-input"
           className={cn(
             "block border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer",
             isDragging
@@ -403,6 +402,14 @@ export function FileUpload() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.xlsx,.xls"
+            multiple
+            className="sr-only"
+            onChange={(e) => e.target.files && handleFiles(e.target.files)}
+          />
           <Upload
             className={cn(
               "h-12 w-12 mx-auto mb-4",
@@ -422,15 +429,6 @@ export function FileUpload() {
             <span>Scanned templates with QR codes get 99%+ accuracy</span>
           </div>
         </label>
-        <input
-          id="smart-file-upload-input"
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.xlsx,.xls"
-          multiple
-          className="hidden"
-          onChange={(e) => e.target.files && handleFiles(e.target.files)}
-        />
 
         {/* File list */}
         {files.length > 0 && (
