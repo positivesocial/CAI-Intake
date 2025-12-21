@@ -59,6 +59,24 @@ export type UndoableAction =
 // Each action stores minimal data (IDs and diffs where possible)
 const MAX_UNDO_STACK = 30;
 
+/** Project tracking for multi-page/multi-file uploads */
+export interface ProjectTracking {
+  /** Unique project code for grouping related cutlists */
+  project_code?: string;
+  /** Current page number (for multi-page documents) */
+  page_number?: number;
+  /** Total pages in this document/batch */
+  total_pages?: number;
+  /** Client reference */
+  client_ref?: string;
+  /** Job reference */
+  job_ref?: string;
+  /** Prepared by (user name) */
+  prepared_by?: string;
+  /** Date of the cutlist */
+  date?: string;
+}
+
 export interface IntakeState {
   // Current cutlist being edited
   currentCutlist: {
@@ -68,6 +86,8 @@ export interface IntakeState {
     materials: MaterialDef[];
     edgebands: EdgebandDef[];
     capabilities: CutlistCapabilities;
+    /** Project tracking info */
+    project?: ProjectTracking;
   };
 
   // Intake inbox - parts waiting for review
@@ -146,6 +166,7 @@ export interface IntakeState {
   // Cutlist
   setCutlistName: (name: string) => void;
   setCapabilities: (capabilities: Partial<CutlistCapabilities>) => void;
+  setProjectTracking: (project: Partial<ProjectTracking>) => void;
   resetCutlist: () => void;
   
   // Save/Load
@@ -689,6 +710,17 @@ export const useIntakeStore = create<IntakeState>()(
             capabilities: {
               ...state.currentCutlist.capabilities,
               ...capabilities,
+            },
+          },
+        })),
+
+      setProjectTracking: (project) =>
+        set((state) => ({
+          currentCutlist: {
+            ...state.currentCutlist,
+            project: {
+              ...state.currentCutlist.project,
+              ...project,
             },
           },
         })),

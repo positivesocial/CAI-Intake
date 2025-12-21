@@ -11,8 +11,14 @@ import { cn } from "@/lib/utils";
 import type { CutPart } from "@/lib/schema";
 
 interface QuickAddFieldProps {
-  /** Callback when a part is successfully parsed and added */
-  onPartAdded?: (part: CutPart) => void;
+  /** Callback when a part is successfully parsed - receives parsed part data */
+  onPartParsed?: (part: CutPart) => void;
+  /** 
+   * If true (default), adds directly to the parts list (store).
+   * If false, only calls onPartParsed callback - use this when embedding
+   * in ManualEntryForm to add to the Excel-like table instead.
+   */
+  addToStore?: boolean;
 }
 
 /**
@@ -198,7 +204,7 @@ function parseCanonical(input: string, defaults: {
   };
 }
 
-export function QuickAddField({ onPartAdded }: QuickAddFieldProps) {
+export function QuickAddField({ onPartParsed, addToStore = true }: QuickAddFieldProps) {
   const [input, setInput] = React.useState("");
   const [lastAdded, setLastAdded] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState(false);
@@ -238,8 +244,12 @@ export function QuickAddField({ onPartAdded }: QuickAddFieldProps) {
     });
     
     if (part) {
-      addPart(part);
-      onPartAdded?.(part);
+      // Only add to store if explicitly requested (standalone mode)
+      if (addToStore) {
+        addPart(part);
+      }
+      // Always call the callback if provided (for Excel table integration)
+      onPartParsed?.(part);
       setLastAdded(part.label || `${part.size.L}×${part.size.W}`);
       setInput("");
       inputRef.current?.focus();
@@ -247,7 +257,7 @@ export function QuickAddField({ onPartAdded }: QuickAddFieldProps) {
       // Clear lastAdded after 2 seconds
       setTimeout(() => setLastAdded(null), 2000);
     }
-  }, [input, defaultMaterialId, defaultThickness, defaultEdgebandId, capabilities, addPart, onPartAdded]);
+  }, [input, defaultMaterialId, defaultThickness, defaultEdgebandId, capabilities, addPart, onPartParsed, addToStore]);
   
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && input.trim()) {
