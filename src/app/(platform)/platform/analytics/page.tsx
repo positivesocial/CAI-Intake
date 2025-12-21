@@ -503,7 +503,7 @@ export default function AnalyticsPage() {
                   <Badge
                     variant={
                       error.severity === "critical"
-                        ? "destructive"
+                        ? "error"
                         : error.severity === "error"
                         ? "warning"
                         : "outline"
