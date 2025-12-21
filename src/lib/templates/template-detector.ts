@@ -251,7 +251,7 @@ export async function detectPDFTemplate(
 ): Promise<TemplateDetectionResult> {
   // Check for CAI template markers
   const patterns = [
-    { regex: /CABINETAI_TEMPLATE:\s*({.+?})/s, method: "pdf_text" as const, confidence: 0.97 },
+    { regex: /CABINETAI_TEMPLATE:\s*({[\s\S]+?})/, method: "pdf_text" as const, confidence: 0.97 },
     { regex: /CAI-(\d+\.\d+)-([A-Z0-9]+)/i, method: "pdf_text" as const, confidence: 0.9 },
     { regex: /CabinetAI\s+Cutlist\s+Template/i, method: "pdf_text" as const, confidence: 0.85 },
     { regex: /CAI\s+Intake\s+Template/i, method: "pdf_text" as const, confidence: 0.85 },
