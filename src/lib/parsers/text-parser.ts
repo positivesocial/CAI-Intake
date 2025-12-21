@@ -4,6 +4,12 @@
  * Parses free-form text input into canonical CutPart objects.
  * Handles manual entry field input, copy-paste text, voice transcripts,
  * and TABULAR/SPREADSHEET data with column detection.
+ * 
+ * Now integrated with the canonical services module for:
+ * - Edgebanding normalization
+ * - Groove detection
+ * - Drilling/hole patterns
+ * - CNC operations
  */
 
 import { CutPart, GrainMode, IngestionMethod } from "../schema";
@@ -23,6 +29,14 @@ import {
   type EdgeId,
 } from "../parser/parser-utils";
 import type { LearningContext } from "../learning";
+import {
+  type OrgServiceDialect,
+  type RawServiceFields,
+  normalizeServices,
+  extractRawFieldsFromText,
+  getDefaultDialect,
+  mergeWithDefaults,
+} from "../services";
 
 /**
  * Parse options for text parsing
@@ -42,6 +56,8 @@ export interface TextParseOptions {
   minConfidence?: number;
   /** Learning context for adaptive parsing */
   learningContext?: LearningContext;
+  /** Organization service dialect for service normalization */
+  orgDialect?: Partial<OrgServiceDialect>;
 }
 
 /**
@@ -610,6 +626,115 @@ function extractEdgeBanding(text: string): EdgeId[] {
 }
 
 /**
+ * Extract and normalize all services from text using the canonical services module
+ * 
+ * This provides a more comprehensive extraction of:
+ * - Edgebanding (with canonical shortcode support)
+ * - Grooves (with G-code support)
+ * - Drilling/holes (with H-code support)
+ * - CNC operations
+ */
+function extractServicesFromText(
+  text: string,
+  options: TextParseOptions
+): RawServiceFields {
+  // Use the canonical services module to extract raw fields
+  const rawFields = extractRawFieldsFromText(text);
+  
+  // Enhance with tabular edge detection if present
+  const upperText = text.toUpperCase();
+  
+  // Look for X/XX patterns common in spreadsheets
+  const xxMatch = upperText.match(/\b(X+)\s+(X*)\b/);
+  if (xxMatch && !rawFields.edgeband?.text) {
+    const lEdge = xxMatch[1];
+    const wEdge = xxMatch[2];
+    let edgeCode = "";
+    if (lEdge === "XX" && wEdge === "XX") edgeCode = "2L2W";
+    else if (lEdge === "X" && wEdge === "XX") edgeCode = "L2W";
+    else if (lEdge === "XX") edgeCode = "2L";
+    else if (lEdge === "X") edgeCode = "L1";
+    
+    if (edgeCode) {
+      rawFields.edgeband = { ...rawFields.edgeband, text: edgeCode };
+    }
+  }
+  
+  // Look for groove indicators in lowercase (common convention)
+  if (!rawFields.groove?.text) {
+    const grooveMatch = text.match(/\b(x)\b(?!\s*\d)/);
+    if (grooveMatch) {
+      rawFields.groove = { text: "GW2-4-10" }; // Default back panel groove
+    }
+  }
+  
+  return rawFields;
+}
+
+/**
+ * Convert extracted services to PartOps schema format
+ */
+function servicesToPartOps(
+  services: ReturnType<typeof normalizeServices>
+): CutPart["ops"] | undefined {
+  if (!services || (!services.edgeband && !services.grooves && !services.holes && !services.cnc)) {
+    return undefined;
+  }
+  
+  const ops: NonNullable<CutPart["ops"]> = {};
+  
+  // Convert edgeband
+  if (services.edgeband?.edges && services.edgeband.edges.length > 0) {
+    ops.edging = {
+      edges: services.edgeband.edges.reduce((acc, edge) => {
+        acc[edge] = { 
+          apply: true, 
+          edgeband_id: services.edgeband?.tapeId,
+          thickness_mm: services.edgeband?.thicknessMm,
+        };
+        return acc;
+      }, {} as Record<string, { apply: boolean; edgeband_id?: string; thickness_mm?: number }>),
+    };
+  }
+  
+  // Convert grooves
+  if (services.grooves && services.grooves.length > 0) {
+    ops.grooves = services.grooves.map((groove, idx) => ({
+      groove_id: generateId("GRV"),
+      side: groove.onEdge,
+      offset_mm: groove.distanceFromEdgeMm,
+      depth_mm: groove.depthMm,
+      width_mm: groove.widthMm,
+      face: groove.face,
+      notes: groove.note,
+    }));
+  }
+  
+  // Convert holes
+  if (services.holes && services.holes.length > 0) {
+    ops.holes = services.holes.map((hole) => ({
+      pattern_id: hole.patternId ?? `${hole.kind}-pattern`,
+      face: hole.face === "edge" ? undefined : hole.face,
+      notes: hole.note ?? `${hole.kind} holes`,
+    }));
+  }
+  
+  // Convert CNC operations
+  if (services.cnc && services.cnc.length > 0) {
+    ops.custom_cnc_ops = services.cnc.map((cnc) => ({
+      op_type: cnc.type,
+      payload: {
+        shapeId: cnc.shapeId,
+        ...cnc.params,
+      },
+      notes: cnc.note,
+    }));
+  }
+  
+  return Object.keys(ops).length > 0 ? ops : undefined;
+}
+
+/**
  * Parse a single line of text into a CutPart
  */
 export function parseTextLine(
@@ -719,31 +844,33 @@ export function parseTextLine(
       },
     };
     
-    // Add edging if found
-    if (enhancedEdges.length > 0) {
-      part.ops = {
-        edging: {
-          edges: enhancedEdges.reduce((acc, edge) => {
-            acc[edge] = { apply: true };
-            return acc;
-          }, {} as Record<string, { apply: boolean }>),
-        },
-      };
+    // Extract and normalize services using the canonical services module
+    const rawServices = extractServicesFromText(cleanText, options);
+    
+    // Merge with legacy edge/groove detection
+    if (enhancedEdges.length > 0 && !rawServices.edgeband?.text) {
+      let edgeCode = "";
+      if (enhancedEdges.length === 4) edgeCode = "2L2W";
+      else if (enhancedEdges.includes("L1") && enhancedEdges.includes("L2")) edgeCode = "2L";
+      else if (enhancedEdges.includes("W1") && enhancedEdges.includes("W2")) edgeCode = "2W";
+      else edgeCode = enhancedEdges.join("+");
+      rawServices.edgeband = { ...rawServices.edgeband, text: edgeCode };
     }
     
-    // Add groove if found
-    if (enhancedGrooves.length > 0) {
-      part.ops = {
-        ...part.ops,
-        grooves: enhancedGrooves.map((side) => ({
-          groove_id: generateId("GRV"),
-          side: side as "L1" | "L2" | "W1" | "W2",
-          offset_mm: 10,
-          depth_mm: 8,
-          width_mm: 4,
-        })),
-      };
+    if (enhancedGrooves.length > 0 && !rawServices.groove?.text) {
+      rawServices.groove = { ...rawServices.groove, text: `G${enhancedGrooves[0]}-4-10` };
     }
+    
+    // Get the dialect (use default if not provided)
+    const dialect = options.orgDialect 
+      ? mergeWithDefaults(options.orgDialect)
+      : getDefaultDialect();
+    
+    // Normalize to canonical services
+    const canonicalServices = normalizeServices(rawServices, dialect);
+    
+    // Convert to PartOps format
+    part.ops = servicesToPartOps(canonicalServices);
     
     return {
       part,
@@ -822,17 +949,29 @@ export function parseTextLine(
     part.tags = [materialHint];
   }
   
-  // Add edge banding if found
-  if (edges.length > 0) {
-    part.ops = {
-      edging: {
-        edges: edges.reduce((acc, edge) => {
-          acc[edge] = { apply: true, edgeband_id: "EB-WHITE-0.8" };
-          return acc;
-        }, {} as Record<string, { apply: boolean; edgeband_id?: string }>),
-      },
-    };
+  // Extract and normalize services using the canonical services module
+  const rawServices = extractServicesFromText(normalizedText, options);
+  
+  // Merge with legacy edge detection
+  if (edges.length > 0 && !rawServices.edgeband?.text) {
+    let edgeCode = "";
+    if (edges.length === 4) edgeCode = "2L2W";
+    else if (edges.includes("L1") && edges.includes("L2")) edgeCode = "2L";
+    else if (edges.includes("W1") && edges.includes("W2")) edgeCode = "2W";
+    else edgeCode = edges.join("+");
+    rawServices.edgeband = { ...rawServices.edgeband, text: edgeCode };
   }
+  
+  // Get the dialect
+  const dialect = options.orgDialect 
+    ? mergeWithDefaults(options.orgDialect)
+    : getDefaultDialect();
+  
+  // Normalize to canonical services
+  const canonicalServices = normalizeServices(rawServices, dialect);
+  
+  // Convert to PartOps format
+  part.ops = servicesToPartOps(canonicalServices);
   
   return {
     part,
