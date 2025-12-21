@@ -102,10 +102,9 @@ export async function POST(request: NextRequest) {
       
       aiResult = await provider.parseImage(dataUrl, parseOptions);
     } else if (fileType === "pdf") {
-      // Process PDF - extract text
+      // Process PDF - try text extraction first, then convert to images
       const pdfBuffer = await file.arrayBuffer();
       let extractedText = "";
-      let pdfError: unknown = null;
       
       try {
         const pdfParseModule = await import("pdf-parse");
@@ -114,8 +113,7 @@ export async function POST(request: NextRequest) {
         const pdfData = await pdfParse(Buffer.from(pdfBuffer));
         extractedText = pdfData.text?.trim() || "";
       } catch (err) {
-        pdfError = err;
-        logger.warn("PDF text extraction failed", { error: err });
+        logger.warn("PDF text extraction failed, will try image conversion", { error: err });
       }
       
       // Check if we got meaningful text (more than 50 chars of actual content)
@@ -125,21 +123,63 @@ export async function POST(request: NextRequest) {
         // Use text parsing for text-based PDFs
         aiResult = await provider.parseText(extractedText, parseOptions);
       } else {
-        // PDF is likely scanned/image-based - provide helpful guidance
-        logger.info("PDF has insufficient text content", { 
+        // PDF is scanned/image-based - convert to images and use AI vision
+        logger.info("Converting PDF to images for vision processing", { 
           textLength: meaningfulText.length,
-          fileName: file.name,
-          hasError: !!pdfError
+          fileName: file.name
         });
         
-        return NextResponse.json(
-          { 
-            error: "This PDF appears to be scanned or image-based and cannot be processed directly. Please try one of these options:\n\n1. **Take a screenshot** of the cutlist and upload as an image (PNG/JPG)\n2. **Export from your software** as a text-based PDF\n3. **Use the Excel/CSV import** if you have the data in spreadsheet format",
-            code: "PDF_NO_TEXT",
-            hint: "image_upload"
-          },
-          { status: 400 }
-        );
+        try {
+          // Dynamic import of pdf-to-img
+          const { pdf } = await import("pdf-to-img");
+          
+          // Convert PDF pages to images
+          const pdfImages: string[] = [];
+          const pdfDoc = await pdf(Buffer.from(pdfBuffer), { scale: 2 });
+          
+          for await (const image of pdfDoc) {
+            // Convert to base64 data URL
+            const base64 = Buffer.from(image).toString("base64");
+            pdfImages.push(`data:image/png;base64,${base64}`);
+          }
+          
+          if (pdfImages.length === 0) {
+            throw new Error("No pages found in PDF");
+          }
+          
+          logger.info("PDF converted to images", { pageCount: pdfImages.length });
+          
+          // Process first page (or all pages for multi-page cutlists)
+          // For now, process first page only to avoid rate limits
+          aiResult = await provider.parseImage(pdfImages[0], parseOptions);
+          
+          // If multi-page PDF, process additional pages and merge results
+          if (pdfImages.length > 1 && aiResult.success) {
+            logger.info("Processing additional PDF pages", { remaining: pdfImages.length - 1 });
+            
+            for (let i = 1; i < Math.min(pdfImages.length, 5); i++) { // Limit to 5 pages
+              try {
+                const pageResult = await provider.parseImage(pdfImages[i], parseOptions);
+                if (pageResult.success) {
+                  aiResult.parts.push(...pageResult.parts);
+                }
+              } catch (pageError) {
+                logger.warn(`Failed to process PDF page ${i + 1}`, { error: pageError });
+              }
+            }
+          }
+          
+        } catch (conversionError) {
+          logger.error("PDF to image conversion failed", { error: conversionError });
+          
+          return NextResponse.json(
+            { 
+              error: "Could not process this PDF. Please try uploading as an image (screenshot or photo) instead.",
+              code: "PDF_CONVERSION_FAILED"
+            },
+            { status: 400 }
+          );
+        }
       }
     } else {
       return NextResponse.json(
