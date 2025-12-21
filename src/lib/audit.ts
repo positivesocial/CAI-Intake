@@ -77,6 +77,11 @@ export const AUDIT_ACTIONS = {
   MATERIAL_UPDATED: "material.updated",
   MATERIAL_DELETED: "material.deleted",
   
+  // Shortcodes
+  SHORTCODE_CREATED: "shortcode.created",
+  SHORTCODE_UPDATED: "shortcode.updated",
+  SHORTCODE_DELETED: "shortcode.deleted",
+  
   // Files
   FILE_UPLOADED: "file.uploaded",
   FILE_DELETED: "file.deleted",

@@ -200,12 +200,12 @@ export async function POST(request: NextRequest) {
     // Audit log
     const configData = config as { id?: string; shortcode?: string; service_type?: string };
     await logAudit({
-      action: AUDIT_ACTIONS.CREATE,
-      resource_type: "shortcode_config",
-      resource_id: configData.id || "",
-      user_id: user.id,
-      organization_id: organizationId,
-      details: { shortcode: configData.shortcode, service_type: configData.service_type },
+      action: AUDIT_ACTIONS.SHORTCODE_CREATED,
+      entityType: "shortcode_config",
+      entityId: configData.id || "",
+      userId: user.id,
+      organizationId: organizationId,
+      metadata: { shortcode: configData.shortcode, service_type: configData.service_type },
     });
 
     return NextResponse.json({ config }, { status: 201 });

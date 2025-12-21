@@ -209,12 +209,12 @@ export async function PUT(
 
     // Audit log
     await logAudit({
-      action: AUDIT_ACTIONS.UPDATE,
-      resource_type: "shortcode_config",
-      resource_id: id,
-      user_id: user.id,
-      organization_id: organizationId,
-      details: { changes: Object.keys(input) },
+      action: AUDIT_ACTIONS.SHORTCODE_UPDATED,
+      entityType: "shortcode_config",
+      entityId: id,
+      userId: user.id,
+      organizationId: organizationId,
+      metadata: { changes: Object.keys(input) },
     });
 
     return NextResponse.json({ config });
@@ -287,12 +287,12 @@ export async function DELETE(
     // Audit log
     const existingData = existing as { shortcode?: string; service_type?: string };
     await logAudit({
-      action: AUDIT_ACTIONS.DELETE,
-      resource_type: "shortcode_config",
-      resource_id: id,
-      user_id: user.id,
-      organization_id: organizationId,
-      details: { shortcode: existingData.shortcode, service_type: existingData.service_type },
+      action: AUDIT_ACTIONS.SHORTCODE_DELETED,
+      entityType: "shortcode_config",
+      entityId: id,
+      userId: user.id,
+      organizationId: organizationId,
+      metadata: { shortcode: existingData.shortcode, service_type: existingData.service_type },
     });
 
     return NextResponse.json({ success: true });
