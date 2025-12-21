@@ -98,7 +98,8 @@ export async function computeFileHash(file: File | ArrayBuffer | Uint8Array): Pr
   } else if (file instanceof ArrayBuffer) {
     buffer = file;
   } else {
-    buffer = file.buffer;
+    // Convert Uint8Array to ArrayBuffer
+    buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
   }
   
   const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
