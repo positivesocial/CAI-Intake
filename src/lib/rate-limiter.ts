@@ -493,8 +493,8 @@ export async function recordRateLimitEvent(
     if (wasLimited) {
       // Log rate limit exceeded events
       logger.warn("Rate limit exceeded", {
-        organizationId,
-        userId,
+        organizationId: organizationId ?? undefined,
+        userId: userId ?? undefined,
         endpoint,
       });
     }
