@@ -221,18 +221,33 @@ function ShortcutRow({ shortcut }: { shortcut: Shortcut }) {
 
 /**
  * Hook to use keyboard shortcuts in components
+ * 
+ * @param keys - Array of key identifiers (use "⌘" for Cmd/Ctrl, "⇧" for Shift, "⌥" for Alt)
+ * @param callback - Function to call when shortcut is triggered
+ * @param options.enabled - Whether the shortcut is active (default: true)
+ * @param options.preventDefault - Whether to prevent default browser behavior (default: true)
+ * @param options.ignoreInputs - Whether to skip shortcuts when focused on input elements (default: true)
  */
 export function useKeyboardShortcut(
   keys: string[],
   callback: (e: KeyboardEvent) => void,
-  options: { enabled?: boolean; preventDefault?: boolean } = {}
+  options: { enabled?: boolean; preventDefault?: boolean; ignoreInputs?: boolean } = {}
 ) {
-  const { enabled = true, preventDefault = true } = options;
+  const { enabled = true, preventDefault = true, ignoreInputs = true } = options;
 
   React.useEffect(() => {
     if (!enabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input field (unless explicitly disabled)
+      if (ignoreInputs) {
+        const target = e.target as HTMLElement;
+        const isInput = target.tagName === "INPUT" || 
+                       target.tagName === "TEXTAREA" || 
+                       target.isContentEditable;
+        if (isInput) return;
+      }
+
       // Check modifier keys
       const hasCmd = keys.includes("⌘") ? (e.metaKey || e.ctrlKey) : true;
       const hasShift = keys.includes("⇧") ? e.shiftKey : true;
@@ -254,6 +269,6 @@ export function useKeyboardShortcut(
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [keys, callback, enabled, preventDefault]);
+  }, [keys, callback, enabled, preventDefault, ignoreInputs]);
 }
 
