@@ -276,7 +276,7 @@ export default function DashboardLayout({
             })}
 
             {/* Admin Section - Only visible to org admins */}
-            {(isOrgAdmin() || isSuperAdmin()) && (
+            {user && (isOrgAdmin() || isSuperAdmin()) && (
               <>
                 <div className="pt-4 pb-2">
                   <p className="px-3 text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">
