@@ -7,7 +7,7 @@
 
 import * as XLSX from "xlsx";
 import type { CutPart } from "@/lib/schema";
-import type { EdgeEdgingOps } from "@/lib/schema/operations";
+import type { EdgeEdgingOps, GrooveOp, HoleOp } from "@/lib/schema/operations";
 import { generateId } from "@/lib/utils";
 import type { TemplateMetadata } from "./template-detector";
 import { parseEdgeCode } from "@/lib/services/canonical-shortcodes";
@@ -518,7 +518,7 @@ function parseEdgebanding(row: RowData): EdgeEdgingOps | undefined {
 /**
  * Parse grooves from row
  */
-function parseGrooves(row: RowData): CutPart["ops"]["grooves"] | undefined {
+function parseGrooves(row: RowData): GrooveOp[] | undefined {
   if (!row.grv_side) return undefined;
   
   const side = row.grv_side.toUpperCase();
@@ -526,12 +526,12 @@ function parseGrooves(row: RowData): CutPart["ops"]["grooves"] | undefined {
   const width = parseNumber(row.grv_w) || 4;
   
   // Determine which sides
-  const grooves: NonNullable<CutPart["ops"]["grooves"]> = [];
+  const grooves: GrooveOp[] = [];
   
   if (side.includes("L") || side.includes("ALL")) {
     grooves.push({
       side: "L1",
-      distance_from_ref_mm: 10,
+      offset_mm: 10,
       width_mm: width,
       depth_mm: depth,
     });
@@ -539,7 +539,7 @@ function parseGrooves(row: RowData): CutPart["ops"]["grooves"] | undefined {
   if (side.includes("W") || side.includes("ALL")) {
     grooves.push({
       side: "W1",
-      distance_from_ref_mm: 10,
+      offset_mm: 10,
       width_mm: width,
       depth_mm: depth,
     });
@@ -551,35 +551,27 @@ function parseGrooves(row: RowData): CutPart["ops"]["grooves"] | undefined {
 /**
  * Parse holes from row
  */
-function parseHoles(row: RowData): CutPart["ops"]["holes"] | undefined {
+function parseHoles(row: RowData): HoleOp[] | undefined {
   if (!row.hole_pattern) return undefined;
   
   const pattern = row.hole_pattern.toUpperCase();
-  const dia = parseNumber(row.hole_dia) || 5;
-  const depth = parseNumber(row.hole_depth) || 12;
   
-  const holes: NonNullable<CutPart["ops"]["holes"]> = [];
+  const holes: HoleOp[] = [];
   
-  // Parse common patterns
+  // Parse common patterns - these reference library patterns
   if (pattern.includes("H2") || pattern.includes("HINGE")) {
     holes.push({
       pattern_id: "hinge-2",
-      count: 2,
-      diameter_mm: 35,
-      depth_mm: 12,
+      notes: "35mm hinge boring x2",
     });
   } else if (pattern.includes("SP") || pattern.includes("SHELF")) {
     holes.push({
       pattern_id: "shelf-pins",
-      count: 8,
-      diameter_mm: dia,
-      depth_mm: depth,
+      notes: "Shelf pin holes",
     });
   } else if (pattern) {
     holes.push({
       pattern_id: pattern.toLowerCase(),
-      diameter_mm: dia,
-      depth_mm: depth,
     });
   }
   
