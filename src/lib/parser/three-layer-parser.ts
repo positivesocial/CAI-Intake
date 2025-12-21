@@ -13,7 +13,7 @@
 import type { CutPart } from "@/lib/schema";
 import { detectFormat, getParsingStrategy, type SourceFormatHint } from "./format-detector";
 import { parseDeterministic, canParseDeterministically, type DeterministicParseResult } from "./deterministic-parser";
-import { parseTextBatch as parseWithRegex, type TextBatchResult } from "@/lib/parsers/text-parser";
+import { parseTextBatch as parseWithRegex, type TextBatchParseResult } from "@/lib/parsers/text-parser";
 import { getOrCreateProvider, type AIParseResult } from "@/lib/ai/provider";
 import { logger } from "@/lib/logger";
 
@@ -153,7 +153,7 @@ export async function parseThreeLayers(
   
   if (remainingText && (recommendedStrategy !== "llm" || !options.useLLMFallback)) {
     try {
-      const regexResult: TextBatchResult = parseWithRegex(remainingText, {
+      const regexResult: TextBatchParseResult = parseWithRegex(remainingText, {
         defaultMaterialId: options.defaultMaterialId,
         defaultThicknessMm: options.defaultThicknessMm,
         dimOrderHint: options.dimOrderHint,
