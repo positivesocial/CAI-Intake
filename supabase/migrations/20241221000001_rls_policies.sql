@@ -12,10 +12,12 @@
 -- =============================================================================
 
 -- Function to get the current user's organization ID
+-- SET search_path = '' makes the search_path immutable for security
 CREATE OR REPLACE FUNCTION public.get_user_organization_id()
 RETURNS TEXT AS $$
   SELECT organization_id FROM public.users WHERE id = auth.uid()::text;
-$$ LANGUAGE SQL SECURITY DEFINER STABLE;
+$$ LANGUAGE SQL SECURITY DEFINER STABLE
+SET search_path = '';
 
 -- Function to check if current user is a super admin
 CREATE OR REPLACE FUNCTION public.is_super_admin()
@@ -24,7 +26,8 @@ RETURNS BOOLEAN AS $$
     (SELECT is_super_admin FROM public.users WHERE id = auth.uid()::text),
     false
   );
-$$ LANGUAGE SQL SECURITY DEFINER STABLE;
+$$ LANGUAGE SQL SECURITY DEFINER STABLE
+SET search_path = '';
 
 -- Function to check if user has a specific role
 CREATE OR REPLACE FUNCTION public.user_has_role(required_roles TEXT[])
@@ -35,7 +38,8 @@ RETURNS BOOLEAN AS $$
     WHERE u.id = auth.uid()::text
     AND r.name = ANY(required_roles)
   );
-$$ LANGUAGE SQL SECURITY DEFINER STABLE;
+$$ LANGUAGE SQL SECURITY DEFINER STABLE
+SET search_path = '';
 
 -- =============================================================================
 -- ORGANIZATIONS TABLE
