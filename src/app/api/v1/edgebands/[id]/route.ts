@@ -1,9 +1,9 @@
 /**
- * CAI Intake - Single Material API
+ * CAI Intake - Single Edgeband API
  * 
- * GET /api/v1/materials/:id - Get material
- * PUT /api/v1/materials/:id - Update material
- * DELETE /api/v1/materials/:id - Delete material
+ * GET /api/v1/edgebands/:id - Get edgeband
+ * PUT /api/v1/edgebands/:id - Update edgeband
+ * DELETE /api/v1/edgebands/:id - Delete edgeband
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -12,20 +12,16 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
 
-// Update material schema
-const UpdateMaterialSchema = z.object({
-  material_id: z.string().min(1).optional(),
+// Update edgeband schema
+const UpdateEdgebandSchema = z.object({
+  edgeband_id: z.string().min(1).optional(),
   name: z.string().min(1).optional(),
   thickness_mm: z.number().positive().optional(),
-  core_type: z.string().optional().nullable(),
-  grain: z.enum(["none", "length", "width"]).optional(),
-  finish: z.string().optional().nullable(),
+  width_mm: z.number().positive().optional(),
+  material: z.string().optional().nullable(),
   color_code: z.string().optional().nullable(),
-  default_sheet: z.object({
-    L: z.number().positive(),
-    W: z.number().positive(),
-  }).optional(),
-  cost_per_sqm: z.number().positive().optional().nullable(),
+  color_match_material_id: z.string().optional().nullable(),
+  cost_per_meter: z.number().positive().optional().nullable(),
   supplier: z.string().optional().nullable(),
   sku: z.string().optional().nullable(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -58,46 +54,42 @@ export async function GET(
       );
     }
 
-    // Get material
-    const { data: material, error } = await supabase
-      .from("materials")
+    // Get edgeband
+    const { data: edgeband, error } = await supabase
+      .from("edgebands")
       .select("*")
       .eq("id", id)
       .eq("organization_id", userData.organization_id)
       .single();
 
-    if (error || !material) {
+    if (error || !edgeband) {
       return NextResponse.json(
-        { error: "Material not found" },
+        { error: "Edgeband not found" },
         { status: 404 }
       );
     }
 
     return NextResponse.json({
-      material: {
-        id: material.id,
-        material_id: material.material_id,
-        name: material.name,
-        thickness_mm: material.thickness_mm,
-        core_type: material.core_type,
-        grain: material.grain,
-        finish: material.finish,
-        color_code: material.color_code,
-        default_sheet: material.default_sheet_l && material.default_sheet_w ? {
-          L: material.default_sheet_l,
-          W: material.default_sheet_w,
-        } : undefined,
-        cost_per_sqm: material.cost_per_sqm,
-        supplier: material.supplier,
-        sku: material.sku,
-        metadata: material.metadata,
-        created_at: material.created_at,
-        updated_at: material.updated_at,
+      edgeband: {
+        id: edgeband.id,
+        edgeband_id: edgeband.edgeband_id,
+        name: edgeband.name,
+        thickness_mm: edgeband.thickness_mm,
+        width_mm: edgeband.width_mm,
+        material: edgeband.material,
+        color_code: edgeband.color_code,
+        color_match_material_id: edgeband.color_match_material_id,
+        cost_per_meter: edgeband.cost_per_meter,
+        supplier: edgeband.supplier,
+        sku: edgeband.sku,
+        metadata: edgeband.metadata,
+        created_at: edgeband.created_at,
+        updated_at: edgeband.updated_at,
       },
     });
 
   } catch (error) {
-    logger.error("Material GET error", error);
+    logger.error("Edgeband GET error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -142,7 +134,7 @@ export async function PUT(
 
     // Parse request body
     const body = await request.json();
-    const parseResult = UpdateMaterialSchema.safeParse(body);
+    const parseResult = UpdateEdgebandSchema.safeParse(body);
     
     if (!parseResult.success) {
       return NextResponse.json(
@@ -153,45 +145,37 @@ export async function PUT(
 
     const data = parseResult.data;
 
-    // Build update object
-    const updateData: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
-
-    if (data.material_id !== undefined) updateData.material_id = data.material_id;
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.thickness_mm !== undefined) updateData.thickness_mm = data.thickness_mm;
-    if (data.core_type !== undefined) updateData.core_type = data.core_type;
-    if (data.grain !== undefined) updateData.grain = data.grain;
-    if (data.finish !== undefined) updateData.finish = data.finish;
-    if (data.color_code !== undefined) updateData.color_code = data.color_code;
-    if (data.default_sheet !== undefined) {
-      updateData.default_sheet_l = data.default_sheet.L;
-      updateData.default_sheet_w = data.default_sheet.W;
-    }
-    if (data.cost_per_sqm !== undefined) updateData.cost_per_sqm = data.cost_per_sqm;
-    if (data.supplier !== undefined) updateData.supplier = data.supplier;
-    if (data.sku !== undefined) updateData.sku = data.sku;
-    if (data.metadata !== undefined) updateData.metadata = data.metadata;
-
-    // Update material
-    const { data: material, error } = await supabase
-      .from("materials")
-      .update(updateData)
+    // Update edgeband
+    const { data: edgeband, error } = await supabase
+      .from("edgebands")
+      .update({
+        ...(data.edgeband_id !== undefined && { edgeband_id: data.edgeband_id }),
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.thickness_mm !== undefined && { thickness_mm: data.thickness_mm }),
+        ...(data.width_mm !== undefined && { width_mm: data.width_mm }),
+        ...(data.material !== undefined && { material: data.material }),
+        ...(data.color_code !== undefined && { color_code: data.color_code }),
+        ...(data.color_match_material_id !== undefined && { color_match_material_id: data.color_match_material_id }),
+        ...(data.cost_per_meter !== undefined && { cost_per_meter: data.cost_per_meter }),
+        ...(data.supplier !== undefined && { supplier: data.supplier }),
+        ...(data.sku !== undefined && { sku: data.sku }),
+        ...(data.metadata !== undefined && { metadata: data.metadata }),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", id)
       .eq("organization_id", userData.organization_id)
       .select()
       .single();
 
-    if (error || !material) {
+    if (error || !edgeband) {
       if (error?.code === "23505") {
         return NextResponse.json(
-          { error: "Material ID already exists" },
+          { error: "Edgeband ID already exists" },
           { status: 409 }
         );
       }
       return NextResponse.json(
-        { error: "Material not found or update failed" },
+        { error: "Edgeband not found or update failed" },
         { status: 404 }
       );
     }
@@ -201,37 +185,33 @@ export async function PUT(
       userId: user.id,
       organizationId: userData.organization_id,
       action: AUDIT_ACTIONS.MATERIAL_UPDATED,
-      entityType: "material",
-      entityId: material.id,
-      metadata: { materialId: material.material_id, name: material.name, updates: data },
+      entityType: "edgeband",
+      entityId: edgeband.id,
+      metadata: { edgebandId: edgeband.edgeband_id, name: edgeband.name, updates: data },
     });
 
     return NextResponse.json({
       success: true,
-      material: {
-        id: material.id,
-        material_id: material.material_id,
-        name: material.name,
-        thickness_mm: material.thickness_mm,
-        core_type: material.core_type,
-        grain: material.grain,
-        finish: material.finish,
-        color_code: material.color_code,
-        default_sheet: material.default_sheet_l && material.default_sheet_w ? {
-          L: material.default_sheet_l,
-          W: material.default_sheet_w,
-        } : undefined,
-        cost_per_sqm: material.cost_per_sqm,
-        supplier: material.supplier,
-        sku: material.sku,
-        metadata: material.metadata,
-        created_at: material.created_at,
-        updated_at: material.updated_at,
+      edgeband: {
+        id: edgeband.id,
+        edgeband_id: edgeband.edgeband_id,
+        name: edgeband.name,
+        thickness_mm: edgeband.thickness_mm,
+        width_mm: edgeband.width_mm,
+        material: edgeband.material,
+        color_code: edgeband.color_code,
+        color_match_material_id: edgeband.color_match_material_id,
+        cost_per_meter: edgeband.cost_per_meter,
+        supplier: edgeband.supplier,
+        sku: edgeband.sku,
+        metadata: edgeband.metadata,
+        created_at: edgeband.created_at,
+        updated_at: edgeband.updated_at,
       },
     });
 
   } catch (error) {
-    logger.error("Material PUT error", error);
+    logger.error("Edgeband PUT error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -274,40 +254,24 @@ export async function DELETE(
       );
     }
 
-    // Get material first for audit
+    // Get edgeband first for audit
     const { data: existing } = await supabase
-      .from("materials")
-      .select("material_id, name")
+      .from("edgebands")
+      .select("edgeband_id, name")
       .eq("id", id)
       .eq("organization_id", userData.organization_id)
       .single();
 
-    // Check if material is in use (parts table references material_id)
-    const { count } = await supabase
-      .from("parts")
-      .select("*", { count: "exact", head: true })
-      .eq("material_id", existing?.material_id || "");
-
-    if (count && count > 0) {
-      return NextResponse.json(
-        { 
-          error: "Cannot delete material that is in use",
-          details: `${count} parts are using this material`,
-        },
-        { status: 409 }
-      );
-    }
-
-    // Delete material
+    // Delete edgeband
     const { error } = await supabase
-      .from("materials")
+      .from("edgebands")
       .delete()
       .eq("id", id)
       .eq("organization_id", userData.organization_id);
 
     if (error) {
       return NextResponse.json(
-        { error: "Failed to delete material" },
+        { error: "Failed to delete edgeband" },
         { status: 500 }
       );
     }
@@ -317,18 +281,19 @@ export async function DELETE(
       userId: user.id,
       organizationId: userData.organization_id,
       action: AUDIT_ACTIONS.MATERIAL_DELETED,
-      entityType: "material",
+      entityType: "edgeband",
       entityId: id,
-      metadata: { materialId: existing?.material_id, name: existing?.name },
+      metadata: { edgebandId: existing?.edgeband_id, name: existing?.name },
     });
 
     return NextResponse.json({ success: true });
 
   } catch (error) {
-    logger.error("Material DELETE error", error);
+    logger.error("Edgeband DELETE error", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
     );
   }
 }
+
