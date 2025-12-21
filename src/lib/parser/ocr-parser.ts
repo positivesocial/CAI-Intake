@@ -202,7 +202,7 @@ export async function parseImageWithAI(
             ],
           },
         ],
-        max_tokens: 4096,
+        max_completion_tokens: 4096,
       }),
     });
 

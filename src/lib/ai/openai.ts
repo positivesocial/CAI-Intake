@@ -1,8 +1,8 @@
 /**
  * CAI Intake - OpenAI Provider Implementation
  * 
- * Uses GPT-5.2 for text parsing and vision/OCR tasks.
- * This is OpenAI's most powerful model with enhanced reasoning.
+ * Uses GPT-4o for text parsing and vision/OCR tasks.
+ * This is OpenAI's flagship multimodal model.
  */
 
 import OpenAI from "openai";
@@ -14,21 +14,20 @@ import OpenAI from "openai";
 /**
  * GPT model to use for all operations.
  * 
- * Available models (as of Dec 2025):
- * - gpt-5.2         : Most powerful, "thinking" mode for complex tasks (current)
- * - gpt-5.2-codex   : Specialized for code generation
- * - gpt-4o          : Previous flagship model (deprecated for OCR)
- * - gpt-4-turbo     : Legacy model
+ * Available models:
+ * - gpt-4o          : Flagship multimodal model with vision support
+ * - gpt-4o-mini     : Smaller, faster, cheaper version
+ * - gpt-4-turbo     : Previous generation model
  * 
  * Update this constant to switch models across all operations.
  */
-const GPT_MODEL = "gpt-5.2";
+const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 
 /**
- * Maximum tokens for response generation.
- * GPT-5.2 supports up to 256K context, 16K output.
+ * Maximum completion tokens for response generation.
+ * GPT-4o supports up to 128K context, 16K output.
  */
-const MAX_TOKENS = 8000;
+const MAX_COMPLETION_TOKENS = 8000;
 import { generateId } from "@/lib/utils";
 import type { CutPart } from "@/lib/schema";
 import {
@@ -104,7 +103,7 @@ export class OpenAIProvider implements AIProvider {
           { role: "user", content: `${prompt}\n\n---\n\nINPUT DATA:\n${text}` },
         ],
         temperature: 0.1,
-        max_tokens: MAX_TOKENS,
+        max_completion_tokens: MAX_COMPLETION_TOKENS,
         response_format: { type: "json_object" },
       });
 
@@ -179,7 +178,7 @@ export class OpenAIProvider implements AIProvider {
           },
         ],
         temperature: 0.1,
-        max_tokens: MAX_TOKENS,
+        max_completion_tokens: MAX_COMPLETION_TOKENS,
       });
 
       const rawResponse = response.choices[0]?.message?.content || "";
@@ -292,7 +291,7 @@ export class OpenAIProvider implements AIProvider {
           },
         ],
         temperature: 0.1,
-        max_tokens: MAX_TOKENS,
+        max_completion_tokens: MAX_COMPLETION_TOKENS,
       });
 
       options.onProgress?.({
