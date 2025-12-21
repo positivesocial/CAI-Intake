@@ -1,5 +1,7 @@
 /**
- * CAI Intake - Next.js Middleware
+ * CAI Intake - Next.js Proxy
+ * 
+ * Next.js 16+ uses proxy.ts instead of middleware.ts
  * 
  * Handles:
  * - Supabase session refresh
@@ -39,7 +41,7 @@ const PUBLIC_ROUTES = [
   "/api/health",
 ];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow API routes to handle their own auth

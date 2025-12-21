@@ -1,5 +1,5 @@
 /**
- * CAI Intake - Supabase Middleware
+ * CAI Intake - Supabase Session Handler
  * 
  * Updates Supabase auth session on every request.
  * This ensures the session cookie stays fresh.
@@ -10,7 +10,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 /**
  * Update the Supabase auth session
- * Call this in your middleware.ts
+ * Call this in your proxy.ts (Next.js 16+)
  */
 export async function updateSession(request: NextRequest) {
   // Check if Supabase is configured
