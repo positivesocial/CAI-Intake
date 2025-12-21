@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
         display_name: sanitizedDisplayName,
         default_specs: input.default_specs,
         is_active: input.is_active,
-      })
+      } as never)
       .select()
       .single();
 

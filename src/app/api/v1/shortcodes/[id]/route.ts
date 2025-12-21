@@ -193,7 +193,7 @@ export async function PUT(
     // Update
     const { data: config, error: updateError } = await supabase
       .from("shortcode_configs")
-      .update(updateData)
+      .update(updateData as never)
       .eq("id", id)
       .eq("org_id", organizationId)
       .select()
