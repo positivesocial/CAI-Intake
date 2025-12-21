@@ -125,7 +125,7 @@ export interface IntakeState {
   acceptAllInboxParts: () => void;
   rejectInboxPart: (partId: string) => void;
   clearInbox: () => void;
-  updateInboxPart: (partId: string, updates: Partial<CutPart>) => void;
+  updateInboxPart: (partId: string, updates: Partial<ParsedPartWithStatus>) => void;
 
   // Materials
   addMaterial: (material: MaterialDef) => void;
@@ -501,7 +501,7 @@ export const useIntakeStore = create<IntakeState>()(
       updateInboxPart: (partId, updates) =>
         set((state) => ({
           inboxParts: state.inboxParts.map((p) =>
-            p.part_id === partId ? { ...p, ...updates, _status: "editing" as const } : p
+            p.part_id === partId ? { ...p, ...updates } : p
           ),
         })),
 
