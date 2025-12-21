@@ -181,3 +181,41 @@ export {
   formatServicesTooltip,
 } from "./formatters";
 
+// ============================================================
+// PREVIEW TYPES (for 2D visualization)
+// ============================================================
+
+export type {
+  PreviewEdge,
+  PartPreviewData,
+  PreviewEdgeband,
+  PreviewGroove,
+  PreviewHole,
+  PreviewPocket,
+  PreviewCornerRound,
+  PreviewSize,
+  PreviewSizeConfig,
+  ServiceBadge,
+} from "./preview-types";
+
+export {
+  EDGE_SIDE_TO_PREVIEW,
+  PREVIEW_TO_EDGE_SIDE,
+  PREVIEW_SIZE_CONFIGS,
+  SERVICE_COLORS,
+  createEmptyPreviewData,
+  hasPreviewServices,
+  countPreviewServices,
+  generateServiceBadges,
+} from "./preview-types";
+
+// ============================================================
+// PREVIEW CONVERTER
+// ============================================================
+
+export {
+  convertOpsToPreview,
+  convertEdgingToPreview,
+  createPreviewFromPart,
+} from "./preview-converter";
+

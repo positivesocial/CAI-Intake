@@ -54,6 +54,8 @@ import { useIntakeStore, type ParsedPartWithStatus } from "@/lib/store";
 import { cn, generateId } from "@/lib/utils";
 import { recordCorrection, detectCorrections } from "@/lib/learning";
 import type { CutPart } from "@/lib/schema";
+import { PartPreviewSvg, type SimplePartPreviewProps } from "@/components/parts/PartPreviewSvg";
+import { convertOpsToPreview, type PartPreviewData } from "@/lib/services";
 
 // ============================================================
 // CONFIDENCE BADGE
@@ -84,75 +86,38 @@ function ConfidenceBadge({ confidence }: { confidence?: number }) {
 }
 
 // ============================================================
-// PART PREVIEW SVG
+// PART PREVIEW - Uses enhanced PartPreviewSvg component
 // ============================================================
 
-function PartPreviewSvg({
-  L,
-  W,
-  grain,
-  edging,
+/**
+ * Wrapper that creates preview data from part and renders enhanced SVG
+ * Shows edgebanding, grooves, holes, and other services
+ */
+function InboxPartPreview({
+  part,
   className,
 }: {
-  L: number;
-  W: number;
-  grain?: string;
-  edging?: Record<string, { apply?: boolean }>;
+  part: ParsedPartWithStatus;
   className?: string;
 }) {
-  const maxW = 60;
-  const maxH = 45;
-  const scale = Math.min(maxW / L, maxH / W) * 0.8;
-  const scaledL = L * scale;
-  const scaledW = W * scale;
-  const x = (maxW - scaledL) / 2;
-  const y = (maxH - scaledW) / 2;
+  // Convert part ops to preview data
+  const previewData: PartPreviewData = React.useMemo(() => {
+    return convertOpsToPreview(
+      part.size.L,
+      part.size.W,
+      part.grain,
+      part.ops
+    );
+  }, [part.size.L, part.size.W, part.grain, part.ops]);
 
   return (
-    <svg width={maxW} height={maxH} className={cn("rounded bg-[var(--muted)]", className)}>
-      <rect
-        x={x}
-        y={y}
-        width={scaledL}
-        height={scaledW}
-        className="fill-[var(--card)] stroke-[var(--foreground)]"
-        strokeWidth="1.5"
-      />
-      {grain === "along_L" && (
-        <>
-          <line
-            x1={x + 4}
-            y1={y + scaledW / 3}
-            x2={x + scaledL - 4}
-            y2={y + scaledW / 3}
-            className="stroke-[var(--muted-foreground)]"
-            strokeWidth="0.5"
-            strokeDasharray="3 2"
-          />
-          <line
-            x1={x + 4}
-            y1={y + (2 * scaledW) / 3}
-            x2={x + scaledL - 4}
-            y2={y + (2 * scaledW) / 3}
-            className="stroke-[var(--muted-foreground)]"
-            strokeWidth="0.5"
-            strokeDasharray="3 2"
-          />
-        </>
-      )}
-      {edging?.L1?.apply && (
-        <line x1={x} y1={y + scaledW} x2={x + scaledL} y2={y + scaledW} className="stroke-[var(--cai-teal)]" strokeWidth="2.5" />
-      )}
-      {edging?.L2?.apply && (
-        <line x1={x} y1={y} x2={x + scaledL} y2={y} className="stroke-[var(--cai-teal)]" strokeWidth="2.5" />
-      )}
-      {edging?.W1?.apply && (
-        <line x1={x} y1={y} x2={x} y2={y + scaledW} className="stroke-[var(--cai-teal)]" strokeWidth="2.5" />
-      )}
-      {edging?.W2?.apply && (
-        <line x1={x + scaledL} y1={y} x2={x + scaledL} y2={y + scaledW} className="stroke-[var(--cai-teal)]" strokeWidth="2.5" />
-      )}
-    </svg>
+    <PartPreviewSvg
+      data={previewData}
+      size="sm"
+      showTooltips={true}
+      showBadges={true}
+      className={className}
+    />
   );
 }
 
@@ -343,12 +308,7 @@ function InboxPartRow({
 
       {/* Preview */}
       <td className="w-[70px] px-2 py-2">
-        <PartPreviewSvg
-          L={part.size.L}
-          W={part.size.W}
-          grain={part.grain}
-          edging={part.ops?.edging?.edges as Record<string, { apply?: boolean }>}
-        />
+        <InboxPartPreview part={part} />
       </td>
 
       {/* Label */}

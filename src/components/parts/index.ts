@@ -2,4 +2,5 @@
 // Re-export all parts components from a single entry point
 
 export * from "./PartsTable";
+export * from "./PartPreviewSvg";
 
