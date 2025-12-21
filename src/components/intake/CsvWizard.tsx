@@ -196,13 +196,15 @@ export function CsvWizard({
   };
 
   const updateMapping = (field: string, column: string) => {
-    setState((s) => ({
-      ...s,
-      columnMapping: {
-        ...s.columnMapping,
-        [field]: column === "none" ? undefined : column,
-      },
-    }));
+    setState((s) => {
+      const newMapping = { ...s.columnMapping };
+      if (column === "none") {
+        delete newMapping[field];
+      } else {
+        newMapping[field] = column;
+      }
+      return { ...s, columnMapping: newMapping };
+    });
   };
 
   return (
