@@ -27,6 +27,8 @@ interface TemplateConfig {
   columns: string[];
   includeEdging: boolean;
   includeGrooves: boolean;
+  includeHoles: boolean;
+  includeCNC: boolean;
   includeNotes: boolean;
   rows: number;
 }
@@ -43,6 +45,8 @@ export function TemplateGenerator() {
     columns: [...DEFAULT_COLUMNS],
     includeEdging: false,
     includeGrooves: false,
+    includeHoles: false,
+    includeCNC: false,
     includeNotes: false,
     rows: 20,
   });
@@ -104,6 +108,15 @@ export function TemplateGenerator() {
     const headers = [...config.columns];
     if (config.includeEdging) {
       headers.push("EB L1", "EB L2", "EB W1", "EB W2");
+    }
+    if (config.includeGrooves) {
+      headers.push("Groove Side", "Groove Depth", "Groove Width");
+    }
+    if (config.includeHoles) {
+      headers.push("Hole Pattern", "Hole Diameter", "Hole Depth");
+    }
+    if (config.includeCNC) {
+      headers.push("CNC Program", "CNC Notes");
     }
     if (config.includeNotes) {
       headers.push("Notes");
@@ -184,10 +197,10 @@ export function TemplateGenerator() {
             <div>
               <p className="text-sm font-medium mb-2">Include Columns</p>
               <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input
                     type="checkbox"
-                    className="rounded border-[var(--border)]"
+                    className="rounded border-[var(--border)] accent-[var(--cai-teal)]"
                     checked={config.includeEdging}
                     onChange={(e) =>
                       setConfig((c) => ({
@@ -196,12 +209,54 @@ export function TemplateGenerator() {
                       }))
                     }
                   />
-                  Edge banding columns (L1, L2, W1, W2)
+                  <span>Edge banding <span className="text-[var(--muted-foreground)]">(L1, L2, W1, W2)</span></span>
                 </label>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input
                     type="checkbox"
-                    className="rounded border-[var(--border)]"
+                    className="rounded border-[var(--border)] accent-[var(--cai-teal)]"
+                    checked={config.includeGrooves}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        includeGrooves: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Grooves <span className="text-[var(--muted-foreground)]">(side, depth, width)</span></span>
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-[var(--border)] accent-[var(--cai-teal)]"
+                    checked={config.includeHoles}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        includeHoles: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Holes/Drilling <span className="text-[var(--muted-foreground)]">(pattern, Ø, depth)</span></span>
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-[var(--border)] accent-[var(--cai-teal)]"
+                    checked={config.includeCNC}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        includeCNC: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>CNC Operations <span className="text-[var(--muted-foreground)]">(program, notes)</span></span>
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-[var(--border)] accent-[var(--cai-teal)]"
                     checked={config.includeNotes}
                     onChange={(e) =>
                       setConfig((c) => ({
@@ -210,7 +265,7 @@ export function TemplateGenerator() {
                       }))
                     }
                   />
-                  Notes column
+                  <span>Notes column</span>
                 </label>
               </div>
             </div>
@@ -275,58 +330,83 @@ export function TemplateGenerator() {
                       {config.columns.map((col) => (
                         <th
                           key={col}
-                          className="border border-gray-300 px-2 py-1 bg-gray-100"
+                          className="border border-gray-300 px-2 py-1 bg-gray-100 whitespace-nowrap"
                         >
                           {col}
                         </th>
                       ))}
                       {config.includeEdging && (
                         <>
-                          <th className="border border-gray-300 px-2 py-1 bg-gray-100">
-                            L1
-                          </th>
-                          <th className="border border-gray-300 px-2 py-1 bg-gray-100">
-                            L2
-                          </th>
-                          <th className="border border-gray-300 px-2 py-1 bg-gray-100">
-                            W1
-                          </th>
-                          <th className="border border-gray-300 px-2 py-1 bg-gray-100">
-                            W2
-                          </th>
+                          <th className="border border-gray-300 px-2 py-1 bg-blue-50 text-blue-700">L1</th>
+                          <th className="border border-gray-300 px-2 py-1 bg-blue-50 text-blue-700">L2</th>
+                          <th className="border border-gray-300 px-2 py-1 bg-blue-50 text-blue-700">W1</th>
+                          <th className="border border-gray-300 px-2 py-1 bg-blue-50 text-blue-700">W2</th>
                         </>
+                      )}
+                      {config.includeGrooves && (
+                        <>
+                          <th className="border border-gray-300 px-2 py-1 bg-amber-50 text-amber-700 whitespace-nowrap">Grv Side</th>
+                          <th className="border border-gray-300 px-2 py-1 bg-amber-50 text-amber-700 whitespace-nowrap">Grv D</th>
+                          <th className="border border-gray-300 px-2 py-1 bg-amber-50 text-amber-700 whitespace-nowrap">Grv W</th>
+                        </>
+                      )}
+                      {config.includeHoles && (
+                        <>
+                          <th className="border border-gray-300 px-2 py-1 bg-purple-50 text-purple-700 whitespace-nowrap">Hole</th>
+                          <th className="border border-gray-300 px-2 py-1 bg-purple-50 text-purple-700">Ø</th>
+                          <th className="border border-gray-300 px-2 py-1 bg-purple-50 text-purple-700">Dp</th>
+                        </>
+                      )}
+                      {config.includeCNC && (
+                        <>
+                          <th className="border border-gray-300 px-2 py-1 bg-emerald-50 text-emerald-700 whitespace-nowrap">CNC Prog</th>
+                          <th className="border border-gray-300 px-2 py-1 bg-emerald-50 text-emerald-700 whitespace-nowrap">CNC Notes</th>
+                        </>
+                      )}
+                      {config.includeNotes && (
+                        <th className="border border-gray-300 px-2 py-1 bg-gray-100">Notes</th>
                       )}
                     </tr>
                   </thead>
                   <tbody>
-                    {Array.from({ length: 5 }, (_, i) => (
+                    {Array.from({ length: 4 }, (_, i) => (
                       <tr key={i}>
                         <td className="border border-gray-300 px-2 py-1 text-center text-gray-400">
                           {i + 1}
                         </td>
                         {config.columns.map((col) => (
-                          <td
-                            key={col}
-                            className="border border-gray-300 px-2 py-1"
-                          >
-                            &nbsp;
-                          </td>
+                          <td key={col} className="border border-gray-300 px-2 py-1">&nbsp;</td>
                         ))}
                         {config.includeEdging && (
                           <>
-                            <td className="border border-gray-300 px-2 py-1 w-8">
-                              □
-                            </td>
-                            <td className="border border-gray-300 px-2 py-1 w-8">
-                              □
-                            </td>
-                            <td className="border border-gray-300 px-2 py-1 w-8">
-                              □
-                            </td>
-                            <td className="border border-gray-300 px-2 py-1 w-8">
-                              □
-                            </td>
+                            <td className="border border-gray-300 px-2 py-1 w-6 bg-blue-50/30">□</td>
+                            <td className="border border-gray-300 px-2 py-1 w-6 bg-blue-50/30">□</td>
+                            <td className="border border-gray-300 px-2 py-1 w-6 bg-blue-50/30">□</td>
+                            <td className="border border-gray-300 px-2 py-1 w-6 bg-blue-50/30">□</td>
                           </>
+                        )}
+                        {config.includeGrooves && (
+                          <>
+                            <td className="border border-gray-300 px-2 py-1 bg-amber-50/30">&nbsp;</td>
+                            <td className="border border-gray-300 px-2 py-1 bg-amber-50/30">&nbsp;</td>
+                            <td className="border border-gray-300 px-2 py-1 bg-amber-50/30">&nbsp;</td>
+                          </>
+                        )}
+                        {config.includeHoles && (
+                          <>
+                            <td className="border border-gray-300 px-2 py-1 bg-purple-50/30">&nbsp;</td>
+                            <td className="border border-gray-300 px-2 py-1 bg-purple-50/30">&nbsp;</td>
+                            <td className="border border-gray-300 px-2 py-1 bg-purple-50/30">&nbsp;</td>
+                          </>
+                        )}
+                        {config.includeCNC && (
+                          <>
+                            <td className="border border-gray-300 px-2 py-1 bg-emerald-50/30">&nbsp;</td>
+                            <td className="border border-gray-300 px-2 py-1 bg-emerald-50/30">&nbsp;</td>
+                          </>
+                        )}
+                        {config.includeNotes && (
+                          <td className="border border-gray-300 px-2 py-1">&nbsp;</td>
                         )}
                       </tr>
                     ))}
@@ -335,7 +415,7 @@ export function TemplateGenerator() {
                         colSpan={100}
                         className="border border-gray-300 px-2 py-1 text-center text-gray-400"
                       >
-                        ... {config.rows - 5} more rows ...
+                        ... {config.rows - 4} more rows ...
                       </td>
                     </tr>
                   </tbody>

@@ -44,6 +44,26 @@ export const DEFAULT_FIELDS: TemplateFieldConfig[] = [
   { name: "notes", label: "Notes", type: "text", placeholder: "Additional instructions" },
 ];
 
+// Extended operation fields (for advanced templates)
+export const OPERATION_FIELDS: TemplateFieldConfig[] = [
+  // Edge banding (per-edge)
+  { name: "eb_l1", label: "EB L1", type: "checkbox" },
+  { name: "eb_l2", label: "EB L2", type: "checkbox" },
+  { name: "eb_w1", label: "EB W1", type: "checkbox" },
+  { name: "eb_w2", label: "EB W2", type: "checkbox" },
+  // Grooves
+  { name: "groove_side", label: "Groove Side", type: "select", options: ["None", "L1", "L2", "W1", "W2", "Face", "Back"] },
+  { name: "groove_depth", label: "Groove Depth (mm)", type: "number", placeholder: "8" },
+  { name: "groove_width", label: "Groove Width (mm)", type: "number", placeholder: "4" },
+  // Holes/Drilling
+  { name: "hole_pattern", label: "Hole Pattern", type: "select", options: ["None", "System 32", "Custom", "Shelf Pins"] },
+  { name: "hole_diameter", label: "Hole Ø (mm)", type: "number", placeholder: "5" },
+  { name: "hole_depth", label: "Hole Depth (mm)", type: "number", placeholder: "12" },
+  // CNC Operations
+  { name: "cnc_program", label: "CNC Program", type: "text", placeholder: "Program ID" },
+  { name: "cnc_notes", label: "CNC Notes", type: "text", placeholder: "Special instructions" },
+];
+
 /**
  * Generate HTML template for a cutlist intake form
  */
@@ -382,27 +402,61 @@ export function generateCSVTemplate(fields: TemplateFieldConfig[]): string {
   ].join("\n");
 }
 
-/**
- * Generate printable cutlist template with QR code for AI recognition
- */
-export function generatePrintableTemplate(config: {
+export interface PrintableTemplateConfig {
   title: string;
   organizationName: string;
   columns?: string[];
   rows?: number;
   templateId?: string;
   includeQRCode?: boolean;
-}): string {
-  const columns = config.columns ?? ["#", "Part Name", "L (mm)", "W (mm)", "Qty", "Material", "Thk", "Grain", "EB", "Notes"];
+  // Operation column toggles
+  includeEdgebanding?: boolean;
+  includeGrooves?: boolean;
+  includeHoles?: boolean;
+  includeCNC?: boolean;
+  includeNotes?: boolean;
+}
+
+/**
+ * Generate printable cutlist template with QR code for AI recognition
+ */
+export function generatePrintableTemplate(config: PrintableTemplateConfig): string {
+  // Build columns based on config
+  let columns = config.columns ?? ["#", "Part Name", "L (mm)", "W (mm)", "Qty", "Material", "Thk", "Grain"];
+  
+  // Add operation columns based on config
+  if (config.includeEdgebanding !== false) {
+    columns = [...columns, "L1", "L2", "W1", "W2"];
+  }
+  if (config.includeGrooves) {
+    columns = [...columns, "Grv Side", "Grv D", "Grv W"];
+  }
+  if (config.includeHoles) {
+    columns = [...columns, "Hole", "Ø", "Dp"];
+  }
+  if (config.includeCNC) {
+    columns = [...columns, "CNC Prog", "CNC Notes"];
+  }
+  if (config.includeNotes !== false) {
+    columns = [...columns, "Notes"];
+  }
+  
   const rows = config.rows ?? 20;
   const templateId = config.templateId ?? "cai-standard-v1";
   const includeQR = config.includeQRCode !== false;
   
-  // Generate QR code data
+  // Generate QR code data with column info for AI parsing
   const qrData = JSON.stringify({
     type: "cai-template",
     id: templateId,
     version: "1.0",
+    cols: columns.length,
+    ops: {
+      eb: config.includeEdgebanding !== false,
+      grv: !!config.includeGrooves,
+      holes: !!config.includeHoles,
+      cnc: !!config.includeCNC,
+    },
   });
   
   return `
@@ -460,8 +514,11 @@ export function generatePrintableTemplate(config: {
   
   <div class="instructions">
     <strong>Instructions:</strong> Fill in each row clearly. Write dimensions in mm. 
-    Grain: GL=grain along length, GW=grain along width, blank=can rotate.
-    EB (Edge Banding): L1, L2 for long edges; W1, W2 for short edges; "4" for all sides.
+    <strong>Grain:</strong> GL=grain along length, GW=grain along width, blank=can rotate.
+    <strong>EB:</strong> L1, L2 for long edges; W1, W2 for short edges; ✓ or X.
+    <strong>Grooves:</strong> Side (L1/L2/W1/W2/F/B), Depth & Width in mm.
+    <strong>Holes:</strong> Pattern (S32=System 32, SP=Shelf pins), Diameter & Depth in mm.
+    <strong>CNC:</strong> Program ID and special instructions.
   </div>
   
   <table>
