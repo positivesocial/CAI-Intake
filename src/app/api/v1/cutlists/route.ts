@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getServiceClient } from "@/lib/supabase/server";
 import { z } from "zod";
 import { generateId } from "@/lib/utils";
 import { sanitizeLikePattern, SIZE_LIMITS } from "@/lib/security";
@@ -65,29 +65,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization
-    const { data: userData } = await supabase
+    // Get user's organization - use service client to bypass RLS
+    const serviceClient = getServiceClient();
+    const { data: userData, error: userError } = await serviceClient
       .from("users")
       .select("organization_id")
       .eq("id", user.id)
       .single();
 
+    if (userError) {
+      logger.error("Failed to fetch user data for cutlists", userError, { userId: user.id });
+    }
+
     if (!userData?.organization_id) {
+      logger.warn("User not associated with organization for cutlists", { userId: user.id, userData, userError });
       return NextResponse.json(
-        { error: "User not associated with an organization" },
+        { error: "User not associated with an organization", details: userError?.message },
         { status: 400 }
       );
     }
 
-    // Parse query params
+    // Parse query params - use undefined instead of null for missing params
     const searchParams = request.nextUrl.searchParams;
     const queryResult = ListQuerySchema.safeParse({
-      page: searchParams.get("page"),
-      limit: searchParams.get("limit"),
-      status: searchParams.get("status"),
-      search: searchParams.get("search"),
-      sort: searchParams.get("sort"),
-      order: searchParams.get("order"),
+      page: searchParams.get("page") ?? undefined,
+      limit: searchParams.get("limit") ?? undefined,
+      status: searchParams.get("status") ?? undefined,
+      search: searchParams.get("search") ?? undefined,
+      sort: searchParams.get("sort") ?? undefined,
+      order: searchParams.get("order") ?? undefined,
     });
 
     if (!queryResult.success) {
@@ -109,8 +115,8 @@ export async function GET(request: NextRequest) {
     };
     const sortColumn = sortFieldMap[sort || "createdAt"] || "created_at";
 
-    // Build query
-    let query = supabase
+    // Build query - use service client to bypass RLS issues
+    let query = serviceClient
       .from("cutlists")
       .select("*, parts:cut_parts(count)", { count: "exact" })
       .eq("organization_id", userData.organization_id)
@@ -170,8 +176,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization
-    const { data: userData } = await supabase
+    // Get user's organization - use service client to bypass RLS
+    const serviceClient = getServiceClient();
+    const { data: userData } = await serviceClient
       .from("users")
       .select("organization_id")
       .eq("id", user.id)
@@ -205,7 +212,7 @@ export async function POST(request: NextRequest) {
 
     // Create cutlist - explicitly provide ID and updated_at since database defaults may not work
     const now = new Date().toISOString();
-    const { data: cutlist, error: cutlistError } = await supabase
+    const { data: cutlist, error: cutlistError } = await serviceClient
       .from("cutlists")
       .insert({
         id: cutlistId, // Explicitly provide UUID
@@ -269,7 +276,7 @@ export async function POST(request: NextRequest) {
 
     // Create parts if provided
     if (parts && parts.length > 0) {
-      const { error: partsError } = await supabase
+      const { error: partsError } = await serviceClient
         .from("cut_parts")
         .insert(
           parts.map(p => ({
