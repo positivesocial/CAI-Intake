@@ -290,6 +290,7 @@ model Cutlist {
   exports          Export[]
   parseCorrections ParseCorrection[]
   ocrJobs          OcrJob[]
+  sourceFiles      UploadedFile[]
 
   @@unique([organizationId, docId])
   @@index([organizationId])
@@ -402,10 +403,16 @@ model UploadedFile {
   // Relationships
   organizationId String       @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Link to cutlist (for source files)
+  cutlistId      String?      @map("cutlist_id")
+  cutlist        Cutlist?     @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
+  
   parseJobs      ParseJob[]
   ocrJobs        OcrJob[]
 
   @@index([organizationId])
+  @@index([cutlistId])
   @@map("uploaded_files")
 }
 

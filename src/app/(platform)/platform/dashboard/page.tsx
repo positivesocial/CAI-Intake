@@ -25,6 +25,10 @@ import {
   Bell,
   Search,
   RefreshCw,
+  DollarSign,
+  CreditCard,
+  ListOrdered,
+  PieChart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +69,18 @@ interface PlatformStats {
   revenue: {
     monthly: number;
     growth: number;
+  };
+  subscription: {
+    mrr: number;
+    mrrGrowth: number;
+    activeSubscribers: number;
+    churnRate: number;
+    planBreakdown: {
+      free: number;
+      starter: number;
+      professional: number;
+      enterprise: number;
+    };
   };
 }
 
@@ -235,6 +251,13 @@ export default function PlatformDashboardPage() {
     averageConfidence: 0,
     totalPartsProcessed: 0,
     revenue: { monthly: 0, growth: 0 },
+    subscription: {
+      mrr: 0,
+      mrrGrowth: 0,
+      activeSubscribers: 0,
+      churnRate: 0,
+      planBreakdown: { free: 0, starter: 0, professional: 0, enterprise: 0 },
+    },
   };
 
   const systemHealth = data?.systemHealth || {
@@ -282,6 +305,18 @@ export default function PlatformDashboardPage() {
                   <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10">
                     <Activity className="h-4 w-4 mr-2" />
                     Analytics
+                  </Button>
+                </Link>
+                <Link href="/platform/plans">
+                  <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10">
+                    <ListOrdered className="h-4 w-4 mr-2" />
+                    Plans
+                  </Button>
+                </Link>
+                <Link href="/platform/revenue">
+                  <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10">
+                    <DollarSign className="h-4 w-4 mr-2" />
+                    Revenue
                   </Button>
                 </Link>
                 <Link href="/platform/settings">
@@ -425,6 +460,129 @@ export default function PlatformDashboardPage() {
               </p>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Subscription Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">Monthly Recurring Revenue</p>
+                  <p className="text-2xl font-bold text-slate-900">${stats.subscription.mrr.toLocaleString()}</p>
+                  <div className={cn(
+                    "flex items-center gap-1 text-sm",
+                    stats.subscription.mrrGrowth >= 0 ? "text-green-600" : "text-red-600"
+                  )}>
+                    <TrendingUp className="h-3 w-3" />
+                    <span>{stats.subscription.mrrGrowth >= 0 ? "+" : ""}{stats.subscription.mrrGrowth}% vs last month</span>
+                  </div>
+                </div>
+                <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">Active Subscribers</p>
+                  <p className="text-2xl font-bold text-slate-900">{stats.subscription.activeSubscribers}</p>
+                  <p className="text-sm text-slate-500">Paid plans</p>
+                </div>
+                <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <CreditCard className="h-5 w-5 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">Churn Rate</p>
+                  <p className="text-2xl font-bold text-slate-900">{stats.subscription.churnRate}%</p>
+                  <p className="text-sm text-green-600">Below industry avg</p>
+                </div>
+                <div className="h-10 w-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                  <Activity className="h-5 w-5 text-amber-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">Plan Distribution</p>
+                  <div className="flex gap-2 mt-1 text-xs">
+                    <Badge className="bg-gray-100 text-gray-700">Free: {stats.subscription.planBreakdown.free}</Badge>
+                    <Badge className="bg-green-100 text-green-700">Starter: {stats.subscription.planBreakdown.starter}</Badge>
+                  </div>
+                  <div className="flex gap-2 mt-1 text-xs">
+                    <Badge className="bg-blue-100 text-blue-700">Pro: {stats.subscription.planBreakdown.professional}</Badge>
+                    <Badge className="bg-purple-100 text-purple-700">Ent: {stats.subscription.planBreakdown.enterprise}</Badge>
+                  </div>
+                </div>
+                <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                  <PieChart className="h-5 w-5 text-purple-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Actions Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <Link href="/platform/revenue">
+            <Card className="hover:border-green-300 transition-colors cursor-pointer">
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
+                  <DollarSign className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-900">Revenue Dashboard</p>
+                  <p className="text-sm text-slate-500">View detailed financial metrics</p>
+                </div>
+                <ArrowRight className="h-5 w-5 text-slate-400 ml-auto" />
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/platform/plans">
+            <Card className="hover:border-purple-300 transition-colors cursor-pointer">
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                  <ListOrdered className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-900">Manage Plans</p>
+                  <p className="text-sm text-slate-500">Create and configure pricing</p>
+                </div>
+                <ArrowRight className="h-5 w-5 text-slate-400 ml-auto" />
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/platform/organizations">
+            <Card className="hover:border-blue-300 transition-colors cursor-pointer">
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-900">Organizations</p>
+                  <p className="text-sm text-slate-500">Manage customer accounts</p>
+                </div>
+                <ArrowRight className="h-5 w-5 text-slate-400 ml-auto" />
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         {/* System Health */}

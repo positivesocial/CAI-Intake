@@ -2,20 +2,46 @@
  * CAI Intake - Exports API
  * 
  * POST /api/v1/exports - Generate export file
+ * 
+ * Supports all major panel optimization software formats:
+ * - JSON (CAI canonical)
+ * - CSV (Generic/customizable)
+ * - CutList Plus
+ * - MaxCut (.mcp)
+ * - CutRite (.xml)
+ * - Optimik
+ * - CAI 2D
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
+import {
+  generateJsonExport,
+  generateCsvExport,
+  generateMaxcutExport,
+  generateCutlistPlusExport,
+  generateCai2dExport,
+  generateCutRiteExport,
+  generateOptimikExport,
+  generateOptimikStockExport,
+  EXPORT_FORMATS,
+  type ExportableCutlist,
+  type ExportablePart,
+} from "@/lib/exports";
 
 // Export request schema
 const ExportRequestSchema = z.object({
-  cutlist_id: z.string().uuid(),
-  format: z.enum(["json", "csv", "maxcut", "cutlistplus", "cai2d"]),
+  cutlist_id: z.string(),
+  format: z.enum(["json", "csv", "maxcut", "cutlistplus", "cai2d", "cutrite", "optimik", "optimik_stock"]),
   options: z.object({
     include_metadata: z.boolean().optional(),
     include_audit: z.boolean().optional(),
+    include_edging: z.boolean().optional(),
+    include_grain: z.boolean().optional(),
+    include_notes: z.boolean().optional(),
     units: z.enum(["mm", "cm", "inch"]).optional(),
+    delimiter: z.enum([",", ";", "\t"]).optional(),
   }).optional(),
 });
 
@@ -41,54 +67,188 @@ export async function POST(request: NextRequest) {
 
     const { cutlist_id, format, options } = parseResult.data;
 
-    // Get cutlist with parts
-    const { data: cutlist, error: cutlistError } = await supabase
+    // Get cutlist with parts and related data
+    const { data: cutlistData, error: cutlistError } = await supabase
       .from("cutlists")
       .select(`
         *,
-        parts (*)
+        parts:cut_parts (*)
       `)
       .eq("id", cutlist_id)
       .single();
 
-    if (cutlistError || !cutlist) {
+    if (cutlistError || !cutlistData) {
       return NextResponse.json({ error: "Cutlist not found" }, { status: 404 });
     }
+
+    // Get organization materials and edgebands for the export
+    const { data: dbUser } = await supabase
+      .from("users")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    let materials: ExportableCutlist["materials"] = [];
+    let edgebands: ExportableCutlist["edgebands"] = [];
+
+    if (dbUser?.organization_id) {
+      // Fetch materials
+      const { data: materialsData } = await supabase
+        .from("materials")
+        .select("id, code, name, thickness_mm")
+        .eq("organization_id", dbUser.organization_id);
+      
+      if (materialsData) {
+        materials = materialsData.map(m => ({
+          material_id: m.code || m.id,
+          name: m.name,
+          thickness_mm: m.thickness_mm || 18,
+        }));
+      }
+
+      // Fetch edgebands
+      const { data: edgebandsData } = await supabase
+        .from("edgebands")
+        .select("id, code, name, thickness_mm, width_mm")
+        .eq("organization_id", dbUser.organization_id);
+      
+      if (edgebandsData) {
+        edgebands = edgebandsData.map(e => ({
+          edgeband_id: e.code || e.id,
+          name: e.name,
+          thickness_mm: e.thickness_mm || 0.5,
+          width_mm: e.width_mm || 22,
+        }));
+      }
+    }
+
+    // Transform database cutlist to exportable format
+    const cutlist: ExportableCutlist = {
+      doc_id: cutlistData.doc_id || cutlistData.id,
+      name: cutlistData.name,
+      description: cutlistData.description,
+      job_ref: cutlistData.job_ref,
+      client_ref: cutlistData.client_ref,
+      capabilities: cutlistData.capabilities || {},
+      created_at: cutlistData.created_at,
+      updated_at: cutlistData.updated_at,
+      materials,
+      edgebands,
+      parts: (cutlistData.parts || []).map((p: Record<string, unknown>): ExportablePart => ({
+        part_id: p.part_id as string || p.id as string,
+        label: p.label as string | undefined,
+        qty: (p.qty as number) || 1,
+        size: {
+          L: (p.size_l as number) || (p.length_mm as number) || 0,
+          W: (p.size_w as number) || (p.width_mm as number) || 0,
+        },
+        thickness_mm: (p.thickness_mm as number) || 18,
+        material_id: (p.material_id as string) || "default",
+        grain: (p.grain as string) || "none",
+        allow_rotation: (p.allow_rotation as boolean) ?? true,
+        group_id: p.group_id as string | undefined,
+        ops: p.ops as Record<string, unknown> | undefined,
+        notes: p.notes as Record<string, string> | undefined,
+        audit: p.audit as Record<string, unknown> | undefined,
+      })),
+    };
 
     // Generate export based on format
     let exportData: string;
     let contentType: string;
     let filename: string;
+    const safeName = cutlist.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    const exportOptions = {
+      units: options?.units || "mm",
+      includeEdging: options?.include_edging ?? true,
+      includeGrain: options?.include_grain ?? true,
+      includeNotes: options?.include_notes ?? true,
+      includeOps: options?.include_metadata ?? true,
+      includeAudit: options?.include_audit ?? false,
+      delimiter: options?.delimiter || ",",
+    };
 
     switch (format) {
       case "json":
-        exportData = generateJsonExport(cutlist, options);
-        contentType = "application/json";
-        filename = `${cutlist.name.replace(/\s+/g, "_")}.json`;
+        exportData = generateJsonExport(cutlist, {
+          includeLibraries: true,
+          includeOps: exportOptions.includeOps,
+          includeAudit: exportOptions.includeAudit,
+          prettyPrint: true,
+        });
+        contentType = EXPORT_FORMATS.json.mimeType;
+        filename = `${safeName}.json`;
         break;
 
       case "csv":
-        exportData = generateCsvExport(cutlist, options);
-        contentType = "text/csv";
-        filename = `${cutlist.name.replace(/\s+/g, "_")}.csv`;
+        exportData = generateCsvExport(cutlist, {
+          units: exportOptions.units,
+          includeEdging: exportOptions.includeEdging,
+          includeNotes: exportOptions.includeNotes,
+          delimiter: exportOptions.delimiter as "," | ";" | "\t",
+        });
+        contentType = EXPORT_FORMATS.csv.mimeType;
+        filename = `${safeName}.csv`;
         break;
 
       case "maxcut":
-        exportData = generateMaxcutExport(cutlist, options);
-        contentType = "text/plain";
-        filename = `${cutlist.name.replace(/\s+/g, "_")}.mcp`;
+        exportData = generateMaxcutExport(cutlist, {
+          units: exportOptions.units,
+          includeGrain: exportOptions.includeGrain,
+        });
+        contentType = EXPORT_FORMATS.maxcut.mimeType;
+        filename = `${safeName}.mcp`;
         break;
 
       case "cutlistplus":
-        exportData = generateCutlistPlusExport(cutlist, options);
-        contentType = "text/csv";
-        filename = `${cutlist.name.replace(/\s+/g, "_")}_clp.csv`;
+        exportData = generateCutlistPlusExport(cutlist, {
+          units: exportOptions.units,
+          includeGrain: exportOptions.includeGrain,
+          includeNotes: exportOptions.includeNotes,
+        });
+        contentType = EXPORT_FORMATS.cutlistplus.mimeType;
+        filename = `${safeName}_cutlistplus.csv`;
+        break;
+
+      case "cutrite":
+        exportData = generateCutRiteExport(cutlist, {
+          units: exportOptions.units,
+          includeGrain: exportOptions.includeGrain,
+          includeEdging: exportOptions.includeEdging,
+        });
+        contentType = EXPORT_FORMATS.cutrite.mimeType;
+        filename = `${safeName}_cutrite.xml`;
+        break;
+
+      case "optimik":
+        exportData = generateOptimikExport(cutlist, {
+          units: exportOptions.units,
+          includeGrain: exportOptions.includeGrain,
+          includeEdging: exportOptions.includeEdging,
+          delimiter: ";", // Optimik typically uses semicolon
+        });
+        contentType = EXPORT_FORMATS.optimik.mimeType;
+        filename = `${safeName}_optimik.csv`;
+        break;
+
+      case "optimik_stock":
+        exportData = generateOptimikStockExport(cutlist, {
+          units: exportOptions.units,
+          delimiter: ";",
+        });
+        contentType = EXPORT_FORMATS.optimik.mimeType;
+        filename = `${safeName}_optimik_stock.csv`;
         break;
 
       case "cai2d":
-        exportData = generateCai2dExport(cutlist, options);
-        contentType = "application/json";
-        filename = `${cutlist.name.replace(/\s+/g, "_")}_cai2d.json`;
+        exportData = generateCai2dExport(cutlist, {
+          units: exportOptions.units,
+          includeOps: exportOptions.includeOps,
+          includeEdging: exportOptions.includeEdging,
+        });
+        contentType = EXPORT_FORMATS.cai2d.mimeType;
+        filename = `${safeName}_cai2d.json`;
         break;
 
       default:
@@ -103,6 +263,8 @@ export async function POST(request: NextRequest) {
       headers: {
         "Content-Type": contentType,
         "Content-Disposition": `attachment; filename="${filename}"`,
+        "X-Export-Format": format,
+        "X-Parts-Count": cutlist.parts.length.toString(),
       },
     });
 
@@ -115,166 +277,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ============================================================
-// EXPORT GENERATORS
-// ============================================================
-
-interface CutlistData {
-  id: string;
-  doc_id: string;
-  name: string;
-  description?: string;
-  job_ref?: string;
-  client_ref?: string;
-  status: string;
-  capabilities: Record<string, boolean>;
-  parts: Array<{
-    part_id: string;
-    label?: string;
-    qty: number;
-    length_mm: number;
-    width_mm: number;
-    thickness_mm: number;
-    material_id: string;
-    grain: string;
-    allow_rotation: boolean;
-    group_id?: string;
-    ops?: Record<string, unknown>;
-    notes?: Record<string, unknown>;
-    audit?: Record<string, unknown>;
-  }>;
-  created_at: string;
-  updated_at: string;
-}
-
-interface ExportOptions {
-  include_metadata?: boolean;
-  include_audit?: boolean;
-  units?: "mm" | "cm" | "inch";
-}
-
-function generateJsonExport(cutlist: CutlistData, options?: ExportOptions): string {
-  const parts = cutlist.parts.map(p => ({
-    part_id: p.part_id,
-    label: p.label,
-    qty: p.qty,
-    size: { L: p.length_mm, W: p.width_mm },
-    thickness_mm: p.thickness_mm,
-    material_id: p.material_id,
-    grain: p.grain,
-    allow_rotation: p.allow_rotation,
-    group_id: p.group_id,
-    ...(options?.include_metadata ? { ops: p.ops, notes: p.notes } : {}),
-    ...(options?.include_audit ? { audit: p.audit } : {}),
-  }));
-
-  const doc = {
-    schema_version: "cai-cutlist/v1",
-    doc_id: cutlist.doc_id,
-    name: cutlist.name,
-    description: cutlist.description,
-    job_ref: cutlist.job_ref,
-    client_ref: cutlist.client_ref,
-    capabilities: cutlist.capabilities,
-    parts,
-    exported_at: new Date().toISOString(),
-  };
-
-  return JSON.stringify(doc, null, 2);
-}
-
-function generateCsvExport(cutlist: CutlistData, options?: ExportOptions): string {
-  const headers = [
-    "Part ID",
-    "Label",
-    "Qty",
-    "Length",
-    "Width",
-    "Thickness",
-    "Material",
-    "Grain",
-    "Rotate",
-    "Group",
-  ];
-
-  const rows = cutlist.parts.map(p => [
-    p.part_id,
-    p.label ?? "",
-    p.qty.toString(),
-    p.length_mm.toString(),
-    p.width_mm.toString(),
-    p.thickness_mm.toString(),
-    p.material_id,
-    p.grain,
-    p.allow_rotation ? "Yes" : "No",
-    p.group_id ?? "",
-  ]);
-
-  const csvContent = [
-    headers.join(","),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(",")),
-  ].join("\n");
-
-  return csvContent;
-}
-
-function generateMaxcutExport(cutlist: CutlistData, _options?: ExportOptions): string {
-  // MaxCut format: Part Name, Length, Width, Qty, Material, Grain, Label
-  const lines = cutlist.parts.map(p => {
-    const grain = p.grain === "along_L" ? "GL" : p.grain === "along_W" ? "GW" : "";
-    return `${p.label ?? p.part_id},${p.length_mm},${p.width_mm},${p.qty},${p.material_id},${grain}`;
+/**
+ * GET /api/v1/exports/formats
+ * Returns available export formats and their metadata
+ */
+export async function GET() {
+  return NextResponse.json({
+    formats: EXPORT_FORMATS,
   });
-
-  return lines.join("\n");
 }
-
-function generateCutlistPlusExport(cutlist: CutlistData, _options?: ExportOptions): string {
-  // CutList Plus format
-  const headers = ["Name", "Length", "Width", "Qty", "Material", "Grain", "Notes"];
-  
-  const rows = cutlist.parts.map(p => [
-    p.label ?? p.part_id,
-    p.length_mm.toString(),
-    p.width_mm.toString(),
-    p.qty.toString(),
-    p.material_id,
-    p.grain === "along_L" ? "L" : p.grain === "along_W" ? "W" : "",
-    "",
-  ]);
-
-  return [
-    headers.join(","),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(",")),
-  ].join("\n");
-}
-
-function generateCai2dExport(cutlist: CutlistData, options?: ExportOptions): string {
-  // CAI 2D optimizer format
-  const doc = {
-    version: "1.0",
-    job: {
-      id: cutlist.doc_id,
-      name: cutlist.name,
-      reference: cutlist.job_ref,
-    },
-    parts: cutlist.parts.map(p => ({
-      id: p.part_id,
-      name: p.label ?? p.part_id,
-      length: p.length_mm,
-      width: p.width_mm,
-      thickness: p.thickness_mm,
-      quantity: p.qty,
-      material: p.material_id,
-      grain: p.grain !== "none" ? p.grain : undefined,
-      canRotate: p.allow_rotation,
-      group: p.group_id,
-      operations: options?.include_metadata ? p.ops : undefined,
-    })),
-    settings: {
-      units: options?.units ?? "mm",
-    },
-  };
-
-  return JSON.stringify(doc, null, 2);
-}
-

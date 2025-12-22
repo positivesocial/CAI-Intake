@@ -147,13 +147,22 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Create checkout session
+    // Create checkout session with PayPal support
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.headers.get("origin") || "";
+    
+    // Enable PayPal alongside cards - Stripe will show both options
+    const paymentMethodTypes: Stripe.Checkout.SessionCreateParams.PaymentMethodType[] = ["card"];
+    
+    // Add PayPal if available in the Stripe account configuration
+    // PayPal needs to be enabled in Stripe Dashboard > Settings > Payment methods
+    if (process.env.STRIPE_PAYPAL_ENABLED === "true") {
+      paymentMethodTypes.push("paypal");
+    }
     
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
-      payment_method_types: ["card"],
+      payment_method_types: paymentMethodTypes,
       line_items: [
         {
           price: priceId,
@@ -171,6 +180,13 @@ export async function POST(request: NextRequest) {
       },
       allow_promotion_codes: true,
       billing_address_collection: "required",
+      // Automatic tax calculation (if configured in Stripe)
+      automatic_tax: { enabled: process.env.STRIPE_TAX_ENABLED === "true" },
+      // Customer update - allow changing email/address
+      customer_update: {
+        address: "auto",
+        name: "auto",
+      },
       metadata: {
         organization_id: org.id,
         plan_id: planId,
@@ -179,7 +195,8 @@ export async function POST(request: NextRequest) {
     });
     
     return NextResponse.json({
-      checkoutUrl: session.url,
+      url: session.url, // Primary URL for redirect
+      checkoutUrl: session.url, // Alias for backwards compatibility
       sessionId: session.id,
     });
   } catch (error) {

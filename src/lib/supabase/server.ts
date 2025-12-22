@@ -69,3 +69,22 @@ export async function requireAuth() {
   }
   return user;
 }
+
+/**
+ * Create a Supabase client with service role for admin operations
+ * Use only in trusted server-side contexts (cron jobs, admin APIs)
+ */
+export function getServiceClient() {
+  const { createClient } = require("@supabase/supabase-js");
+  
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  );
+}

@@ -82,7 +82,7 @@ export async function GET(
 
     const isSuperAdmin = userData.role === "super_admin";
 
-    // Get cutlist with parts - CRITICAL: filter by organization_id for multi-tenant isolation
+    // Get cutlist with parts and linked files - CRITICAL: filter by organization_id for multi-tenant isolation
     let query = supabase
       .from("cutlists")
       .select(`
@@ -102,6 +102,16 @@ export async function GET(
           ops,
           notes,
           audit,
+          created_at
+        ),
+        source_files:uploaded_files (
+          id,
+          file_name,
+          original_name,
+          mime_type,
+          size_bytes,
+          storage_path,
+          kind,
           created_at
         )
       `)
@@ -159,11 +169,35 @@ export async function GET(
       created_at: p.created_at,
     })) ?? [];
 
+    // Generate signed URLs for source files
+    const sourceFilesWithUrls = await Promise.all(
+      (cutlist.source_files || []).map(async (file: {
+        id: string;
+        file_name: string;
+        original_name: string;
+        mime_type: string;
+        size_bytes: number;
+        storage_path: string;
+        kind: string;
+        created_at: string;
+      }) => {
+        const { data: urlData } = await supabase.storage
+          .from("cutlist-files")
+          .createSignedUrl(file.storage_path, 3600); // 1 hour expiry
+        
+        return {
+          ...file,
+          url: urlData?.signedUrl,
+        };
+      })
+    );
+
     return NextResponse.json({
       cutlist: {
         ...cutlist,
         parts: transformedParts,
         parts_count: transformedParts.length,
+        source_files: sourceFilesWithUrls,
       },
     });
 
@@ -341,6 +375,39 @@ export async function DELETE(
       return NextResponse.json({ error: "Cutlist not found" }, { status: 404 });
     }
 
+    // Get linked files BEFORE deleting the cutlist
+    const { data: linkedFiles } = await supabase
+      .from("uploaded_files")
+      .select("id, storage_path")
+      .eq("cutlist_id", id);
+
+    // Delete files from storage first
+    if (linkedFiles && linkedFiles.length > 0) {
+      const storagePaths = linkedFiles.map(f => f.storage_path).filter(Boolean);
+      
+      if (storagePaths.length > 0) {
+        // Delete from cutlist-files bucket
+        const { error: storageError } = await supabase.storage
+          .from("cutlist-files")
+          .remove(storagePaths);
+        
+        if (storageError) {
+          logger.warn("Failed to delete some files from storage", { 
+            cutlistId: id, 
+            error: storageError,
+            paths: storagePaths 
+          });
+          // Continue with deletion - storage cleanup is best-effort
+        }
+      }
+
+      // Delete file records from database (in case ON DELETE SET NULL doesn't handle it)
+      await supabase
+        .from("uploaded_files")
+        .delete()
+        .eq("cutlist_id", id);
+    }
+
     // Delete cutlist - CRITICAL: filter by organization_id (parts will cascade delete)
     let deleteQuery = supabase
       .from("cutlists")
@@ -368,12 +435,16 @@ export async function DELETE(
       action: AUDIT_ACTIONS.CUTLIST_DELETED,
       entityType: "cutlist",
       entityId: cutlist.id,
-      metadata: { name: cutlist.name },
+      metadata: { 
+        name: cutlist.name,
+        filesDeleted: linkedFiles?.length ?? 0,
+      },
     });
 
     return NextResponse.json({
       success: true,
       message: "Cutlist deleted",
+      filesDeleted: linkedFiles?.length ?? 0,
     });
 
   } catch (error) {

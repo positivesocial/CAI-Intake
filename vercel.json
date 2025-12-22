@@ -1,0 +1,24 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/cleanup",
+      "schedule": "0 3 * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/cron/cleanup/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/v1/parse/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/v1/parse-file/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/webhooks/stripe/route.ts": {
+      "maxDuration": 30
+    }
+  }
+}
+

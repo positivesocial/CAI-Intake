@@ -206,11 +206,13 @@ function PlanCard({
   currentPlanId,
   billingInterval,
   onSelect,
+  loading,
 }: {
   planId: PlanId;
   currentPlanId: PlanId;
   billingInterval: BillingInterval;
   onSelect: (planId: PlanId) => void;
+  loading?: boolean;
 }) {
   const plan = getPlan(planId);
   const isCurrent = planId === currentPlanId;
@@ -292,8 +294,11 @@ function PlanCard({
               variant={isUpgrade ? "primary" : "outline"}
               className="w-full"
               onClick={() => onSelect(planId)}
+              disabled={loading}
             >
-              {isUpgrade ? "Upgrade" : isDowngrade ? "Downgrade" : "Select"}
+              {loading ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : isUpgrade ? "Upgrade" : isDowngrade ? "Downgrade" : "Select"}
             </Button>
           )}
         </div>
@@ -325,9 +330,65 @@ export default function BillingPage() {
     });
   }, []);
 
+  const [checkoutLoading, setCheckoutLoading] = React.useState<PlanId | null>(null);
+  const [portalLoading, setPortalLoading] = React.useState(false);
+
   const handleSelectPlan = async (planId: PlanId) => {
-    // In production, this would redirect to Stripe Checkout
-    alert(`Upgrade to ${planId} - Stripe integration coming soon!`);
+    try {
+      setCheckoutLoading(planId);
+      const response = await fetch("/api/v1/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planId,
+          billingInterval,
+          organizationId: localStorage.getItem("organizationId") || "",
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create checkout session");
+      }
+
+      const { url } = await response.json();
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error) {
+      console.error("Checkout error:", error);
+      alert(error instanceof Error ? error.message : "Failed to start checkout");
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
+  const handleManagePayment = async () => {
+    try {
+      setPortalLoading(true);
+      const response = await fetch("/api/v1/billing/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: localStorage.getItem("organizationId") || "",
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to open billing portal");
+      }
+
+      const { url } = await response.json();
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error) {
+      console.error("Portal error:", error);
+      alert(error instanceof Error ? error.message : "Failed to open billing portal");
+    } finally {
+      setPortalLoading(false);
+    }
   };
 
   if (loading) {
@@ -506,6 +567,7 @@ export default function BillingPage() {
                 currentPlanId={currentPlanId}
                 billingInterval={billingInterval}
                 onSelect={handleSelectPlan}
+                loading={checkoutLoading === plan.id}
               />
             ))}
           </div>
@@ -591,13 +653,52 @@ export default function BillingPage() {
                   <p className="text-sm text-[var(--muted-foreground)]">Expires 12/25</p>
                 </div>
               </div>
-              <Button variant="outline" size="sm">
-                Update
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleManagePayment}
+                disabled={portalLoading}
+              >
+                {portalLoading ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Manage"
+                )}
               </Button>
             </div>
+            
+            {/* Payment Options Info */}
+            <div className="mt-4 p-4 bg-[var(--muted)]/50 rounded-lg">
+              <h4 className="text-sm font-medium mb-2">Accepted Payment Methods</h4>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-6 bg-white rounded border border-[var(--border)] flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" className="h-4 w-6" fill="#1A1F71">
+                      <path d="M9.5 4h5v16h-5z" />
+                      <path d="M2 12a7.5 7.5 0 0 1 7.5-7.5V12H2z" fill="#EB001B" />
+                      <path d="M22 12a7.5 7.5 0 0 1-7.5 7.5V12H22z" fill="#F79E1B" />
+                    </svg>
+                  </div>
+                  <span className="text-xs text-[var(--muted-foreground)]">Cards</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-6 bg-[#003087] rounded flex items-center justify-center">
+                    <span className="text-white text-[8px] font-bold">PayPal</span>
+                  </div>
+                  <span className="text-xs text-[var(--muted-foreground)]">PayPal</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-6 bg-black rounded flex items-center justify-center">
+                    <span className="text-white text-[8px] font-bold">ACH</span>
+                  </div>
+                  <span className="text-xs text-[var(--muted-foreground)]">Bank Transfer</span>
+                </div>
+              </div>
+            </div>
+            
             <p className="text-sm text-[var(--muted-foreground)] mt-4">
               <Shield className="h-4 w-4 inline mr-1" />
-              Payments are securely processed by Stripe
+              Payments are securely processed by Stripe. PayPal available at checkout.
             </p>
           </CardContent>
         </Card>

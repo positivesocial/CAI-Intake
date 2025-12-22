@@ -915,8 +915,9 @@ export function PartsTable() {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0 sm:p-6">
         <div className="rounded-lg border border-[var(--border)] overflow-hidden">
+          <div className="overflow-x-auto">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -1050,6 +1051,7 @@ export function PartsTable() {
               </TableBody>
             </Table>
           </DndContext>
+          </div>
         </div>
       </CardContent>
       

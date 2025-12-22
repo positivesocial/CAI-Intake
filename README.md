@@ -234,6 +234,9 @@ https://api.cai-intake.com/v1
 | `/parse-jobs/{id}` | GET | Get parse job result |
 | `/exports` | POST | Create an export |
 | `/optimize-jobs` | POST | Submit for optimization |
+| `/subscription` | GET | Get subscription details |
+| `/billing/checkout` | POST | Create checkout session |
+| `/billing/portal` | POST | Access billing portal |
 
 ### Example: Create Parse Job
 
@@ -329,11 +332,37 @@ main (production)
 ## Roadmap
 
 - [x] Phase 1: Foundation (Schema + Manual Entry)
-- [ ] Phase 2: Excel/CSV Import with Mapping Wizard
-- [ ] Phase 3: Voice Dictation Mode
-- [ ] Phase 4: OCR + AI Parsing
-- [ ] Phase 5: QR Template System
-- [ ] Phase 6: CAI 2D Integration
+- [x] Phase 2: Excel/CSV Import with Mapping Wizard
+- [x] Phase 3: Voice Dictation Mode
+- [x] Phase 4: OCR + AI Parsing
+- [x] Phase 5: QR Template System
+- [x] Phase 6: Export Formats (MaxCut, CutList Plus, CutRite, Optimik)
+- [x] Phase 7: Subscription & Billing System
+- [x] Phase 8: Super Admin Platform
+- [ ] Phase 9: CAI 2D Optimizer Integration
+- [ ] Phase 10: Mobile App
+
+## Export Formats
+
+CAI Intake supports multiple export formats for compatibility with popular cutting optimization software:
+
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| **JSON** | `.json` | Native CAI format with full metadata |
+| **CSV** | `.csv` | Universal spreadsheet format |
+| **MaxCut** | `.mcp` | MaxCut optimization software |
+| **CutList Plus** | `.csv` | CutList Plus Pro format |
+| **CutRite** | `.xml` | CutRite/Holzma format |
+| **Optimik** | `.csv` | Optimik software format |
+
+## Subscription Plans
+
+| Plan | Price | Team | Cutlists | Features |
+|------|-------|------|----------|----------|
+| **Free** | $0/mo | 1 user | 5/month | Basic entry, CSV export |
+| **Starter** | $29/mo | 3 users | 50/month | Excel, Voice, Edgebanding |
+| **Professional** | $79/mo | 10 users | 500/month | Full OCR, CNC ops, API |
+| **Enterprise** | Custom | Unlimited | Unlimited | Priority support, SLA |
 
 ## Contributing
 
