@@ -7,14 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useAuthStore, SUPER_ADMIN_USER } from "@/lib/auth/store";
-import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/auth/store";
 
 export default function PlatformLoginPage() {
   const router = useRouter();
   const { 
     loginWithEmail,
-    loginAsDemo,
     isLoading: authLoading,
     error: authError,
     setError: setAuthError,
@@ -43,27 +41,14 @@ export default function PlatformLoginPage() {
     const result = await loginWithEmail(email, password);
     
     if (result.success) {
-      // Check if user is super admin
-      // In production, this would be validated server-side
-      // For demo, we check the email
-      if (email === "super@caiintake.com") {
-        router.push("/platform/dashboard");
-        router.refresh();
-      } else {
-        setAuthError("Access denied. Only platform administrators can log in here.");
-      }
+      // The user profile will be fetched and validated server-side
+      // For now, redirect to platform dashboard - the profile API will
+      // confirm if the user is actually a super admin
+      router.push("/platform/dashboard");
+      router.refresh();
     }
     
     setIsSubmitting(false);
-  };
-
-  const handleDemoLogin = () => {
-    setIsSubmitting(true);
-    loginAsDemo("super_admin");
-    setTimeout(() => {
-      router.push("/platform/dashboard");
-      router.refresh();
-    }, 100);
   };
 
   return (
@@ -121,7 +106,7 @@ export default function PlatformLoginPage() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="super@caiintake.com"
+                    placeholder="admin@caiintake.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-10 border-slate-300"
@@ -182,35 +167,6 @@ export default function PlatformLoginPage() {
           </CardContent>
         </Card>
 
-        {/* Demo Access */}
-        {process.env.NEXT_PUBLIC_DEMO_MODE === "true" && (
-          <Card className="border-2 border-dashed border-purple-300/50 bg-purple-900/20 backdrop-blur">
-            <CardContent className="py-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-white flex items-center gap-2">
-                  <span className="text-lg">🔧</span>
-                  Demo Super Admin
-                </span>
-                <Badge variant="outline" className="border-purple-400 text-purple-300 text-xs">
-                  Development
-                </Badge>
-              </div>
-              <Button
-                onClick={handleDemoLogin}
-                disabled={isLoading}
-                className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/20"
-                variant="outline"
-              >
-                <Shield className="mr-2 h-4 w-4" />
-                Login as Demo Super Admin
-              </Button>
-              <p className="text-xs text-purple-300 mt-2 text-center">
-                Credentials: super@caiintake.com / SuperAdmin123!
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Back to regular login */}
         <div className="text-center">
           <a 
@@ -224,7 +180,3 @@ export default function PlatformLoginPage() {
     </div>
   );
 }
-
-
-
-

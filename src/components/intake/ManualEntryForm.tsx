@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2, Copy, ArrowDown, Keyboard, GripVertical, Check } from "lucide-react";
+import { Plus, Trash2, Copy, ArrowDown, Keyboard, GripVertical, Check, ChevronDown } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -25,8 +25,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIntakeStore } from "@/lib/store";
 import { generateId } from "@/lib/utils";
 import type { CutPart, CutlistCapabilities } from "@/lib/schema";
+import { generateAutoNotesFromPartOps, mergeAutoNotes } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import { useColumnOrder } from "@/hooks/use-column-order";
+import { OperationsInput, type OperationsData } from "@/components/operations";
 
 export interface ManualEntryFormRef {
   addRowFromPart: (part: CutPart) => void;
@@ -47,19 +49,21 @@ interface RowData {
   allow_rotation: boolean;
   group_id: string;
   notes: string;
-  // Edging per edge
+  // Edging per edge (legacy)
   edge_L1: boolean;
   edge_L2: boolean;
   edge_W1: boolean;
   edge_W2: boolean;
   edgeband_id: string;
-  // Grooves (simplified - count)
+  // Grooves (legacy - count)
   groove_count: string;
   groove_side: string;
-  // Holes (simplified)
+  // Holes (legacy)
   hole_pattern: string;
-  // CNC 
+  // CNC (legacy)
   cnc_program: string;
+  // NEW: Structured operations data
+  operations: OperationsData;
 }
 
 const createEmptyRow = (defaultMaterial: string, defaultThickness: string, defaultEdgeband: string): RowData => ({
@@ -73,19 +77,26 @@ const createEmptyRow = (defaultMaterial: string, defaultThickness: string, defau
   allow_rotation: true,
   group_id: "",
   notes: "",
-  // Edging
+  // Edging (legacy)
   edge_L1: false,
   edge_L2: false,
   edge_W1: false,
   edge_W2: false,
   edgeband_id: defaultEdgeband,
-  // Grooves
+  // Grooves (legacy)
   groove_count: "",
   groove_side: "",
-  // Holes
+  // Holes (legacy)
   hole_pattern: "",
-  // CNC
+  // CNC (legacy)
   cnc_program: "",
+  // NEW: Structured operations
+  operations: {
+    edgebanding: { edgeband_id: defaultEdgeband, sides: { L1: false, L2: false, W1: false, W2: false } },
+    grooves: [],
+    holes: [],
+    cnc: [],
+  },
 });
 
 // Base column definitions
@@ -112,19 +123,21 @@ const COLUMN_DEFS: Record<string, ColumnDef> = {
   qty: { header: "Qty", width: "60px", minWidth: "50px", placeholder: "1", type: "number" },
   material_id: { header: "Material", width: "160px", minWidth: "140px", type: "select" },
   allow_rotation: { header: "Rot", width: "50px", minWidth: "50px", type: "checkbox" },
-  // Edging columns
-  edge_L1: { header: "L1", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600" },
-  edge_L2: { header: "L2", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600" },
-  edge_W1: { header: "W1", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600" },
-  edge_W2: { header: "W2", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600" },
-  edgeband_id: { header: "Edgeband", width: "120px", minWidth: "100px", type: "select", capability: "edging", colorClass: "text-blue-600" },
-  // Groove columns
-  groove_count: { header: "Grooves", width: "70px", minWidth: "60px", placeholder: "0", type: "number", capability: "grooves", colorClass: "text-amber-600" },
-  groove_side: { header: "G.Side", width: "70px", minWidth: "60px", placeholder: "L1", type: "text", capability: "grooves", colorClass: "text-amber-600" },
-  // Holes
-  hole_pattern: { header: "Holes", width: "80px", minWidth: "70px", placeholder: "32mm", type: "text", capability: "cnc_holes", colorClass: "text-purple-600" },
-  // CNC
-  cnc_program: { header: "CNC Prog", width: "100px", minWidth: "80px", placeholder: "Program", type: "text", capability: ["cnc_routing", "custom_cnc"], colorClass: "text-emerald-600" },
+  // NEW: Combined operations column with popup selectors
+  operations: { header: "Operations", width: "180px", minWidth: "160px", type: "text", capability: ["edging", "grooves", "cnc_holes", "cnc_routing", "custom_cnc"], colorClass: "text-teal-600" },
+  // Legacy Edging columns (hidden by default, shown in advanced mode)
+  edge_L1: { header: "L1", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600", advancedOnly: true },
+  edge_L2: { header: "L2", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600", advancedOnly: true },
+  edge_W1: { header: "W1", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600", advancedOnly: true },
+  edge_W2: { header: "W2", width: "40px", minWidth: "40px", type: "checkbox", capability: "edging", colorClass: "text-blue-600", advancedOnly: true },
+  edgeband_id: { header: "Edgeband", width: "120px", minWidth: "100px", type: "select", capability: "edging", colorClass: "text-blue-600", advancedOnly: true },
+  // Legacy Groove columns
+  groove_count: { header: "Grooves", width: "70px", minWidth: "60px", placeholder: "0", type: "number", capability: "grooves", colorClass: "text-amber-600", advancedOnly: true },
+  groove_side: { header: "G.Side", width: "70px", minWidth: "60px", placeholder: "L1", type: "text", capability: "grooves", colorClass: "text-amber-600", advancedOnly: true },
+  // Legacy Holes
+  hole_pattern: { header: "Holes", width: "80px", minWidth: "70px", placeholder: "32mm", type: "text", capability: "cnc_holes", colorClass: "text-purple-600", advancedOnly: true },
+  // Legacy CNC
+  cnc_program: { header: "CNC Prog", width: "100px", minWidth: "80px", placeholder: "Program", type: "text", capability: ["cnc_routing", "custom_cnc"], colorClass: "text-emerald-600", advancedOnly: true },
   // Other
   group_id: { header: "Group", width: "90px", minWidth: "80px", placeholder: "Group", type: "text", capability: "advanced_grouping" },
   notes: { header: "Notes", width: "120px", minWidth: "100px", placeholder: "Notes", type: "text", capability: "part_notes" },
@@ -134,10 +147,11 @@ type ColumnKey = keyof typeof COLUMN_DEFS;
 
 const DEFAULT_COLUMN_ORDER: ColumnKey[] = [
   "label", "L", "W", "thickness_mm", "qty", "material_id", "allow_rotation",
-  "edge_L1", "edge_L2", "edge_W1", "edge_W2", "edgeband_id",
-  "groove_count", "groove_side",
-  "hole_pattern",
-  "cnc_program",
+  "operations", // NEW: Combined operations column
+  "edge_L1", "edge_L2", "edge_W1", "edge_W2", "edgeband_id", // Legacy - advanced mode only
+  "groove_count", "groove_side", // Legacy
+  "hole_pattern", // Legacy
+  "cnc_program", // Legacy
   "group_id", "notes"
 ];
 
@@ -228,6 +242,15 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
   // Expose addRowFromPart method to parent via ref
   React.useImperativeHandle(ref, () => ({
     addRowFromPart: (part: CutPart) => {
+      // Extract edgebanding sides from ops
+      const ebSides = {
+        L1: !!part.ops?.edging?.edges?.L1?.apply,
+        L2: !!part.ops?.edging?.edges?.L2?.apply,
+        W1: !!part.ops?.edging?.edges?.W1?.apply,
+        W2: !!part.ops?.edging?.edges?.W2?.apply,
+      };
+      const ebId = part.ops?.edging?.edges?.L1?.edgeband_id || defaultEdgeband;
+
       // Convert CutPart to RowData format
       const newRow: RowData = {
         id: generateId("ROW"),
@@ -240,19 +263,36 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
         allow_rotation: part.allow_rotation ?? true,
         group_id: part.group_id || "",
         notes: part.notes?.operator || "",
-        // Edging
-        edge_L1: !!part.ops?.edging?.edges?.L1?.apply,
-        edge_L2: !!part.ops?.edging?.edges?.L2?.apply,
-        edge_W1: !!part.ops?.edging?.edges?.W1?.apply,
-        edge_W2: !!part.ops?.edging?.edges?.W2?.apply,
-        edgeband_id: part.ops?.edging?.edges?.L1?.edgeband_id || defaultEdgeband,
-        // Grooves
+        // Legacy Edging
+        edge_L1: ebSides.L1,
+        edge_L2: ebSides.L2,
+        edge_W1: ebSides.W1,
+        edge_W2: ebSides.W2,
+        edgeband_id: ebId,
+        // Legacy Grooves
         groove_count: part.ops?.grooves?.length?.toString() || "",
         groove_side: part.ops?.grooves?.[0]?.side || "",
-        // Holes
+        // Legacy Holes
         hole_pattern: part.ops?.holes?.[0]?.pattern_id || "",
-        // CNC
+        // Legacy CNC
         cnc_program: (part.ops?.custom_cnc_ops?.[0]?.payload as { program_name?: string } | undefined)?.program_name || "",
+        // NEW: Structured operations
+        operations: {
+          edgebanding: { edgeband_id: ebId, sides: ebSides },
+          grooves: part.ops?.grooves?.map(g => ({
+            type_code: g.groove_id?.substring(0, 4) || "GRV",
+            width_mm: g.width_mm || 4,
+            depth_mm: g.depth_mm || 8,
+            side: g.side || "W1",
+          })) || [],
+          holes: part.ops?.holes?.map(h => ({
+            type_code: h.pattern_id || "S32",
+            face: (h.face === "front" ? "F" : "B") as "F" | "B",
+          })) || [],
+          cnc: part.ops?.custom_cnc_ops?.map(c => ({
+            type_code: (c.payload as { program_name?: string } | undefined)?.program_name || c.op_type || "CNC",
+          })) || [],
+        },
       };
 
       // Add the row to the table (insert at first empty row or at end)
@@ -482,47 +522,51 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
     
     if (!validateRow(row)) return;
 
-    // Build edging ops if any edge is selected
-    const hasEdging = row.edge_L1 || row.edge_L2 || row.edge_W1 || row.edge_W2;
+    // Use NEW structured operations data
+    const { operations } = row;
+
+    // Build edging ops from structured data
+    const hasEdging = Object.values(operations.edgebanding.sides).some(Boolean);
     const edgingOps = hasEdging && capabilities.edging ? {
       edging: {
         edges: {
-          ...(row.edge_L1 && { L1: { apply: true, edgeband_id: row.edgeband_id || defaultEdgeband } }),
-          ...(row.edge_L2 && { L2: { apply: true, edgeband_id: row.edgeband_id || defaultEdgeband } }),
-          ...(row.edge_W1 && { W1: { apply: true, edgeband_id: row.edgeband_id || defaultEdgeband } }),
-          ...(row.edge_W2 && { W2: { apply: true, edgeband_id: row.edgeband_id || defaultEdgeband } }),
+          ...(operations.edgebanding.sides.L1 && { L1: { apply: true, edgeband_id: operations.edgebanding.edgeband_id || defaultEdgeband } }),
+          ...(operations.edgebanding.sides.L2 && { L2: { apply: true, edgeband_id: operations.edgebanding.edgeband_id || defaultEdgeband } }),
+          ...(operations.edgebanding.sides.W1 && { W1: { apply: true, edgeband_id: operations.edgebanding.edgeband_id || defaultEdgeband } }),
+          ...(operations.edgebanding.sides.W2 && { W2: { apply: true, edgeband_id: operations.edgebanding.edgeband_id || defaultEdgeband } }),
         },
       },
     } : {};
 
-    // Build groove ops - using offset_mm as per schema
-    const grooveCount = parseInt(row.groove_count) || 0;
-    const grooveOps = grooveCount > 0 && capabilities.grooves ? {
-      grooves: Array(grooveCount).fill(null).map((_, i) => ({
+    // Build groove ops from structured data
+    const grooveOps = operations.grooves.length > 0 && capabilities.grooves ? {
+      grooves: operations.grooves.map((g, i) => ({
         groove_id: generateId("GRV"),
-        side: (row.groove_side || "L1") as "L1" | "L2" | "W1" | "W2",
+        side: g.side as "L1" | "L2" | "W1" | "W2",
         offset_mm: 10 + i * 32, // Default spacing from edge
-        depth_mm: 8,
-        width_mm: 4,
+        depth_mm: g.depth_mm,
+        width_mm: g.width_mm,
+        // Store type code in notes for reference
+        notes: `Type: ${g.type_code}`,
       })),
     } : {};
 
-    // Build hole ops - using pattern_id or notes to capture pattern info
-    const holeOps = row.hole_pattern && capabilities.cnc_holes ? {
-      holes: [{
-        pattern_id: row.hole_pattern.includes("32") ? "SYS32" : undefined,
-        face: "front" as const,
-        notes: row.hole_pattern,
-      }],
+    // Build hole ops from structured data
+    const holeOps = operations.holes.length > 0 && capabilities.cnc_holes ? {
+      holes: operations.holes.map(h => ({
+        pattern_id: h.type_code,
+        face: (h.face === "F" ? "front" : "back") as "front" | "back",
+        notes: `Pattern: ${h.type_code}`,
+      })),
     } : {};
 
-    // Build CNC ops - using op_type and payload as per schema
-    const cncOps = row.cnc_program && (capabilities.cnc_routing || capabilities.custom_cnc) ? {
-      custom_cnc_ops: [{
-        op_type: "program",
-        payload: { program_name: row.cnc_program },
-        notes: `CNC program: ${row.cnc_program}`,
-      }],
+    // Build CNC ops from structured data
+    const cncOps = operations.cnc.length > 0 && (capabilities.cnc_routing || capabilities.custom_cnc) ? {
+      custom_cnc_ops: operations.cnc.map(c => ({
+        op_type: "program" as const,
+        payload: { program_name: c.type_code },
+        notes: `CNC: ${c.type_code}`,
+      })),
     } : {};
 
     // Combine all ops
@@ -532,6 +576,14 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
       ...holeOps,
       ...cncOps,
     };
+
+    // Generate auto-notes from operations
+    const hasOps = Object.keys(ops).length > 0;
+    const autoNotes = hasOps ? generateAutoNotesFromPartOps(ops) : "";
+    const existingNotes = row.notes ? { operator: row.notes } : undefined;
+    const finalNotes = autoNotes 
+      ? mergeAutoNotes(existingNotes, autoNotes)
+      : existingNotes;
 
     const part: CutPart = {
       part_id: generateId("P"),
@@ -546,8 +598,8 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
       grain: row.allow_rotation ? "none" : "along_L",
       allow_rotation: row.allow_rotation,
       group_id: row.group_id || undefined,
-      notes: row.notes ? { operator: row.notes } : undefined,
-      ops: Object.keys(ops).length > 0 ? ops : undefined,
+      notes: Object.keys(finalNotes || {}).length > 0 ? finalNotes : undefined,
+      ops: hasOps ? ops : undefined,
       audit: {
         source_method: "manual",
         confidence: 1,
@@ -632,6 +684,41 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
               <Check className="w-3 h-3 text-white" />
             )}
           </button>
+        </div>
+      );
+    }
+
+    // NEW: Operations column with combined selectors
+    if (colKey === "operations") {
+      return (
+        <div className="h-8 flex items-center px-1">
+          <OperationsInput
+            value={row.operations}
+            onChange={(newOps) => {
+              // Update operations and sync to legacy fields
+              setRows((prev) =>
+                prev.map((r, i) =>
+                  i === rowIndex
+                    ? {
+                        ...r,
+                        operations: newOps,
+                        // Sync to legacy fields
+                        edge_L1: newOps.edgebanding.sides.L1 || false,
+                        edge_L2: newOps.edgebanding.sides.L2 || false,
+                        edge_W1: newOps.edgebanding.sides.W1 || false,
+                        edge_W2: newOps.edgebanding.sides.W2 || false,
+                        edgeband_id: newOps.edgebanding.edgeband_id || defaultEdgeband,
+                        groove_count: newOps.grooves.length.toString(),
+                        groove_side: newOps.grooves[0]?.side || "",
+                        hole_pattern: newOps.holes[0]?.type_code || "",
+                        cnc_program: newOps.cnc[0]?.type_code || "",
+                      }
+                    : r
+                )
+              );
+            }}
+            compact={true}
+          />
         </div>
       );
     }

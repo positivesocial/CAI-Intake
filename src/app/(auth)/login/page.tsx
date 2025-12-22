@@ -4,13 +4,11 @@ import * as React from "react";
 import { Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Loader2, Mail, Lock, Shield, Building2, User } from "lucide-react";
+import { Eye, EyeOff, Loader2, Mail, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { useAuthStore, TEST_CREDENTIALS } from "@/lib/auth/store";
-import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/auth/store";
 
 function LoginForm() {
   const router = useRouter();
@@ -18,7 +16,6 @@ function LoginForm() {
   const redirectTo = searchParams.get("redirectTo") ?? "/dashboard";
   
   const { 
-    loginAsDemo, 
     loginWithEmail, 
     loginWithGoogle,
     resetPassword,
@@ -26,10 +23,6 @@ function LoginForm() {
     error: authError,
     setError: setAuthError,
   } = useAuthStore();
-
-  // Note: We don't auto-redirect if already authenticated because
-  // in demo mode, the auth state hydration can cause race conditions.
-  // Users can click the login buttons to go to dashboard.
   
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -53,15 +46,6 @@ function LoginForm() {
     }
     
     setIsSubmitting(false);
-  };
-
-  const handleDemoLogin = (userType: "super_admin" | "org_admin" | "operator") => {
-    setIsSubmitting(true);
-    loginAsDemo(userType);
-    setTimeout(() => {
-      router.push(redirectTo);
-      router.refresh();
-    }, 100);
   };
 
   const handleGoogleLogin = async () => {
@@ -94,11 +78,6 @@ function LoginForm() {
     }
     
     setIsSubmitting(false);
-  };
-
-  const fillCredentials = (emailValue: string, passwordValue: string) => {
-    setEmail(emailValue);
-    setPassword(passwordValue);
   };
 
   return (
@@ -256,136 +235,6 @@ function LoginForm() {
               Sign up
             </Link>
           </p>
-        </CardContent>
-      </Card>
-
-      {/* Demo Login Options */}
-      <Card className="border-dashed border-2 border-[var(--cai-teal)]/30 bg-[var(--cai-teal)]/5">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <span className="text-lg">🧪</span>
-              Test Accounts
-            </CardTitle>
-            <Badge variant="outline" className="text-xs">Demo Mode</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-xs text-[var(--muted-foreground)]">
-            Click to log in instantly or use the credentials in the form above:
-          </p>
-          
-          <div className="grid gap-2">
-            {/* Platform Admin Link */}
-            <Link
-              href="/platform/login"
-              className="w-full flex items-center gap-3 p-3 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 transition-colors text-left"
-            >
-              <div className="w-10 h-10 rounded-lg bg-purple-200 flex items-center justify-center">
-                <Shield className="h-5 w-5 text-purple-700" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm text-purple-900">Platform Admin?</span>
-                </div>
-                <p className="text-xs text-purple-600">
-                  Go to Platform Admin Login →
-                </p>
-              </div>
-            </Link>
-
-            {/* Org Admin */}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => !isLoading && handleDemoLogin("org_admin")}
-              onKeyDown={(e) => e.key === "Enter" && !isLoading && handleDemoLogin("org_admin")}
-              className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] transition-colors text-left cursor-pointer",
-                isLoading && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Building2 className="h-5 w-5 text-blue-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">Org Admin</span>
-                  <Badge className="text-xs bg-blue-100 text-blue-700">Acme Cabinets</Badge>
-                </div>
-                <p className="text-xs text-[var(--muted-foreground)] truncate">
-                  admin@acmecabinets.com
-                </p>
-              </div>
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fillCredentials("admin@acmecabinets.com", "OrgAdmin123!");
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.stopPropagation();
-                    fillCredentials("admin@acmecabinets.com", "OrgAdmin123!");
-                  }
-                }}
-                className="text-xs text-[var(--cai-teal)] hover:underline shrink-0 cursor-pointer"
-              >
-                Fill form
-              </span>
-            </div>
-
-            {/* Operator */}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => !isLoading && handleDemoLogin("operator")}
-              onKeyDown={(e) => e.key === "Enter" && !isLoading && handleDemoLogin("operator")}
-              className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)] transition-colors text-left cursor-pointer",
-                isLoading && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                <User className="h-5 w-5 text-green-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">Operator</span>
-                  <Badge className="text-xs bg-green-100 text-green-700">Acme Cabinets</Badge>
-                </div>
-                <p className="text-xs text-[var(--muted-foreground)] truncate">
-                  operator@acmecabinets.com
-                </p>
-              </div>
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fillCredentials("operator@acmecabinets.com", "Operator123!");
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.stopPropagation();
-                    fillCredentials("operator@acmecabinets.com", "Operator123!");
-                  }
-                }}
-                className="text-xs text-[var(--cai-teal)] hover:underline shrink-0 cursor-pointer"
-              >
-                Fill form
-              </span>
-            </div>
-          </div>
-
-          <div className="pt-2 border-t border-[var(--border)]">
-            <p className="text-xs text-[var(--muted-foreground)]">
-              <strong>Test Passwords:</strong><br />
-              Org Admin: <code className="bg-[var(--muted)] px-1 rounded">OrgAdmin123!</code><br />
-              Operator: <code className="bg-[var(--muted)] px-1 rounded">Operator123!</code>
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>

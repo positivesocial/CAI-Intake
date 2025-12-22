@@ -2,7 +2,7 @@
  * CAI Intake - Auth Store
  * 
  * Zustand store for managing authentication state.
- * Integrates with Supabase for real authentication.
+ * Integrates with Supabase for authentication.
  */
 
 import * as React from "react";
@@ -10,7 +10,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { AuthUser, SessionUser, UserPreferences, NotificationSettings } from "./types";
 import type { RoleType, PermissionType } from "./roles";
-import { hasPermission, hasAnyPermission, ROLE_PERMISSIONS } from "./roles";
+import { hasPermission, hasAnyPermission } from "./roles";
 import { getClient } from "@/lib/supabase/client";
 
 // =============================================================================
@@ -39,9 +39,6 @@ interface AuthState {
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
-  
-  // Demo login (for development)
-  loginAsDemo: (userType: "super_admin" | "org_admin" | "operator") => void;
 
   // Permission checks
   can: (permission: PermissionType) => boolean;
@@ -51,180 +48,8 @@ interface AuthState {
 }
 
 // =============================================================================
-// DEMO/TEST USERS (Development Only)
-// =============================================================================
-// These credentials are ONLY available when NEXT_PUBLIC_DEMO_MODE=true
-// In production, these should NEVER be exposed
-// =============================================================================
-
-// Super Admin - Platform-wide access
-export const SUPER_ADMIN_USER: SessionUser = {
-  id: "super-admin-001",
-  email: "super@caiintake.com",
-  name: "Platform Super Admin",
-  avatar: null,
-  phone: "+1 (555) 000-0001",
-  jobTitle: "Platform Administrator",
-  emailVerified: new Date(),
-  isActive: true,
-  isSuperAdmin: true,
-  createdAt: new Date("2024-01-01"),
-  lastLoginAt: new Date(),
-  organizationId: null,
-  organization: null,
-  roleId: "role-super-admin",
-  role: {
-    id: "role-super-admin",
-    name: "super_admin",
-    displayName: "Super Admin",
-    permissions: ROLE_PERMISSIONS.super_admin.reduce(
-      (acc, p) => ({ ...acc, [p]: true }),
-      {}
-    ),
-  },
-  preferences: {
-    theme: "dark",
-    language: "en",
-    timezone: "UTC",
-    dateFormat: "YYYY-MM-DD",
-    defaultUnits: "mm",
-    advancedMode: true,
-  },
-  notifications: {
-    email: true,
-    push: true,
-    cutlistComplete: true,
-    parseJobComplete: true,
-    weeklyDigest: true,
-  },
-  sessionId: "session-super-001",
-  sessionToken: "super-token",
-};
-
-// Organization Admin - Acme Cabinets
-export const ORG_ADMIN_USER: SessionUser = {
-  id: "org-admin-001",
-  email: "admin@acmecabinets.com",
-  name: "John Smith",
-  avatar: null,
-  phone: "+1 (555) 123-4567",
-  jobTitle: "Workshop Manager",
-  emailVerified: new Date(),
-  isActive: true,
-  isSuperAdmin: false,
-  createdAt: new Date("2024-03-15"),
-  lastLoginAt: new Date(),
-  organizationId: "org-acme-001",
-  organization: {
-    id: "org-acme-001",
-    name: "Acme Cabinets & Millwork",
-    slug: "acme-cabinets",
-    logo: null,
-    plan: "professional",
-  },
-  roleId: "role-org-admin",
-  role: {
-    id: "role-org-admin",
-    name: "org_admin",
-    displayName: "Organization Admin",
-    permissions: ROLE_PERMISSIONS.org_admin.reduce(
-      (acc, p) => ({ ...acc, [p]: true }),
-      {}
-    ),
-  },
-  preferences: {
-    theme: "light",
-    language: "en",
-    timezone: "America/New_York",
-    dateFormat: "MM/DD/YYYY",
-    defaultUnits: "mm",
-    advancedMode: true,
-  },
-  notifications: {
-    email: true,
-    push: true,
-    cutlistComplete: true,
-    parseJobComplete: true,
-    weeklyDigest: true,
-  },
-  sessionId: "session-org-admin-001",
-  sessionToken: "org-admin-token",
-};
-
-// Operator - Basic user at Acme Cabinets
-export const OPERATOR_USER: SessionUser = {
-  id: "operator-001",
-  email: "operator@acmecabinets.com",
-  name: "Mike Johnson",
-  avatar: null,
-  phone: "+1 (555) 987-6543",
-  jobTitle: "CNC Operator",
-  emailVerified: new Date(),
-  isActive: true,
-  isSuperAdmin: false,
-  createdAt: new Date("2024-06-01"),
-  lastLoginAt: new Date(),
-  organizationId: "org-acme-001",
-  organization: {
-    id: "org-acme-001",
-    name: "Acme Cabinets & Millwork",
-    slug: "acme-cabinets",
-    logo: null,
-    plan: "professional",
-  },
-  roleId: "role-operator",
-  role: {
-    id: "role-operator",
-    name: "operator",
-    displayName: "Operator",
-    permissions: ROLE_PERMISSIONS.operator.reduce(
-      (acc, p) => ({ ...acc, [p]: true }),
-      {}
-    ),
-  },
-  preferences: {
-    theme: "system",
-    language: "en",
-    timezone: "America/New_York",
-    dateFormat: "MM/DD/YYYY",
-    defaultUnits: "mm",
-    advancedMode: false,
-  },
-  notifications: {
-    email: true,
-    push: false,
-    cutlistComplete: true,
-    parseJobComplete: true,
-    weeklyDigest: false,
-  },
-  sessionId: "session-operator-001",
-  sessionToken: "operator-token",
-};
-
-// Legacy export for backwards compatibility
-export const DEMO_USER = ORG_ADMIN_USER;
-
-// Test credentials map - ONLY available in demo mode
-// In production, this returns an empty object for security
-export const TEST_CREDENTIALS: Record<string, { password: string; user: SessionUser }> = 
-  process.env.NEXT_PUBLIC_DEMO_MODE === "true"
-    ? {
-        "super@caiintake.com": { password: "SuperAdmin123!", user: SUPER_ADMIN_USER },
-        "admin@acmecabinets.com": { password: "OrgAdmin123!", user: ORG_ADMIN_USER },
-        "operator@acmecabinets.com": { password: "Operator123!", user: OPERATOR_USER },
-      }
-    : {};
-
-// =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
-
-/**
- * Check if demo mode is enabled
- */
-function isDemoMode(): boolean {
-  return process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-}
 
 /**
  * Fetch user profile from database and construct SessionUser
@@ -297,21 +122,6 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         
         try {
-          // Check for demo mode credentials first
-          if (isDemoMode()) {
-            const testCred = TEST_CREDENTIALS[email as keyof typeof TEST_CREDENTIALS];
-            if (testCred && testCred.password === password) {
-              set({
-                user: testCred.user,
-                isAuthenticated: true,
-                isLoading: false,
-                error: null,
-              });
-              return { success: true };
-            }
-          }
-
-          // Real Supabase auth
           const supabase = getClient();
           if (!supabase) {
             set({ isLoading: false, error: "Supabase client not available" });
@@ -536,32 +346,6 @@ export const useAuthStore = create<AuthState>()(
           error: null,
         });
       },
-      
-      // =========================================================================
-      // DEMO LOGIN
-      // =========================================================================
-      
-      loginAsDemo: (userType) => {
-        let user: SessionUser;
-        switch (userType) {
-          case "super_admin":
-            user = SUPER_ADMIN_USER;
-            break;
-          case "org_admin":
-            user = ORG_ADMIN_USER;
-            break;
-          case "operator":
-            user = OPERATOR_USER;
-            break;
-          default:
-            user = ORG_ADMIN_USER;
-        }
-        set({
-          user,
-          isAuthenticated: true,
-          error: null,
-        });
-      },
 
       // =========================================================================
       // PERMISSION CHECKS
@@ -630,4 +414,3 @@ export const useAuthHydrated = () => {
   
   return hydrated;
 };
-

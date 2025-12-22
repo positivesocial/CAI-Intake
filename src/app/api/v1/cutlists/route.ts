@@ -156,30 +156,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization - handle demo mode
-    const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-    let organizationId: string;
-    let userId = user.id;
+    // Get user's organization
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
 
-    if (isDemoMode) {
-      // In demo mode, use the org ID from user metadata
-      organizationId = user.user_metadata?.organization_id || "demo-org-id";
-      userId = user.id || "demo-user-id";
-    } else {
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!userData?.organization_id) {
-        return NextResponse.json(
-          { error: "User not associated with an organization" },
-          { status: 400 }
-        );
-      }
-      organizationId = userData.organization_id;
+    if (!userData?.organization_id) {
+      return NextResponse.json(
+        { error: "User not associated with an organization" },
+        { status: 400 }
+      );
     }
+
+    const organizationId = userData.organization_id;
 
     // Parse request body
     const body = await request.json();
@@ -197,48 +188,12 @@ export async function POST(request: NextRequest) {
     // Generate doc_id
     const doc_id = generateId("DOC");
 
-    // In demo mode, we don't actually save to the database
-    // Instead, return a mock success response
-    if (isDemoMode) {
-      const mockCutlist = {
-        id: generateId("CL"),
-        organization_id: organizationId,
-        user_id: userId,
-        doc_id,
-        name,
-        description,
-        job_ref,
-        client_ref,
-        status: "draft",
-        capabilities: capabilities ?? {
-          core_parts: true,
-          edging: true,
-          grooves: false,
-          cnc_holes: false,
-          cnc_routing: false,
-          custom_cnc: false,
-          advanced_grouping: false,
-          part_notes: true,
-        },
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      return NextResponse.json({
-        success: true,
-        cutlist: {
-          ...mockCutlist,
-          parts_count: parts?.length ?? 0,
-        },
-      }, { status: 201 });
-    }
-
     // Create cutlist
     const { data: cutlist, error: cutlistError } = await supabase
       .from("cutlists")
       .insert({
         organization_id: organizationId,
-        user_id: userId,
+        user_id: user.id,
         doc_id,
         name,
         description,
@@ -259,7 +214,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (cutlistError) {
-      logger.error("Failed to create cutlist", cutlistError, { userId: userId });
+      logger.error("Failed to create cutlist", cutlistError, { userId: user.id });
       return NextResponse.json(
         { error: "Failed to create cutlist" },
         { status: 500 }
@@ -268,7 +223,7 @@ export async function POST(request: NextRequest) {
     
     // Log audit event
     await logAuditFromRequest(request, {
-      userId: userId,
+      userId: user.id,
       organizationId: organizationId,
       action: AUDIT_ACTIONS.CUTLIST_CREATED,
       entityType: "cutlist",
@@ -279,7 +234,7 @@ export async function POST(request: NextRequest) {
     // Track usage
     trackUsage({
       organizationId: organizationId,
-      userId: userId,
+      userId: user.id,
       eventType: "cutlist_created",
     });
 
@@ -327,4 +282,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
-  FileSpreadsheet,
   FolderOpen,
   Settings,
   HelpCircle,
@@ -24,9 +23,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle, ThemeToggleCompact } from "@/components/ui/theme-toggle";
-import { useAuthStore, SUPER_ADMIN_USER, DEMO_USER } from "@/lib/auth/store";
+import { useAuthStore } from "@/lib/auth/store";
 import { ROLE_DISPLAY_NAMES } from "@/lib/auth/roles";
-import type { RoleType } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -92,7 +90,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAuthenticated, logout, setUser, isSuperAdmin, isOrgAdmin } = useAuthStore();
+  const { user, isAuthenticated, logout, isSuperAdmin } = useAuthStore();
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
@@ -102,12 +100,9 @@ export default function DashboardLayout({
     setMounted(true);
   }, []);
 
-  // In production (non-demo mode), redirect to login if not authenticated
-  // In demo mode, middleware allows all routes so we don't need this check
-  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-  
+  // Redirect to login if not authenticated
   React.useEffect(() => {
-    if (!mounted || isDemoMode) return;
+    if (!mounted) return;
     
     // Give persist middleware time to hydrate (500ms is safer)
     const timer = setTimeout(() => {
@@ -117,16 +112,7 @@ export default function DashboardLayout({
     }, 500);
     
     return () => clearTimeout(timer);
-  }, [mounted, isDemoMode, isAuthenticated, router, pathname]);
-
-  const handleSwitchUser = () => {
-    if (user?.isSuperAdmin) {
-      setUser(DEMO_USER);
-    } else {
-      setUser(SUPER_ADMIN_USER);
-    }
-    setIsUserMenuOpen(false);
-  };
+  }, [mounted, isAuthenticated, router, pathname]);
 
   const handleLogout = async () => {
     await logout();
@@ -248,15 +234,6 @@ export default function DashboardLayout({
                         <Settings className="h-4 w-4" />
                         Settings
                       </Link>
-                      <button
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--muted)] transition-colors text-left"
-                        onClick={handleSwitchUser}
-                      >
-                        <Shield className="h-4 w-4" />
-                        {user?.isSuperAdmin
-                          ? "Switch to Demo User"
-                          : "Switch to Super Admin"}
-                      </button>
                       <button
                         className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--muted)] transition-colors text-left text-red-600"
                         onClick={handleLogout}

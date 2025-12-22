@@ -41,7 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAuthStore, DEMO_USER } from "@/lib/auth/store";
+import { useAuthStore } from "@/lib/auth/store";
 import { useIntakeStore } from "@/lib/store";
 import { ROLE_DISPLAY_NAMES } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
@@ -147,10 +147,6 @@ export default function SettingsPage() {
     setIsSaving(false);
   };
 
-  const handleSwitchToDemo = () => {
-    setUser(DEMO_USER);
-  };
-
   const visibleSections = SETTINGS_SECTIONS.filter(
     (s) => !s.adminOnly || isOrgAdmin()
   );
@@ -167,11 +163,6 @@ export default function SettingsPage() {
                 Manage your account and preferences
               </p>
             </div>
-            {user?.isSuperAdmin && (
-              <Button variant="outline" onClick={handleSwitchToDemo}>
-                Switch to Demo User
-              </Button>
-            )}
           </div>
         </div>
       </header>

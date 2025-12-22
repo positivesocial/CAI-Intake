@@ -62,6 +62,7 @@ import {
   GROOVE_PURPOSE_LABELS,
   ROUTING_TYPE_LABELS,
 } from "@/lib/operations/types";
+import type { GrooveType, HoleType, CncOperationType } from "@/lib/schema";
 
 // ============================================================
 // HOLE PATTERNS TAB
@@ -1120,6 +1121,477 @@ function RoutingProfilesTab() {
 }
 
 // ============================================================
+// GROOVE TYPES TAB (Shortcodes)
+// ============================================================
+
+function GrooveTypesTab() {
+  const [types, setTypes] = useState<GrooveType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showDialog, setShowDialog] = useState(false);
+  const [editingType, setEditingType] = useState<GrooveType | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const [formData, setFormData] = useState({
+    code: "",
+    name: "",
+    default_width_mm: 4,
+    default_depth_mm: 8,
+    description: "",
+    is_active: true,
+  });
+
+  const fetchTypes = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/v1/groove-types?active=false");
+      if (!response.ok) throw new Error("Failed to fetch groove types");
+      const data = await response.json();
+      setTypes(data.types || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load types");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTypes();
+  }, []);
+
+  const handleCreate = () => {
+    setEditingType(null);
+    setFormData({ code: "", name: "", default_width_mm: 4, default_depth_mm: 8, description: "", is_active: true });
+    setShowDialog(true);
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const response = await fetch("/api/v1/groove-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to save");
+      }
+      setShowDialog(false);
+      fetchTypes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save type");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  }
+
+  if (error) {
+    return <div className="flex items-center justify-center py-12 text-destructive"><AlertCircle className="h-5 w-5 mr-2" />{error}</div>;
+  }
+
+  return (
+    <>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Define shortcodes for groove operations</p>
+          <Button onClick={handleCreate}><Plus className="h-4 w-4 mr-2" />Add Groove Type</Button>
+        </div>
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Code</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Width (mm)</TableHead>
+                <TableHead>Depth (mm)</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {types.length === 0 ? (
+                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No groove types defined</TableCell></TableRow>
+              ) : (
+                types.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell className="font-mono font-bold">{t.code}</TableCell>
+                    <TableCell>{t.name}</TableCell>
+                    <TableCell>{t.default_width_mm || "-"}</TableCell>
+                    <TableCell>{t.default_depth_mm || "-"}</TableCell>
+                    <TableCell><Badge variant={t.is_active ? "default" : "secondary"}>{t.is_active ? "Active" : "Inactive"}</Badge></TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Groove Type</DialogTitle>
+            <DialogDescription>Create a shortcode for groove operations</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Code (shortcode)</Label>
+                <Input value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})} placeholder="e.g., D, R, BP" />
+              </div>
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="e.g., Dado, Rabbet" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Default Width (mm)</Label>
+                <Input type="number" value={formData.default_width_mm} onChange={(e) => setFormData({...formData, default_width_mm: parseFloat(e.target.value) || 0})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Default Depth (mm)</Label>
+                <Input type="number" value={formData.default_depth_mm} onChange={(e) => setFormData({...formData, default_depth_mm: parseFloat(e.target.value) || 0})} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Optional description" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving || !formData.code || !formData.name}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ============================================================
+// HOLE TYPES TAB (Shortcodes)
+// ============================================================
+
+function HoleTypesTab() {
+  const [types, setTypes] = useState<HoleType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showDialog, setShowDialog] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [formData, setFormData] = useState({
+    code: "",
+    name: "",
+    diameter_mm: 5,
+    depth_mm: 12,
+    spacing_mm: 32,
+    description: "",
+    is_active: true,
+  });
+
+  const fetchTypes = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/v1/hole-types?active=false");
+      if (!response.ok) throw new Error("Failed to fetch hole types");
+      const data = await response.json();
+      setTypes(data.types || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load types");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTypes();
+  }, []);
+
+  const handleCreate = () => {
+    setFormData({ code: "", name: "", diameter_mm: 5, depth_mm: 12, spacing_mm: 32, description: "", is_active: true });
+    setShowDialog(true);
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const response = await fetch("/api/v1/hole-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to save");
+      }
+      setShowDialog(false);
+      fetchTypes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save type");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  }
+
+  if (error) {
+    return <div className="flex items-center justify-center py-12 text-destructive"><AlertCircle className="h-5 w-5 mr-2" />{error}</div>;
+  }
+
+  return (
+    <>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Define shortcodes for hole patterns</p>
+          <Button onClick={handleCreate}><Plus className="h-4 w-4 mr-2" />Add Hole Type</Button>
+        </div>
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Code</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Diameter (mm)</TableHead>
+                <TableHead>Depth (mm)</TableHead>
+                <TableHead>Spacing (mm)</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {types.length === 0 ? (
+                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No hole types defined</TableCell></TableRow>
+              ) : (
+                types.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell className="font-mono font-bold">{t.code}</TableCell>
+                    <TableCell>{t.name}</TableCell>
+                    <TableCell>{t.diameter_mm || "-"}</TableCell>
+                    <TableCell>{t.depth_mm || "-"}</TableCell>
+                    <TableCell>{t.spacing_mm || "-"}</TableCell>
+                    <TableCell><Badge variant={t.is_active ? "default" : "secondary"}>{t.is_active ? "Active" : "Inactive"}</Badge></TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Hole Type</DialogTitle>
+            <DialogDescription>Create a shortcode for hole patterns</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Code (shortcode)</Label>
+                <Input value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})} placeholder="e.g., S32, HG35" />
+              </div>
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="e.g., System 32" />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Diameter (mm)</Label>
+                <Input type="number" value={formData.diameter_mm} onChange={(e) => setFormData({...formData, diameter_mm: parseFloat(e.target.value) || 0})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Depth (mm)</Label>
+                <Input type="number" value={formData.depth_mm} onChange={(e) => setFormData({...formData, depth_mm: parseFloat(e.target.value) || 0})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Spacing (mm)</Label>
+                <Input type="number" value={formData.spacing_mm} onChange={(e) => setFormData({...formData, spacing_mm: parseFloat(e.target.value) || 0})} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Optional description" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving || !formData.code || !formData.name}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ============================================================
+// CNC TYPES TAB (Shortcodes)
+// ============================================================
+
+function CncTypesTab() {
+  const [types, setTypes] = useState<CncOperationType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showDialog, setShowDialog] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [formData, setFormData] = useState({
+    code: "",
+    name: "",
+    op_type: "custom" as const,
+    description: "",
+    is_active: true,
+  });
+
+  const fetchTypes = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/v1/cnc-types?active=false");
+      if (!response.ok) throw new Error("Failed to fetch CNC types");
+      const data = await response.json();
+      setTypes(data.types || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load types");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTypes();
+  }, []);
+
+  const handleCreate = () => {
+    setFormData({ code: "", name: "", op_type: "custom", description: "", is_active: true });
+    setShowDialog(true);
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const response = await fetch("/api/v1/cnc-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to save");
+      }
+      setShowDialog(false);
+      fetchTypes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save type");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  }
+
+  if (error) {
+    return <div className="flex items-center justify-center py-12 text-destructive"><AlertCircle className="h-5 w-5 mr-2" />{error}</div>;
+  }
+
+  return (
+    <>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Define shortcodes for CNC operations</p>
+          <Button onClick={handleCreate}><Plus className="h-4 w-4 mr-2" />Add CNC Type</Button>
+        </div>
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Code</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Operation Type</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {types.length === 0 ? (
+                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No CNC types defined</TableCell></TableRow>
+              ) : (
+                types.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell className="font-mono font-bold">{t.code}</TableCell>
+                    <TableCell>{t.name}</TableCell>
+                    <TableCell>{t.op_type || "-"}</TableCell>
+                    <TableCell className="text-muted-foreground">{t.description || "-"}</TableCell>
+                    <TableCell><Badge variant={t.is_active ? "default" : "secondary"}>{t.is_active ? "Active" : "Inactive"}</Badge></TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add CNC Type</DialogTitle>
+            <DialogDescription>Create a shortcode for CNC operations</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Code (shortcode)</Label>
+                <Input value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})} placeholder="e.g., HINGE, PKT" />
+              </div>
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="e.g., Hinge Bore" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Operation Type</Label>
+              <Select value={formData.op_type} onValueChange={(v) => setFormData({...formData, op_type: v as typeof formData.op_type})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pocket">Pocket</SelectItem>
+                  <SelectItem value="profile">Profile</SelectItem>
+                  <SelectItem value="drill">Drill</SelectItem>
+                  <SelectItem value="engrave">Engrave</SelectItem>
+                  <SelectItem value="cutout">Cutout</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Optional description" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving || !formData.code || !formData.name}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ============================================================
 // MAIN PAGE
 // ============================================================
 
@@ -1146,7 +1618,7 @@ export default function OperationsLibraryPage() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-grid">
           <TabsTrigger value="holes" className="gap-2">
             <CircleDot className="h-4 w-4" />
             <span className="hidden sm:inline">Hole Patterns</span>
@@ -1161,6 +1633,18 @@ export default function OperationsLibraryPage() {
             <Router className="h-4 w-4" />
             <span className="hidden sm:inline">Routing Profiles</span>
             <span className="sm:hidden">CNC</span>
+          </TabsTrigger>
+          <TabsTrigger value="groove-types" className="gap-2 border-l">
+            <span className="font-mono text-xs">GR:</span>
+            <span className="hidden sm:inline">Groove Codes</span>
+          </TabsTrigger>
+          <TabsTrigger value="hole-types" className="gap-2">
+            <span className="font-mono text-xs">H:</span>
+            <span className="hidden sm:inline">Hole Codes</span>
+          </TabsTrigger>
+          <TabsTrigger value="cnc-types" className="gap-2">
+            <span className="font-mono text-xs">CNC:</span>
+            <span className="hidden sm:inline">CNC Codes</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1211,6 +1695,57 @@ export default function OperationsLibraryPage() {
             </CardHeader>
             <CardContent>
               <RoutingProfilesTab />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="groove-types" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span className="font-mono text-amber-600 bg-amber-100 px-2 py-0.5 rounded">GR:</span>
+                Groove Type Shortcodes
+              </CardTitle>
+              <CardDescription>
+                Define quick shortcodes like D (Dado), R (Rabbet), BP (Back Panel) for fast data entry
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <GrooveTypesTab />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="hole-types" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span className="font-mono text-purple-600 bg-purple-100 px-2 py-0.5 rounded">H:</span>
+                Hole Type Shortcodes
+              </CardTitle>
+              <CardDescription>
+                Define quick shortcodes like S32 (System 32), HG35 (Hinge 35mm) for fast data entry
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <HoleTypesTab />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="cnc-types" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span className="font-mono text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded">CNC:</span>
+                CNC Operation Shortcodes
+              </CardTitle>
+              <CardDescription>
+                Define quick shortcodes like HINGE, PKT (Pocket), SINK for fast data entry
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CncTypesTab />
             </CardContent>
           </Card>
         </TabsContent>

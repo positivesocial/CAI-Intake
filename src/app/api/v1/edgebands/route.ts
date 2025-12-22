@@ -12,70 +12,6 @@ import { sanitizeLikePattern, SIZE_LIMITS } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
 
-// Demo mode mock edgebands
-const DEMO_EDGEBANDS = [
-  {
-    id: "demo-eb-1",
-    edgeband_id: "EB-WHITE-08",
-    name: "0.8mm White ABS",
-    thickness_mm: 0.8,
-    width_mm: 22,
-    material: "ABS",
-    color_code: "#FFFFFF",
-    waste_factor_pct: 1,
-    overhang_mm: 0,
-    supplier: "Demo Supplier",
-    sku: "WAB-08-22",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "demo-eb-2",
-    edgeband_id: "EB-WHITE-20",
-    name: "2mm White ABS",
-    thickness_mm: 2,
-    width_mm: 22,
-    material: "ABS",
-    color_code: "#FFFFFF",
-    waste_factor_pct: 1,
-    overhang_mm: 0,
-    supplier: "Demo Supplier",
-    sku: "WAB-20-22",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "demo-eb-3",
-    edgeband_id: "EB-OAK-08",
-    name: "0.8mm Natural Oak PVC",
-    thickness_mm: 0.8,
-    width_mm: 22,
-    material: "PVC",
-    color_code: "#DEB887",
-    waste_factor_pct: 1,
-    overhang_mm: 0,
-    supplier: "Demo Supplier",
-    sku: "OPV-08-22",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "demo-eb-4",
-    edgeband_id: "EB-BLACK-08",
-    name: "0.8mm Black ABS",
-    thickness_mm: 0.8,
-    width_mm: 22,
-    material: "ABS",
-    color_code: "#1A1A1A",
-    waste_factor_pct: 1,
-    overhang_mm: 0,
-    supplier: "Demo Supplier",
-    sku: "BAB-08-22",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
 // Create edgeband schema
 const CreateEdgebandSchema = z.object({
   edgeband_id: z.string().min(1, "Edgeband ID is required"),
@@ -96,42 +32,6 @@ const CreateEdgebandSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    // Check for demo mode
-    const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-    
-    if (isDemoMode) {
-      // Return demo edgebands
-      const searchParams = request.nextUrl.searchParams;
-      const search = searchParams.get("search")?.toLowerCase();
-      const thickness = searchParams.get("thickness");
-      const material = searchParams.get("material");
-      
-      let filteredEdgebands = [...DEMO_EDGEBANDS];
-      
-      if (search) {
-        filteredEdgebands = filteredEdgebands.filter(e => 
-          e.name.toLowerCase().includes(search) || 
-          e.edgeband_id.toLowerCase().includes(search)
-        );
-      }
-      if (thickness) {
-        filteredEdgebands = filteredEdgebands.filter(e => 
-          e.thickness_mm === parseFloat(thickness)
-        );
-      }
-      if (material) {
-        filteredEdgebands = filteredEdgebands.filter(e => 
-          e.material === material
-        );
-      }
-      
-      return NextResponse.json({
-        edgebands: filteredEdgebands,
-        count: filteredEdgebands.length,
-      });
-    }
-
-    // Production mode - use Supabase
     const user = await getUser();
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -14,6 +14,9 @@ export * from "./material";
 // Re-export everything from operations
 export * from "./operations";
 
+// Re-export operation types
+export * from "./operation-types";
+
 // Re-export everything from part
 export * from "./part";
 

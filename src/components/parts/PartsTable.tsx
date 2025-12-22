@@ -271,7 +271,7 @@ function formatCncDescription(ops: PartOps | undefined): string {
 // Column definitions with capability requirements
 type ColumnKey = 
   | "label" | "L" | "W" | "thickness_mm" | "qty" | "material_id" | "rotate" 
-  | "group_id" | "edging" | "grooves" | "holes" | "cnc" | "notes";
+  | "group_id" | "edging" | "grooves" | "holes" | "cnc" | "operations" | "notes";
 type SortField = "label" | "qty" | "L" | "W" | "material_id";
 
 // Capability keys that match CutlistCapabilities
@@ -298,16 +298,21 @@ const COLUMN_DEFS: Record<ColumnKey, ColumnDef> = {
   material_id: { header: "Material", sortable: "material_id", align: "left" },
   rotate: { header: "Rotate", align: "center" },
   group_id: { header: "Group", align: "left", advancedOnly: true, requiresCapability: "advanced_grouping" },
-  edging: { header: "Edging", align: "center", requiresCapability: "edging", colorClass: "text-blue-600" },
-  grooves: { header: "Grooves", align: "center", requiresCapability: "grooves", colorClass: "text-amber-600" },
-  holes: { header: "Holes", align: "center", requiresCapability: "cnc_holes", colorClass: "text-purple-600" },
-  cnc: { header: "CNC", align: "center", requiresCapability: ["cnc_routing", "custom_cnc"], colorClass: "text-emerald-600" },
+  // Individual operation columns (shown when advancedMode)
+  edging: { header: "Edging", align: "center", requiresCapability: "edging", colorClass: "text-blue-600", advancedOnly: true },
+  grooves: { header: "Grooves", align: "center", requiresCapability: "grooves", colorClass: "text-amber-600", advancedOnly: true },
+  holes: { header: "Holes", align: "center", requiresCapability: "cnc_holes", colorClass: "text-purple-600", advancedOnly: true },
+  cnc: { header: "CNC", align: "center", requiresCapability: ["cnc_routing", "custom_cnc"], colorClass: "text-emerald-600", advancedOnly: true },
+  // Combined operations column (compact shortcodes)
+  operations: { header: "Ops", align: "center", requiresCapability: ["edging", "grooves", "cnc_holes", "cnc_routing", "custom_cnc"], colorClass: "text-teal-600" },
   notes: { header: "Notes", align: "left", requiresCapability: "part_notes" },
 };
 
 const DEFAULT_COLUMN_ORDER: ColumnKey[] = [
   "label", "L", "W", "thickness_mm", "qty", "material_id", "rotate", 
-  "edging", "grooves", "holes", "cnc", "group_id", "notes"
+  "operations", // Combined ops column (used in compact mode)
+  "edging", "grooves", "holes", "cnc", // Individual ops columns (advanced mode)
+  "group_id", "notes"
 ];
 
 // Sortable header cell component
@@ -722,6 +727,41 @@ export function PartsTable() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        );
+      }
+      case "operations": {
+        // Combined operations column - show all shortcodes in one cell
+        const edgeCode = formatEdgingShortcode(part.ops);
+        const grooveCode = formatGroovesShortcode(part.ops?.grooves);
+        const holeCode = formatHolesShortcode(part.ops?.holes);
+        const cncCode = formatCncShortcode(part.ops);
+        
+        const hasOps = edgeCode !== "-" || grooveCode !== "-" || holeCode !== "-" || cncCode !== "-";
+        if (!hasOps) return <span className="text-[var(--muted-foreground)]">-</span>;
+        
+        return (
+          <div className="flex flex-wrap gap-0.5 justify-center">
+            {edgeCode !== "-" && (
+              <Badge className="bg-blue-100 text-blue-700 font-mono text-[10px] h-4 px-1">
+                {edgeCode}
+              </Badge>
+            )}
+            {grooveCode !== "-" && (
+              <Badge className="bg-amber-100 text-amber-700 font-mono text-[10px] h-4 px-1">
+                {grooveCode}
+              </Badge>
+            )}
+            {holeCode !== "-" && (
+              <Badge className="bg-purple-100 text-purple-700 font-mono text-[10px] h-4 px-1">
+                {holeCode}
+              </Badge>
+            )}
+            {cncCode !== "-" && (
+              <Badge className="bg-emerald-100 text-emerald-700 font-mono text-[10px] h-4 px-1">
+                {cncCode}
+              </Badge>
+            )}
+          </div>
         );
       }
       case "notes": {

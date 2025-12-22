@@ -232,14 +232,6 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Demo Mode Notice */}
-      {process.env.NEXT_PUBLIC_DEMO_MODE === "true" && (
-        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          <span className="text-sm">Demo mode: Showing sample data. Connect to production for real analytics.</span>
-        </div>
-      )}
-
       {/* Key Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>

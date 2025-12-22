@@ -13,7 +13,7 @@
 
 import { useEffect, useCallback, useRef } from "react";
 import { getClient } from "@/lib/supabase/client";
-import { useAuthStore, TEST_CREDENTIALS } from "@/lib/auth/store";
+import { useAuthStore } from "@/lib/auth/store";
 import type { SessionUser, UserPreferences, NotificationSettings } from "@/lib/auth/types";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 

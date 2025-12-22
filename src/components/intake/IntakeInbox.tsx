@@ -56,6 +56,7 @@ import { recordCorrection, detectCorrections } from "@/lib/learning";
 import type { CutPart } from "@/lib/schema";
 import { PartPreviewSvg, type SimplePartPreviewProps } from "@/components/parts/PartPreviewSvg";
 import { convertOpsToPreview, type PartPreviewData } from "@/lib/services";
+import { OperationsInput, type OperationsData } from "@/components/operations";
 
 // ============================================================
 // SHORTCODE FORMATTERS
@@ -168,6 +169,110 @@ function OpsShortcodeBadges({ ops }: { ops: PartOps | undefined }) {
         </Badge>
       )}
     </div>
+  );
+}
+
+/**
+ * Editable operations component that uses the OperationsInput
+ */
+function OpsShortcodeEditor({ 
+  ops, 
+  onUpdate 
+}: { 
+  ops: PartOps | undefined; 
+  onUpdate: (ops: PartOps) => void;
+}) {
+  // Convert PartOps to OperationsData format
+  const operationsData = React.useMemo((): OperationsData => {
+    const edges = ops?.edging?.edges || {};
+    const appliedEdges = Object.entries(edges)
+      .filter(([, v]) => v?.apply)
+      .reduce((acc, [k]) => ({ ...acc, [k]: true }), {} as Record<string, boolean>);
+    
+    const firstEdgebandId = Object.values(edges).find(e => e?.apply)?.edgeband_id;
+
+    return {
+      edgebanding: {
+        edgeband_id: firstEdgebandId,
+        sides: {
+          L1: appliedEdges.L1 || false,
+          L2: appliedEdges.L2 || false,
+          W1: appliedEdges.W1 || false,
+          W2: appliedEdges.W2 || false,
+        },
+      },
+      grooves: (ops?.grooves || []).map((g: GrooveOp) => ({
+        type_code: g.notes?.split(":")[1]?.trim() || "GRV",
+        width_mm: g.width_mm || 4,
+        depth_mm: g.depth_mm || 8,
+        side: g.side || "W1",
+      })),
+      holes: (ops?.holes || []).map((h: HoleOp) => ({
+        type_code: h.pattern_id || "S32",
+        face: (h.face === "front" ? "F" : "B") as "F" | "B",
+      })),
+      cnc: (ops?.custom_cnc_ops || []).map((c: CustomCncOp) => ({
+        type_code: (c.payload as { program_name?: string } | undefined)?.program_name || c.op_type || "CNC",
+      })),
+    };
+  }, [ops]);
+
+  // Convert OperationsData back to PartOps
+  const handleChange = (newData: OperationsData) => {
+    const hasEdging = Object.values(newData.edgebanding.sides).some(Boolean);
+    
+    const updatedOps: PartOps = {
+      // Preserve existing ops
+      ...ops,
+      // Update edging
+      ...(hasEdging ? {
+        edging: {
+          edges: {
+            ...(newData.edgebanding.sides.L1 && { L1: { apply: true, edgeband_id: newData.edgebanding.edgeband_id } }),
+            ...(newData.edgebanding.sides.L2 && { L2: { apply: true, edgeband_id: newData.edgebanding.edgeband_id } }),
+            ...(newData.edgebanding.sides.W1 && { W1: { apply: true, edgeband_id: newData.edgebanding.edgeband_id } }),
+            ...(newData.edgebanding.sides.W2 && { W2: { apply: true, edgeband_id: newData.edgebanding.edgeband_id } }),
+          },
+        },
+      } : { edging: undefined }),
+      // Update grooves
+      ...(newData.grooves.length > 0 ? {
+        grooves: newData.grooves.map((g, i) => ({
+          groove_id: `GRV-${i}`,
+          side: g.side as "L1" | "L2" | "W1" | "W2",
+          offset_mm: 10 + i * 32,
+          depth_mm: g.depth_mm,
+          width_mm: g.width_mm,
+          notes: `Type: ${g.type_code}`,
+        })),
+      } : { grooves: undefined }),
+      // Update holes
+      ...(newData.holes.length > 0 ? {
+        holes: newData.holes.map(h => ({
+          pattern_id: h.type_code,
+          face: (h.face === "F" ? "front" : "back") as "front" | "back",
+          notes: `Pattern: ${h.type_code}`,
+        })),
+      } : { holes: undefined }),
+      // Update CNC
+      ...(newData.cnc.length > 0 ? {
+        custom_cnc_ops: newData.cnc.map(c => ({
+          op_type: "program" as const,
+          payload: { program_name: c.type_code },
+          notes: `CNC: ${c.type_code}`,
+        })),
+      } : { custom_cnc_ops: undefined }),
+    };
+
+    onUpdate(updatedOps);
+  };
+
+  return (
+    <OperationsInput
+      value={operationsData}
+      onChange={handleChange}
+      compact={true}
+    />
   );
 }
 
@@ -546,9 +651,12 @@ function InboxPartRow({
         </Select>
       </td>
 
-      {/* Operations Shortcodes */}
-      <td className="px-2 py-2 min-w-[100px]">
-        <OpsShortcodeBadges ops={part.ops} />
+      {/* Operations Shortcodes - Editable */}
+      <td className="px-2 py-2 min-w-[160px]">
+        <OpsShortcodeEditor 
+          ops={part.ops} 
+          onUpdate={(updatedOps) => onUpdate({ ops: updatedOps })}
+        />
       </td>
 
       {/* Confidence */}

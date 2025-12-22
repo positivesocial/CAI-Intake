@@ -9,73 +9,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import type { GrooveProfileInput } from "@/lib/operations/types";
 
-// Demo data for development/testing - matches GrooveProfile type
-const DEMO_PROFILES = [
-  {
-    id: "demo-g1",
-    organization_id: "demo-org-id",
-    profile_id: "back-panel-dado",
-    name: "Back Panel Dado",
-    purpose: "back_panel",
-    description: "Standard dado for 3mm back panels",
-    width_mm: 4,
-    depth_mm: 8,
-    default_offset_mm: 10,
-    default_face: "back",
-    allow_stopped: false,
-    default_start_offset_mm: 0,
-    default_end_offset_mm: 0,
-    usage_count: 234,
-    is_active: true,
-    is_system: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "demo-g2",
-    organization_id: "demo-org-id",
-    profile_id: "drawer-bottom",
-    name: "Drawer Bottom Groove",
-    purpose: "drawer_bottom",
-    description: "Groove for 6mm drawer bottoms",
-    width_mm: 6.5,
-    depth_mm: 10,
-    default_offset_mm: 12,
-    default_face: "back",
-    allow_stopped: false,
-    default_start_offset_mm: 0,
-    default_end_offset_mm: 0,
-    usage_count: 178,
-    is_active: true,
-    is_system: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
 export async function GET(request: NextRequest) {
   try {
     const user = await getUser();
     
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // In demo mode, return mock data
-    const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-    if (isDemoMode) {
-      const { searchParams } = new URL(request.url);
-      const purpose = searchParams.get("purpose");
-      
-      let profiles = [...DEMO_PROFILES];
-      if (purpose) {
-        profiles = profiles.filter(p => p.purpose === purpose);
-      }
-      
-      return NextResponse.json({
-        profiles,
-        total: profiles.length,
-      });
     }
 
     const supabase = await createClient();

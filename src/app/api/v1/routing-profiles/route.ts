@@ -9,65 +9,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import type { RoutingProfileInput } from "@/lib/operations/types";
 
-// Demo data for development/testing - matches RoutingProfile type
-const DEMO_PROFILES = [
-  {
-    id: "demo-r1",
-    organization_id: "demo-org-id",
-    profile_id: "edge-round-3mm",
-    name: "Edge Round 3mm",
-    profile_type: "edge",
-    description: "3mm radius edge rounding",
-    specifications: { radius_mm: 3, depth_mm: 3 },
-    tool_dia_mm: 6,
-    feed_rate: 4000,
-    usage_count: 145,
-    is_active: true,
-    is_system: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "demo-r2",
-    organization_id: "demo-org-id",
-    profile_id: "handle-pocket-96mm",
-    name: "Handle Pocket 96mm",
-    profile_type: "pocket",
-    description: "Recessed pocket for 96mm handle",
-    specifications: { width_mm: 120, height_mm: 40, depth_mm: 18, corner_radius_mm: 3 },
-    tool_dia_mm: 8,
-    feed_rate: 3500,
-    usage_count: 89,
-    is_active: true,
-    is_system: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
 export async function GET(request: NextRequest) {
   try {
     const user = await getUser();
     
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // In demo mode, return mock data
-    const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-    if (isDemoMode) {
-      const { searchParams } = new URL(request.url);
-      const profileType = searchParams.get("type");
-      
-      let profiles = [...DEMO_PROFILES];
-      if (profileType) {
-        profiles = profiles.filter(p => p.profile_type === profileType);
-      }
-      
-      return NextResponse.json({
-        profiles,
-        total: profiles.length,
-      });
     }
 
     const supabase = await createClient();
