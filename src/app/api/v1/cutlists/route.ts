@@ -215,9 +215,18 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (cutlistError) {
-      logger.error("Failed to create cutlist", cutlistError, { userId: user.id });
+      logger.error("Failed to create cutlist", cutlistError, { 
+        userId: user.id,
+        organizationId,
+        errorCode: cutlistError.code,
+        errorMessage: cutlistError.message,
+        errorDetails: cutlistError.details,
+      });
       return NextResponse.json(
-        { error: "Failed to create cutlist" },
+        { 
+          error: "Failed to create cutlist",
+          details: process.env.NODE_ENV === "development" ? cutlistError.message : undefined,
+        },
         { status: 500 }
       );
     }

@@ -160,16 +160,17 @@ async function runMigrationViaRest() {
 }
 
 // Main
-console.log('📝 CAI Intake - Operations Tables Migration\n');
+console.log('📝 CAI Intake - Database Migration Helper\n');
 console.log(`🔗 Supabase URL: ${supabaseUrl}\n`);
 
 // Since we can't execute raw SQL via supabase-js client directly,
 // we'll output the SQL for manual execution
-console.log('⚠️  To run this migration, please:');
+console.log('⚠️  To run pending migrations, please:');
 console.log('1. Go to your Supabase dashboard');
 console.log('2. Navigate to SQL Editor');
-console.log('3. Copy and run the migration SQL from:');
-console.log(`   ${join(__dirname, '..', 'supabase', 'migrations', '20241226000000_fix_operations_tables.sql')}`);
+console.log('3. Copy and run the migration SQL from these files:');
+console.log(`   - ${join(__dirname, '..', 'supabase', 'migrations', '20241226000000_fix_operations_tables.sql')}`);
+console.log(`   - ${join(__dirname, '..', 'supabase', 'migrations', '20241226000001_fix_cutlists_table.sql')}`);
 console.log('');
 console.log('Or run via Supabase CLI:');
 console.log('   npx supabase db push');
