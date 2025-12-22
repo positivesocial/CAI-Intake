@@ -52,6 +52,8 @@ const ListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
   status: z.enum(["draft", "pending", "processing", "completed", "archived"]).optional(),
   search: z.string().optional(),
+  sort: z.string().optional(),
+  order: z.enum(["asc", "desc"]).optional().default("desc"),
 });
 
 export async function GET(request: NextRequest) {
@@ -84,6 +86,8 @@ export async function GET(request: NextRequest) {
       limit: searchParams.get("limit"),
       status: searchParams.get("status"),
       search: searchParams.get("search"),
+      sort: searchParams.get("sort"),
+      order: searchParams.get("order"),
     });
 
     if (!queryResult.success) {
@@ -93,15 +97,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { page, limit, status, search } = queryResult.data;
+    const { page, limit, status, search, sort, order } = queryResult.data;
     const offset = (page - 1) * limit;
+
+    // Map sort field to database column
+    const sortFieldMap: Record<string, string> = {
+      updatedAt: "updated_at",
+      createdAt: "created_at",
+      name: "name",
+      status: "status",
+    };
+    const sortColumn = sortFieldMap[sort || "createdAt"] || "created_at";
 
     // Build query
     let query = supabase
       .from("cutlists")
       .select("*, parts:cut_parts(count)", { count: "exact" })
       .eq("organization_id", userData.organization_id)
-      .order("created_at", { ascending: false })
+      .order(sortColumn, { ascending: order === "asc" })
       .range(offset, offset + limit - 1);
 
     // Apply filters
