@@ -78,20 +78,42 @@ Look for:
 - Edge references: L1 (long edge 1), L2 (long edge 2), W1 (short edge 1), W2 (short edge 2)
 - Material mentions: "0.8mm ABS", "2mm PVC", "matching edge"
 - Implicit context: "visible edges", "front and top edged"
+- Shorthand: "1E", "2E", "3E", "4E" (number of edges)
 
-## Grooving Detection
-Look for:
-- "4mm back groove", "dado", "rebate", "rabbet"
-- "back panel groove", "groove for back"
-- Groove dimensions: "6x10mm groove"
-- Position indicators: "10mm from edge"
+## Grooving Detection (IMPORTANT - Check notes/description column)
+Look for these patterns in ANY column, especially notes/description:
+- "GL" = Groove on Length (groove runs along the long edge)
+- "GW" = Groove on Width (groove runs along the short edge)
+- "grv", "groove", "GRV" = Generic groove indicator
+- "back groove", "back panel groove", "BPG"
+- "Light groove", "light grv" = Shallow groove
+- "dado", "rebate", "rabbet"
+- "4mm groove", "6x10mm groove" = Groove with dimensions
+- "x" or "X" in a dedicated groove column often means "has groove"
 
-## CNC Operations Detection
-Look for:
-- Hole patterns: "system 32", "shelf pin holes", "hinge cups"
-- Routing: "profile edge", "shaped", "routed"
-- Hardware prep: "cam locks", "minifix", "confirmat"
-- Counts: "8 holes", "2 hinge bores"
+When detected, set grooving.detected = true and describe in grooving.description.
+For GL/GW, also set grooving.profileHint to "length" or "width".
+
+## CNC Operations Detection (Check notes/description column)
+Look for these patterns in ANY column:
+- "vents", "vent holes", "ventilation" = CNC ventilation holes
+- "cnc", "CNC" = Generic CNC operations required
+- "holes", "drilling" = Drilling operations
+- "system 32", "shelf pin holes", "hinge cups", "hinge bore"
+- "routing", "profile edge", "shaped", "routed"
+- "cam locks", "minifix", "confirmat", "rafix"
+- Counts like "8 holes", "2 hinge bores", "4 shelf pins"
+
+When detected, set cncOperations.detected = true and include description.
+
+## Notes/Description Column Analysis (CRITICAL)
+The notes or description column may contain:
+- Operation shortcodes: "GL", "GW", "grv", "cnc", "vents"
+- Material overrides: "use oak", "ply", "MDF"
+- Special instructions: "cut first", "priority", "rush"
+- Hardware notes: "soft close", "blum", "hettich"
+
+ALWAYS extract this information into the appropriate metadata fields!
 
 Include any detected operations in the part's metadata fields.`;
 

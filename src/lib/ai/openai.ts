@@ -594,6 +594,57 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         };
       }
 
+      // Post-process notes for grooving, CNC, and other metadata
+      const allText = `${cleanLabel} ${aiPart.notes || ""}`.toLowerCase();
+      const extractedOps = this.extractOperationsFromText(allText, aiPart);
+      
+      // Merge extracted grooving operations as proper GrooveOp entries
+      if (extractedOps.grooving?.detected) {
+        cutPart.ops = cutPart.ops || {};
+        cutPart.ops.grooves = cutPart.ops.grooves || [];
+        
+        // Determine side based on profileHint
+        const side = extractedOps.grooving.profileHint === "width" ? "W1" : "L1";
+        
+        cutPart.ops.grooves.push({
+          side: side as "L1" | "L2" | "W1" | "W2",
+          offset_mm: 10, // Default offset
+          notes: extractedOps.grooving.description || "Groove detected from notes",
+        });
+      }
+      
+      // Merge extracted CNC operations as custom_cnc_ops
+      if (extractedOps.cnc?.detected) {
+        cutPart.ops = cutPart.ops || {};
+        cutPart.ops.custom_cnc_ops = cutPart.ops.custom_cnc_ops || [];
+        
+        // Add hole operations
+        if (extractedOps.cnc.holes && extractedOps.cnc.holes > 0) {
+          cutPart.ops.holes = cutPart.ops.holes || [];
+          cutPart.ops.holes.push({
+            notes: `${extractedOps.cnc.holes} holes - ${extractedOps.cnc.description || ""}`.trim(),
+          });
+        }
+        
+        // Add routing operations
+        if (extractedOps.cnc.routing) {
+          cutPart.ops.routing = cutPart.ops.routing || [];
+          cutPart.ops.routing.push({
+            region: { x: 0, y: 0, L: 100, W: 100 }, // Placeholder
+            notes: extractedOps.cnc.description || "Routing detected from notes",
+          });
+        }
+        
+        // Add generic CNC operations as custom
+        if (extractedOps.cnc.description && !extractedOps.cnc.holes && !extractedOps.cnc.routing) {
+          cutPart.ops.custom_cnc_ops.push({
+            op_type: "detected",
+            payload: { description: extractedOps.cnc.description },
+            notes: extractedOps.cnc.description,
+          });
+        }
+      }
+
       parts.push({
         part: cutPart,
         confidence: aiPart.confidence || 0.8,
@@ -694,6 +745,136 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
     }
     
     return [];
+  }
+
+  /**
+   * Extract grooving, CNC, and other operations from notes/description text
+   * Recognizes common shorthand notations used in cutlists
+   */
+  private extractOperationsFromText(
+    text: string,
+    aiPart: AIPartResponse
+  ): {
+    grooving?: { detected: boolean; description?: string; profileHint?: string };
+    cnc?: { detected: boolean; description?: string; holes?: number; routing?: boolean };
+  } {
+    const result: {
+      grooving?: { detected: boolean; description?: string; profileHint?: string };
+      cnc?: { detected: boolean; description?: string; holes?: number; routing?: boolean };
+    } = {};
+
+    const lower = text.toLowerCase();
+
+    // =========================================================================
+    // GROOVING DETECTION
+    // =========================================================================
+    
+    // GL = Groove on Length
+    if (/\bgl\b/.test(lower) || /groove.*length/i.test(lower) || /length.*groove/i.test(lower)) {
+      result.grooving = {
+        detected: true,
+        description: "Groove on length edge",
+        profileHint: "length",
+      };
+    }
+    // GW = Groove on Width  
+    else if (/\bgw\b/.test(lower) || /groove.*width/i.test(lower) || /width.*groove/i.test(lower)) {
+      result.grooving = {
+        detected: true,
+        description: "Groove on width edge",
+        profileHint: "width",
+      };
+    }
+    // Generic groove detection
+    else if (/\b(grv|groove|dado|rebate|rabbet|bpg)\b/.test(lower)) {
+      result.grooving = {
+        detected: true,
+        description: text.match(/\b(grv|groove|dado|rebate|rabbet|back.*groove|bpg)[^,.]*/i)?.[0]?.trim() || "Groove",
+      };
+    }
+    // "Light groove" specific
+    else if (/light\s*(grv|groove)/i.test(lower)) {
+      result.grooving = {
+        detected: true,
+        description: "Light groove (shallow)",
+      };
+    }
+    // Back panel groove
+    else if (/back\s*(panel)?\s*(grv|groove)/i.test(lower)) {
+      result.grooving = {
+        detected: true,
+        description: "Back panel groove",
+      };
+    }
+
+    // Merge with AI-detected grooving
+    if (aiPart.grooving?.detected && !result.grooving) {
+      result.grooving = {
+        detected: true,
+        description: aiPart.grooving.description || "Grooving detected",
+        profileHint: aiPart.grooving.profileHint,
+      };
+    }
+
+    // =========================================================================
+    // CNC OPERATIONS DETECTION
+    // =========================================================================
+    
+    let cncDescription = "";
+    let cncHoles = 0;
+    let cncRouting = false;
+
+    // Ventilation holes
+    if (/\b(vents?|ventilation)\b/.test(lower)) {
+      cncDescription += "Ventilation holes. ";
+    }
+
+    // Generic CNC
+    if (/\bcnc\b/.test(lower)) {
+      cncDescription += "CNC operations required. ";
+    }
+
+    // Hole patterns
+    if (/\b(system\s*32|shelf\s*pin|hinge\s*(cup|bore)|drilling|holes?)\b/.test(lower)) {
+      const holeMatch = lower.match(/(\d+)\s*(holes?|bores?)/);
+      if (holeMatch) {
+        cncHoles = parseInt(holeMatch[1], 10);
+      }
+      cncDescription += text.match(/\b(system\s*32|shelf\s*pins?|hinge\s*(cups?|bores?)|drilling|\d+\s*holes?)[^,.]*/i)?.[0]?.trim() || "Holes";
+      cncDescription += ". ";
+    }
+
+    // Hardware prep
+    if (/\b(cam\s*lock|minifix|confirmat|rafix|dowel)\b/.test(lower)) {
+      cncDescription += text.match(/\b(cam\s*locks?|minifix|confirmat|rafix|dowels?)[^,.]*/i)?.[0]?.trim() || "Hardware prep";
+      cncDescription += ". ";
+    }
+
+    // Routing/profiling
+    if (/\b(rout(ing|ed)?|profile|shaped?)\b/.test(lower)) {
+      cncRouting = true;
+      cncDescription += "Routing/profiling. ";
+    }
+
+    // Merge with AI-detected CNC
+    if (aiPart.cncOperations?.detected) {
+      if (aiPart.cncOperations.holes) cncHoles = Math.max(cncHoles, aiPart.cncOperations.holes);
+      if (aiPart.cncOperations.routing) cncRouting = true;
+      if (aiPart.cncOperations.description && !cncDescription.includes(aiPart.cncOperations.description)) {
+        cncDescription += aiPart.cncOperations.description + ". ";
+      }
+    }
+
+    if (cncDescription || cncHoles > 0 || cncRouting) {
+      result.cnc = {
+        detected: true,
+        description: cncDescription.trim() || undefined,
+        holes: cncHoles > 0 ? cncHoles : undefined,
+        routing: cncRouting || undefined,
+      };
+    }
+
+    return result;
   }
 }
 
