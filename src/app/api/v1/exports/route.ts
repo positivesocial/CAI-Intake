@@ -6,10 +6,10 @@
  * Supports all major panel optimization software formats:
  * - JSON (CAI canonical)
  * - CSV (Generic/customizable)
- * - CutList Plus
- * - MaxCut (.mcp)
+ * - CutList Plus (CSV)
+ * - MaxCut (CSV)
  * - CutRite (.xml)
- * - Optimik
+ * - Optimik (CSV)
  * - CAI 2D
  */
 
@@ -196,9 +196,10 @@ export async function POST(request: NextRequest) {
         exportData = generateMaxcutExport(cutlist, {
           units: exportOptions.units,
           includeGrain: exportOptions.includeGrain,
+          includeEdgebanding: exportOptions.includeEdging,
         });
         contentType = EXPORT_FORMATS.maxcut.mimeType;
-        filename = `${safeName}.mcp`;
+        filename = `${safeName}_maxcut.csv`;
         break;
 
       case "cutlistplus":
@@ -206,6 +207,7 @@ export async function POST(request: NextRequest) {
           units: exportOptions.units,
           includeGrain: exportOptions.includeGrain,
           includeNotes: exportOptions.includeNotes,
+          includeEdgebanding: exportOptions.includeEdging,
         });
         contentType = EXPORT_FORMATS.cutlistplus.mimeType;
         filename = `${safeName}_cutlistplus.csv`;

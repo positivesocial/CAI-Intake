@@ -89,18 +89,18 @@ export default function HomePage() {
               </Link>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <Link
                 href="/login"
-                className="text-white/80 hover:text-white transition-colors font-medium hidden sm:block"
+                className="text-white/80 hover:text-white transition-colors font-medium text-sm sm:text-base"
               >
                 Sign In
               </Link>
               <Link
                 href="/signup"
-                className="px-5 py-2.5 rounded-lg bg-[#00d4aa] text-[#0a1628] font-semibold hover:bg-[#00e6b8] transition-all shadow-lg shadow-[#00d4aa]/20"
+                className="px-3 py-2 sm:px-5 sm:py-2.5 rounded-lg bg-[#00d4aa] text-[#0a1628] font-semibold hover:bg-[#00e6b8] transition-all shadow-lg shadow-[#00d4aa]/20 text-sm sm:text-base"
               >
-                Get Started Free
+                Get Started
               </Link>
             </div>
           </div>

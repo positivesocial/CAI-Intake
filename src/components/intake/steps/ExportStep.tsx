@@ -277,35 +277,35 @@ export function ExportStep() {
   };
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto">
+    <div className="space-y-6 sm:space-y-8 max-w-4xl mx-auto px-1">
       {/* Final Summary */}
-      <section className="space-y-4">
-        <h2 className="text-2xl font-bold text-[var(--foreground)]">
+      <section className="space-y-3 sm:space-y-4">
+        <h2 className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
           Export Your Cutlist
         </h2>
-        <p className="text-[var(--muted-foreground)]">
+        <p className="text-sm sm:text-base text-[var(--muted-foreground)]">
           Review your cutlist summary and choose an export format
         </p>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
           <SummaryCard
-            icon={<Package className="h-5 w-5" />}
+            icon={<Package className="h-4 w-4 sm:h-5 sm:w-5" />}
             label="Parts"
             value={totalParts}
           />
           <SummaryCard
-            icon={<Layers className="h-5 w-5" />}
+            icon={<Layers className="h-4 w-4 sm:h-5 sm:w-5" />}
             label="Pieces"
             value={totalPieces}
           />
           <SummaryCard
-            icon={<Ruler className="h-5 w-5" />}
+            icon={<Ruler className="h-4 w-4 sm:h-5 sm:w-5" />}
             label="Materials"
             value={materialsCount}
           />
           <SummaryCard
-            icon={<Activity className="h-5 w-5" />}
+            icon={<Activity className="h-4 w-4 sm:h-5 sm:w-5" />}
             label="Area"
             value={`${totalArea.toFixed(2)} m²`}
           />
@@ -313,28 +313,29 @@ export function ExportStep() {
       </section>
 
       {/* Save to Database Section */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
+      <section className="space-y-3 sm:space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h3 className="text-lg font-semibold">Save Cutlist</h3>
-            <p className="text-sm text-[var(--muted-foreground)]">
+            <h3 className="text-base sm:text-lg font-semibold">Save Cutlist</h3>
+            <p className="text-xs sm:text-sm text-[var(--muted-foreground)]">
               Save to your organization&apos;s database for later access
             </p>
           </div>
           {lastSavedAt && (
-            <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
-              <Cloud className="h-4 w-4 text-green-500" />
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-[var(--muted-foreground)]">
+              <Cloud className="h-3 w-3 sm:h-4 sm:w-4 text-green-500" />
               <span>Last saved: {new Date(lastSavedAt).toLocaleTimeString()}</span>
             </div>
           )}
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <Button
             onClick={handleSave}
             disabled={totalParts === 0 || isSaving}
             className="flex-1"
             variant="primary"
+            size="sm"
           >
             {isSaving ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -347,6 +348,7 @@ export function ExportStep() {
             onClick={handleSaveDraft}
             disabled={isSaving}
             variant="outline"
+            size="sm"
           >
             {isSaving ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />

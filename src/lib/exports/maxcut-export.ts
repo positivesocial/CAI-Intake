@@ -1,8 +1,18 @@
 /**
  * CAI Intake - MaxCut Export
  * 
- * Exports cutlists to MaxCut format (.mcp).
- * MaxCut is a popular panel cutting optimization software.
+ * Exports cutlists to MaxCut-compatible CSV format.
+ * MaxCut can import CSV files with specific column headers.
+ * 
+ * MaxCut CSV Import Format:
+ * - Part Name: Name/label of the part
+ * - Length: Length dimension
+ * - Width: Width dimension  
+ * - Quantity: Number of pieces
+ * - Material: Material name or code
+ * - Grain: L (along length), W (along width), or empty (no grain)
+ * - Thickness: Panel thickness
+ * - Edge1-Edge4: Edgeband codes for each edge (L1, L2, W1, W2)
  */
 
 import type { ExportableCutlist, UnitSystem } from "./types";
@@ -13,80 +23,92 @@ export interface MaxcutExportOptions {
   units?: UnitSystem;
   /** Include grain direction */
   includeGrain?: boolean;
-  /** Default sheet size if not specified */
-  defaultSheetSize?: { L: number; W: number };
+  /** Include edgebanding columns */
+  includeEdgebanding?: boolean;
+  /** Delimiter (comma or semicolon) */
+  delimiter?: "," | ";";
 }
 
 const DEFAULT_OPTIONS: MaxcutExportOptions = {
   units: "mm",
   includeGrain: true,
-  defaultSheetSize: { L: 2800, W: 2070 },
+  includeEdgebanding: true,
+  delimiter: ",",
 };
+
+function escapeCell(value: string, delimiter: string): string {
+  if (value.includes(delimiter) || value.includes("\n") || value.includes('"')) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function getEdgebandCode(ops: unknown, edge: "L1" | "L2" | "W1" | "W2"): string {
+  if (!ops || typeof ops !== "object") return "";
+  const opsObj = ops as { edgebanding?: Record<string, string> };
+  return opsObj.edgebanding?.[edge] || "";
+}
 
 export function generateMaxcutExport(
   cutlist: ExportableCutlist,
   options: MaxcutExportOptions = {}
 ): string {
   const opts = { ...DEFAULT_OPTIONS, ...options };
+  const delimiter = opts.delimiter!;
   const targetUnit = opts.units!;
   
   const lines: string[] = [];
   
-  // MaxCut file header
-  lines.push("[MaxCut]");
-  lines.push(`Version=5`);
-  lines.push(`Project=${cutlist.name}`);
-  lines.push(`Date=${new Date().toISOString().split("T")[0]}`);
-  lines.push("");
+  // MaxCut CSV header row
+  const headers = [
+    "Part Name",
+    "Length",
+    "Width",
+    "Quantity",
+    "Material",
+    "Thickness",
+    ...(opts.includeGrain ? ["Grain"] : []),
+    ...(opts.includeEdgebanding ? ["Edge L1", "Edge L2", "Edge W1", "Edge W2"] : []),
+  ];
   
-  // Group parts by material
-  const partsByMaterial = new Map<string, typeof cutlist.parts>();
+  lines.push(headers.join(delimiter));
+  
+  // Data rows
   for (const part of cutlist.parts) {
-    const existing = partsByMaterial.get(part.material_id) ?? [];
-    existing.push(part);
-    partsByMaterial.set(part.material_id, existing);
-  }
-  
-  // Export each material group
-  let stockIndex = 1;
-  for (const [materialId, parts] of partsByMaterial) {
-    const material = cutlist.materials?.find(m => m.material_id === materialId);
+    // Get material name if available
+    const material = cutlist.materials?.find(m => m.material_id === part.material_id);
+    const materialName = material?.name ?? part.material_id;
     
-    // Stock definition
-    lines.push(`[Stock${stockIndex}]`);
-    lines.push(`Name=${material?.name ?? materialId}`);
-    lines.push(`Length=${convertUnit(opts.defaultSheetSize!.L, "mm", targetUnit)}`);
-    lines.push(`Width=${convertUnit(opts.defaultSheetSize!.W, "mm", targetUnit)}`);
-    lines.push(`Thickness=${convertUnit(parts[0].thickness_mm, "mm", targetUnit)}`);
-    lines.push(`Quantity=999`);
-    lines.push("");
+    // Grain direction: L, W, or empty
+    const grainCode = part.grain === "along_L" ? "L" : part.grain === "along_W" ? "W" : "";
     
-    // Parts for this material
-    lines.push(`[Parts${stockIndex}]`);
-    lines.push(`Count=${parts.length}`);
+    // Dimensions
+    const length = convertUnit(part.size.L, "mm", targetUnit);
+    const width = convertUnit(part.size.W, "mm", targetUnit);
+    const thickness = convertUnit(part.thickness_mm, "mm", targetUnit);
     
-    for (let i = 0; i < parts.length; i++) {
-      const p = parts[i];
-      const grain = opts.includeGrain
-        ? (p.grain === "along_L" ? ",GL" : p.grain === "along_W" ? ",GW" : "")
-        : "";
-      
-      lines.push(
-        `Part${i + 1}=${p.label ?? p.part_id},` +
-        `${convertUnit(p.size.L, "mm", targetUnit)},` +
-        `${convertUnit(p.size.W, "mm", targetUnit)},` +
-        `${p.qty}` +
-        grain
-      );
-    }
+    // Format based on unit system
+    const formatDim = (val: number) => 
+      targetUnit === "mm" ? Math.round(val).toString() : val.toFixed(2);
     
-    lines.push("");
-    stockIndex++;
+    const cells = [
+      escapeCell(part.label ?? part.part_id, delimiter),
+      formatDim(length),
+      formatDim(width),
+      part.qty.toString(),
+      escapeCell(materialName, delimiter),
+      formatDim(thickness),
+      ...(opts.includeGrain ? [grainCode] : []),
+      ...(opts.includeEdgebanding ? [
+        getEdgebandCode(part.ops, "L1"),
+        getEdgebandCode(part.ops, "L2"),
+        getEdgebandCode(part.ops, "W1"),
+        getEdgebandCode(part.ops, "W2"),
+      ] : []),
+    ];
+    
+    lines.push(cells.join(delimiter));
   }
   
   return lines.join("\n");
 }
-
-
-
-

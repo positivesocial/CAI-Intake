@@ -278,11 +278,11 @@ export async function DELETE(
       .eq("organization_id", userData.organization_id)
       .single();
 
-    // Check if material is in use (parts table references material_id)
+    // Check if material is in use (parts table references material_ref)
     const { count } = await supabase
       .from("cut_parts")
       .select("*", { count: "exact", head: true })
-      .eq("material_id", existing?.material_id || "");
+      .eq("material_ref", existing?.material_id || "");
 
     if (count && count > 0) {
       return NextResponse.json(

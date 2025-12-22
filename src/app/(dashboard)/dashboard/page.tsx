@@ -241,11 +241,11 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-[var(--background)]">
       {/* Header */}
       <header className="border-b border-[var(--border)] bg-[var(--card)]">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
+        <div className="container mx-auto px-4 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <h1 className="text-xl sm:text-2xl font-bold">
                   Welcome back, {user?.name?.split(" ")[0] || "User"}
                 </h1>
                 {showOrgAdmin && (
@@ -255,26 +255,26 @@ export default function DashboardPage() {
                   </Badge>
                 )}
               </div>
-              <p className="text-[var(--muted-foreground)]">
+              <p className="text-sm sm:text-base text-[var(--muted-foreground)]">
                 {showOrgAdmin 
                   ? `${user?.organization?.name || "Your Organization"} Dashboard`
                   : "Here's what's happening with your cutlists"
                 }
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {showOrgAdmin && (
                 <Link href="/settings/team">
-                  <Button variant="outline">
-                    <Users className="h-4 w-4 mr-2" />
-                    Manage Team
+                  <Button variant="outline" size="sm" className="sm:size-default">
+                    <Users className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Manage Team</span>
                   </Button>
                 </Link>
               )}
               <Link href="/intake">
-                <Button variant="primary" size="lg">
-                  <Plus className="h-5 w-5" />
-                  New Cutlist
+                <Button variant="primary" size="sm" className="sm:size-lg">
+                  <Plus className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-1" />
+                  <span className="hidden xs:inline">New Cutlist</span>
                 </Button>
               </Link>
             </div>
@@ -285,34 +285,34 @@ export default function DashboardPage() {
       <main className="container mx-auto px-4 py-6">
         {/* Org Admin Banner */}
         {showOrgAdmin && (
-          <Card className="mb-6 bg-gradient-to-r from-[var(--cai-navy)] to-[var(--cai-navy)]/80 text-white">
-            <CardContent className="py-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-xl bg-[var(--cai-teal)] flex items-center justify-center">
-                    <Building2 className="h-8 w-8 text-[var(--cai-navy)]" />
+          <Card className="mb-6 bg-gradient-to-r from-[var(--cai-navy)] to-[var(--cai-navy)]/80 text-white overflow-hidden">
+            <CardContent className="py-4 sm:py-6">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl bg-[var(--cai-teal)] flex items-center justify-center flex-shrink-0">
+                    <Building2 className="h-5 w-5 sm:h-8 sm:w-8 text-[var(--cai-navy)]" />
                   </div>
-                  <div>
-                    <h2 className="text-xl font-bold">{user?.organization?.name}</h2>
-                    <p className="text-white/70">
+                  <div className="min-w-0">
+                    <h2 className="text-lg sm:text-xl font-bold truncate">{user?.organization?.name}</h2>
+                    <p className="text-white/70 text-sm">
                       {orgStats.totalMembers} team members • {orgStats.activeToday || "0"} active today
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-6">
+                <div className="grid grid-cols-3 gap-2 sm:gap-6">
                   <div className="text-center">
-                    <p className="text-3xl font-bold">{orgStats.totalCutlists}</p>
-                    <p className="text-white/70 text-sm">Total Cutlists</p>
+                    <p className="text-xl sm:text-3xl font-bold">{orgStats.totalCutlists}</p>
+                    <p className="text-white/70 text-xs sm:text-sm">Total Cutlists</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-3xl font-bold">{orgStats.totalParts.toLocaleString()}</p>
-                    <p className="text-white/70 text-sm">Parts Processed</p>
+                    <p className="text-xl sm:text-3xl font-bold">{orgStats.totalParts.toLocaleString()}</p>
+                    <p className="text-white/70 text-xs sm:text-sm">Parts Processed</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-3xl font-bold text-[var(--cai-teal)]">
+                    <p className="text-xl sm:text-3xl font-bold text-[var(--cai-teal)]">
                       {orgStats.monthlyGrowth >= 0 ? "+" : ""}{orgStats.monthlyGrowth.toFixed(1)}%
                     </p>
-                    <p className="text-white/70 text-sm">This Month</p>
+                    <p className="text-white/70 text-xs sm:text-sm">This Month</p>
                   </div>
                 </div>
               </div>
@@ -322,90 +322,92 @@ export default function DashboardPage() {
 
         {/* Stats Grid */}
         <div className={cn(
-          "grid gap-4 mb-8",
-          showOrgAdmin ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-5" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
+          "grid gap-3 sm:gap-4 mb-6 sm:mb-8",
+          showOrgAdmin 
+            ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" 
+            : "grid-cols-2 lg:grid-cols-4"
         )}>
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="p-4 sm:pt-6 sm:px-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-[var(--muted-foreground)]">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-[var(--muted-foreground)] truncate">
                     {showOrgAdmin ? "Team Cutlists" : "Cutlists"} This Week
                   </p>
-                  <p className="text-3xl font-bold">
+                  <p className="text-2xl sm:text-3xl font-bold">
                     {userStats.cutlistsThisWeek}
                   </p>
                 </div>
-                <div className="w-12 h-12 rounded-full bg-[var(--cai-teal)]/20 flex items-center justify-center">
-                  <FileSpreadsheet className="h-6 w-6 text-[var(--cai-teal)]" />
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[var(--cai-teal)]/20 flex items-center justify-center flex-shrink-0">
+                  <FileSpreadsheet className="h-5 w-5 sm:h-6 sm:w-6 text-[var(--cai-teal)]" />
                 </div>
               </div>
-              <div className="mt-2 flex items-center text-sm text-[var(--muted-foreground)]">
-                <Calendar className="h-4 w-4 mr-1" />
+              <div className="mt-2 flex items-center text-xs sm:text-sm text-[var(--muted-foreground)]">
+                <Calendar className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                 {userStats.cutlistsThisMonth} this month
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="p-4 sm:pt-6 sm:px-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-[var(--muted-foreground)]">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-[var(--muted-foreground)]">
                     Parts Processed
                   </p>
-                  <p className="text-3xl font-bold">
+                  <p className="text-2xl sm:text-3xl font-bold">
                     {userStats.partsProcessed.toLocaleString()}
                   </p>
                 </div>
-                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Layers className="h-6 w-6 text-blue-600" />
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                  <Layers className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
                 </div>
               </div>
-              <div className="mt-2 flex items-center text-sm text-[var(--muted-foreground)]">
-                <Clock className="h-4 w-4 mr-1" />
+              <div className="mt-2 flex items-center text-xs sm:text-sm text-[var(--muted-foreground)]">
+                <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                 {userStats.activeJobs} jobs in progress
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="p-4 sm:pt-6 sm:px-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-[var(--muted-foreground)]">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-[var(--muted-foreground)]">
                     Parse Accuracy
                   </p>
-                  <p className="text-3xl font-bold">
+                  <p className="text-2xl sm:text-3xl font-bold">
                     {userStats.averageConfidence.toFixed(1)}%
                   </p>
                 </div>
-                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                  <CheckCircle className="h-6 w-6 text-green-600" />
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
                 </div>
               </div>
               <Progress
                 value={userStats.averageConfidence}
                 variant="success"
-                className="mt-3"
+                className="mt-2 sm:mt-3"
               />
             </CardContent>
           </Card>
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="p-4 sm:pt-6 sm:px-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-[var(--muted-foreground)]">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-[var(--muted-foreground)]">
                     Active Jobs
                   </p>
-                  <p className="text-3xl font-bold">{userStats.activeJobs}</p>
+                  <p className="text-2xl sm:text-3xl font-bold">{userStats.activeJobs}</p>
                 </div>
-                <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                  <Zap className="h-6 w-6 text-purple-600" />
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
+                  <Zap className="h-5 w-5 sm:h-6 sm:w-6 text-purple-600" />
                 </div>
               </div>
-              <div className="mt-2 text-sm text-[var(--muted-foreground)]">
+              <div className="mt-2 text-xs sm:text-sm text-[var(--muted-foreground)]">
                 Processing & pending
               </div>
             </CardContent>
@@ -413,22 +415,22 @@ export default function DashboardPage() {
 
           {/* Org Admin Extra Stat */}
           {showOrgAdmin && (
-            <Card>
-              <CardContent className="pt-6">
+            <Card className="col-span-2 sm:col-span-1">
+              <CardContent className="p-4 sm:pt-6 sm:px-6">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-[var(--muted-foreground)]">
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-[var(--muted-foreground)]">
                       Team Members
                     </p>
-                    <p className="text-3xl font-bold">{orgStats.totalMembers}</p>
+                    <p className="text-2xl sm:text-3xl font-bold">{orgStats.totalMembers}</p>
                   </div>
-                  <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
-                    <Users className="h-6 w-6 text-amber-600" />
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                    <Users className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600" />
                   </div>
                 </div>
                 {(orgStats.pendingInvites || 0) > 0 && (
-                  <div className="mt-2 flex items-center text-sm text-amber-600">
-                    <Mail className="h-4 w-4 mr-1" />
+                  <div className="mt-2 flex items-center text-xs sm:text-sm text-amber-600">
+                    <Mail className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                     {orgStats.pendingInvites} pending invites
                   </div>
                 )}

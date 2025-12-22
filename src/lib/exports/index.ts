@@ -81,9 +81,9 @@ export const EXPORT_FORMATS = {
   maxcut: {
     id: "maxcut",
     name: "MaxCut",
-    description: "MaxCut panel optimizer format",
-    extension: ".mcp",
-    mimeType: "text/plain",
+    description: "MaxCut panel optimizer CSV format",
+    extension: ".csv",
+    mimeType: "text/csv",
   },
   cutrite: {
     id: "cutrite",

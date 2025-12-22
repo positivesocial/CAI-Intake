@@ -199,6 +199,7 @@ export async function POST(request: NextRequest) {
         description,
         job_ref,
         client_ref,
+        source_method: "web", // Required field
         capabilities: capabilities ?? {
           core_parts: true,
           edging: true,
@@ -251,7 +252,7 @@ export async function POST(request: NextRequest) {
             size_l: p.size.L,
             size_w: p.size.W,
             thickness_mm: p.thickness_mm,
-            material_id: p.material_id,
+            material_ref: p.material_id, // DB column is material_ref
             grain: p.grain ?? "none",
             allow_rotation: p.allow_rotation ?? true,
             group_id: p.group_id,

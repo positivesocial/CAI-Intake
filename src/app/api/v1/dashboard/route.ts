@@ -2,6 +2,8 @@
  * CAI Intake - Dashboard API
  * 
  * GET /api/v1/dashboard - Get dashboard statistics
+ * 
+ * Optimized with parallel queries for faster response times.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -127,43 +129,103 @@ export async function GET(request: NextRequest) {
 
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-    // User stats
-    const userCutlistsThisWeek = await prisma.cutlist.count({
-      where: {
-        userId: user.id,
-        createdAt: { gte: startOfWeek },
-      },
-    });
+    // =========================================================================
+    // PARALLEL QUERIES - Core user stats
+    // =========================================================================
+    const [
+      userCutlistsThisWeek,
+      userCutlistsThisMonth,
+      userPartsCount,
+      activeJobs,
+      parseJobsRecent,
+      recentCutlists,
+      recentParseJobs,
+      recentOptimizeJobs,
+    ] = await Promise.all([
+      // User cutlists this week
+      prisma.cutlist.count({
+        where: {
+          userId: user.id,
+          createdAt: { gte: startOfWeek },
+        },
+      }),
+      // User cutlists this month
+      prisma.cutlist.count({
+        where: {
+          userId: user.id,
+          createdAt: { gte: startOfMonth },
+        },
+      }),
+      // User parts count
+      prisma.cutPart.count({
+        where: {
+          cutlist: { userId: user.id },
+        },
+      }),
+      // Active jobs
+      prisma.optimizeJob.count({
+        where: {
+          cutlist: { userId: user.id },
+          status: { in: ["pending", "processing"] },
+        },
+      }),
+      // Parse jobs for confidence calculation
+      prisma.parseJob.findMany({
+        where: { userId: user.id },
+        select: { summary: true },
+        take: 100,
+        orderBy: { createdAt: "desc" },
+      }),
+      // Recent cutlists
+      prisma.cutlist.findMany({
+        where: dbUser?.organizationId 
+          ? { organizationId: dbUser.organizationId }
+          : { userId: user.id },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          createdAt: true,
+          user: { select: { name: true } },
+          _count: { select: { parts: true } },
+        },
+      }),
+      // Recent parse jobs
+      prisma.parseJob.findMany({
+        where: dbUser?.organizationId 
+          ? { organizationId: dbUser.organizationId }
+          : { userId: user.id },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          status: true,
+          sourceKind: true,
+          createdAt: true,
+          user: { select: { name: true } },
+        },
+      }),
+      // Recent optimize jobs
+      prisma.optimizeJob.findMany({
+        where: dbUser?.organizationId 
+          ? { cutlist: { organizationId: dbUser.organizationId } }
+          : { cutlist: { userId: user.id } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          status: true,
+          cutlist: { select: { name: true, user: { select: { name: true } } } },
+          createdAt: true,
+        },
+      }),
+    ]);
 
-    const userCutlistsThisMonth = await prisma.cutlist.count({
-      where: {
-        userId: user.id,
-        createdAt: { gte: startOfMonth },
-      },
-    });
-
-    const userPartsCount = await prisma.cutPart.count({
-      where: {
-        cutlist: { userId: user.id },
-      },
-    });
-
-    const activeJobs = await prisma.optimizeJob.count({
-      where: {
-        cutlist: { userId: user.id },
-        status: { in: ["pending", "processing"] },
-      },
-    });
-
-    // Calculate average confidence from parse jobs (stored in summary.confidence_avg)
-    const parseJobsRecent = await prisma.parseJob.findMany({
-      where: { userId: user.id },
-      select: { summary: true },
-      take: 100,
-      orderBy: { createdAt: "desc" },
-    });
-    
+    // Calculate average confidence
     const confidenceValues = parseJobsRecent
       .map(j => {
         if (!j.summary || typeof j.summary !== "object") return undefined;
@@ -175,53 +237,6 @@ export async function GET(request: NextRequest) {
     const avgConfidence = confidenceValues.length > 0
       ? confidenceValues.reduce((sum, c) => sum + c, 0) / confidenceValues.length
       : 94.2; // Default if no data
-
-    // Recent cutlists
-    const recentCutlists = await prisma.cutlist.findMany({
-      where: dbUser?.organizationId 
-        ? { organizationId: dbUser.organizationId }
-        : { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        name: true,
-        status: true,
-        createdAt: true,
-        user: { select: { name: true } },
-        _count: { select: { parts: true } },
-      },
-    });
-
-    // Recent activity
-    const recentParseJobs = await prisma.parseJob.findMany({
-      where: dbUser?.organizationId 
-        ? { organizationId: dbUser.organizationId }
-        : { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        status: true,
-        sourceKind: true,
-        createdAt: true,
-        user: { select: { name: true } },
-      },
-    });
-
-    const recentOptimizeJobs = await prisma.optimizeJob.findMany({
-      where: dbUser?.organizationId 
-        ? { cutlist: { organizationId: dbUser.organizationId } }
-        : { cutlist: { userId: user.id } },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        status: true,
-        cutlist: { select: { name: true, user: { select: { name: true } } } },
-        createdAt: true,
-      },
-    });
 
     // Build dashboard stats
     const stats: DashboardStats = {
@@ -260,58 +275,114 @@ export async function GET(request: NextRequest) {
       })),
     };
 
-    // Organization stats (for org admins)
+    // =========================================================================
+    // PARALLEL QUERIES - Organization stats (for org admins)
+    // =========================================================================
     if (dbUser?.organizationId && ["org_admin", "manager"].includes(dbUser.role?.name || "")) {
-      const orgMemberCount = await prisma.user.count({
-        where: { organizationId: dbUser.organizationId },
-      });
+      const [
+        orgMemberCount,
+        orgCutlistCount,
+        orgPartsCount,
+        pendingInvites,
+        cutlistsLastMonth,
+        cutlistsCurrentMonth,
+        activeUsersToday,
+        teamMembersData,
+        performerStats,
+      ] = await Promise.all([
+        // Org member count
+        prisma.user.count({
+          where: { organizationId: dbUser.organizationId },
+        }),
+        // Org cutlist count
+        prisma.cutlist.count({
+          where: { organizationId: dbUser.organizationId },
+        }),
+        // Org parts count
+        prisma.cutPart.count({
+          where: { cutlist: { organizationId: dbUser.organizationId } },
+        }),
+        // Pending invitations
+        prisma.invitation.count({
+          where: {
+            organizationId: dbUser.organizationId,
+            acceptedAt: null,
+            expiresAt: { gt: now },
+          },
+        }),
+        // Cutlists last month
+        prisma.cutlist.count({
+          where: {
+            organizationId: dbUser.organizationId,
+            createdAt: { gte: lastMonthStart, lt: startOfMonth },
+          },
+        }),
+        // Cutlists current month
+        prisma.cutlist.count({
+          where: {
+            organizationId: dbUser.organizationId,
+            createdAt: { gte: startOfMonth },
+          },
+        }),
+        // Active users today
+        prisma.user.count({
+          where: {
+            organizationId: dbUser.organizationId,
+            OR: [
+              { cutlists: { some: { createdAt: { gte: startOfDay } } } },
+              { parseJobs: { some: { createdAt: { gte: startOfDay } } } },
+              { lastLoginAt: { gte: startOfDay } },
+            ],
+          },
+        }),
+        // Team members with stats
+        prisma.user.findMany({
+          where: { organizationId: dbUser.organizationId },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            lastLoginAt: true,
+            role: { select: { name: true } },
+            _count: {
+              select: {
+                cutlists: {
+                  where: { createdAt: { gte: startOfWeek } },
+                },
+              },
+            },
+          },
+          orderBy: { lastLoginAt: "desc" },
+          take: 10,
+        }),
+        // Top performers this week
+        prisma.user.findMany({
+          where: { 
+            organizationId: dbUser.organizationId,
+            cutlists: { some: { createdAt: { gte: startOfWeek } } },
+          },
+          select: {
+            name: true,
+            _count: {
+              select: { cutlists: true },
+            },
+            cutlists: {
+              where: { createdAt: { gte: startOfWeek } },
+              select: {
+                _count: { select: { parts: true } },
+              },
+            },
+          },
+          orderBy: {
+            cutlists: { _count: "desc" },
+          },
+          take: 5,
+        }),
+      ]);
 
-      const orgCutlistCount = await prisma.cutlist.count({
-        where: { organizationId: dbUser.organizationId },
-      });
-
-      const orgPartsCount = await prisma.cutPart.count({
-        where: { cutlist: { organizationId: dbUser.organizationId } },
-      });
-
-      // Pending invitations
-      const pendingInvites = await prisma.invitation.count({
-        where: {
-          organizationId: dbUser.organizationId,
-          acceptedAt: null,
-          expiresAt: { gt: now },
-        },
-      });
-
-      // Monthly growth calculation
-      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const cutlistsLastMonth = await prisma.cutlist.count({
-        where: {
-          organizationId: dbUser.organizationId,
-          createdAt: { gte: lastMonthStart, lt: startOfMonth },
-        },
-      });
-      const cutlistsCurrentMonth = await prisma.cutlist.count({
-        where: {
-          organizationId: dbUser.organizationId,
-          createdAt: { gte: startOfMonth },
-        },
-      });
       const monthlyGrowth = cutlistsLastMonth > 0 
         ? ((cutlistsCurrentMonth - cutlistsLastMonth) / cutlistsLastMonth) * 100
         : 0;
-
-      // Active users today (users with cutlists or parse jobs today)
-      const activeUsersToday = await prisma.user.count({
-        where: {
-          organizationId: dbUser.organizationId,
-          OR: [
-            { cutlists: { some: { createdAt: { gte: startOfDay } } } },
-            { parseJobs: { some: { createdAt: { gte: startOfDay } } } },
-            { lastLoginAt: { gte: startOfDay } },
-          ],
-        },
-      });
 
       stats.organization = {
         totalMembers: orgMemberCount,
@@ -323,27 +394,6 @@ export async function GET(request: NextRequest) {
         pendingInvites,
       };
 
-      // Team members with stats
-      const teamMembersData = await prisma.user.findMany({
-        where: { organizationId: dbUser.organizationId },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          lastLoginAt: true,
-          role: { select: { name: true } },
-          _count: {
-            select: {
-              cutlists: {
-                where: { createdAt: { gte: startOfWeek } },
-              },
-            },
-          },
-        },
-        orderBy: { lastLoginAt: "desc" },
-        take: 10,
-      });
-
       stats.teamMembers = teamMembersData.map(m => ({
         id: m.id,
         name: m.name || "Unknown",
@@ -353,30 +403,6 @@ export async function GET(request: NextRequest) {
         lastActive: formatLastActive(m.lastLoginAt),
       }));
 
-      // Top performers this week
-      const performerStats = await prisma.user.findMany({
-        where: { 
-          organizationId: dbUser.organizationId,
-          cutlists: { some: { createdAt: { gte: startOfWeek } } },
-        },
-        select: {
-          name: true,
-          _count: {
-            select: { cutlists: true },
-          },
-          cutlists: {
-            where: { createdAt: { gte: startOfWeek } },
-            select: {
-              _count: { select: { parts: true } },
-            },
-          },
-        },
-        orderBy: {
-          cutlists: { _count: "desc" },
-        },
-        take: 5,
-      });
-
       stats.topPerformers = performerStats.map(p => ({
         name: p.name || "Unknown",
         cutlists: p._count.cutlists,
@@ -385,17 +411,27 @@ export async function GET(request: NextRequest) {
       }));
     }
 
-    // Platform stats (for super admins)
+    // =========================================================================
+    // PARALLEL QUERIES - Platform stats (for super admins)
+    // =========================================================================
     if (dbUser?.isSuperAdmin) {
-      const totalOrgs = await prisma.organization.count();
-      const totalUsers = await prisma.user.count();
-      const totalCutlists = await prisma.cutlist.count();
-      const parseJobsToday = await prisma.parseJob.count({
-        where: { createdAt: { gte: startOfDay } },
-      });
-      const optimizeJobsToday = await prisma.optimizeJob.count({
-        where: { createdAt: { gte: startOfDay } },
-      });
+      const [
+        totalOrgs,
+        totalUsers,
+        totalCutlists,
+        parseJobsToday,
+        optimizeJobsToday,
+      ] = await Promise.all([
+        prisma.organization.count(),
+        prisma.user.count(),
+        prisma.cutlist.count(),
+        prisma.parseJob.count({
+          where: { createdAt: { gte: startOfDay } },
+        }),
+        prisma.optimizeJob.count({
+          where: { createdAt: { gte: startOfDay } },
+        }),
+      ]);
 
       stats.platform = {
         totalOrganizations: totalOrgs,
