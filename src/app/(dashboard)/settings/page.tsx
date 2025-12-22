@@ -28,6 +28,7 @@ import {
   Check,
   Wrench,
   Code2,
+  CreditCard,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,14 @@ const SETTINGS_SECTIONS = [
     label: "Profile",
     icon: User,
     description: "Manage your personal information",
+  },
+  {
+    id: "billing",
+    label: "Billing",
+    icon: CreditCard,
+    description: "Subscription and payment settings",
+    adminOnly: true,
+    href: "/settings/billing",
   },
   {
     id: "ai",
@@ -812,6 +821,30 @@ export default function SettingsPage() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Billing Section (Admin Only) */}
+            {activeSection === "billing" && isOrgAdmin() && (
+              <Link href="/settings/billing">
+                <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                        <CreditCard className="h-8 w-8 text-green-600 dark:text-green-400" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold">
+                          Billing & Subscription
+                        </h3>
+                        <p className="text-[var(--muted-foreground)]">
+                          Manage your subscription plan, view usage, and update payment methods
+                        </p>
+                      </div>
+                      <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             )}
 
             {/* Operations Library Section (Admin Only) */}

@@ -26,6 +26,7 @@ import { ThemeToggle, ThemeToggleCompact } from "@/components/ui/theme-toggle";
 import { useAuthStore } from "@/lib/auth/store";
 import { ROLE_DISPLAY_NAMES } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
+import { SubscriptionProvider, useSubscription } from "@/lib/subscriptions/hooks";
 
 const NAV_ITEMS = [
   {
@@ -82,6 +83,37 @@ const PLATFORM_NAV_ITEMS = [
     external: true, // Opens in new context
   },
 ];
+
+// Subscription badge component
+function SubscriptionBadge() {
+  const { planName, isLoading, isTrial, trialDaysRemaining, isPaid } = useSubscription();
+  
+  if (isLoading) return null;
+  
+  return (
+    <div className="px-4 py-3 border-t border-[var(--border)]">
+      <Link 
+        href="/settings/billing"
+        className="block p-3 rounded-lg bg-gradient-to-r from-[var(--cai-teal)]/5 to-[var(--cai-teal)]/10 hover:from-[var(--cai-teal)]/10 hover:to-[var(--cai-teal)]/20 transition-colors"
+      >
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-medium text-[var(--muted-foreground)]">Plan</span>
+          {isTrial && (
+            <Badge variant="warning" className="text-xs">
+              Trial: {trialDaysRemaining}d
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold">{planName}</span>
+          {!isPaid && (
+            <Badge variant="teal" className="text-xs">Upgrade</Badge>
+          )}
+        </div>
+      </Link>
+    </div>
+  );
+}
 
 export default function DashboardLayout({
   children,
@@ -346,6 +378,9 @@ export default function DashboardLayout({
             )}
           </nav>
 
+          {/* Subscription Info */}
+          <SubscriptionBadge />
+
           {/* Footer */}
           <div className="p-4 border-t border-[var(--border)]">
             {/* Theme Toggle in Sidebar */}
@@ -375,7 +410,11 @@ export default function DashboardLayout({
       )}
 
       {/* Main Content */}
-      <main className="lg:ml-64 pt-16 min-h-screen">{children}</main>
+      <main className="lg:ml-64 pt-16 min-h-screen">
+        <SubscriptionProvider>
+          {children}
+        </SubscriptionProvider>
+      </main>
     </div>
   );
 }
