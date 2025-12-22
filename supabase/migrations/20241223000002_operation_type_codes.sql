@@ -7,14 +7,24 @@
 -- These complement the existing profile tables with simpler shortcode mappings
 -- ============================================================
 
+-- Create the update_updated_at_column function if it doesn't exist
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- ============================================================
 -- GROOVE TYPES TABLE (Custom per-org)
 -- Used for shortcode display like GR:D:8x4@W1 where D=Dado
 -- ============================================================
 
+-- Note: organization_id is TEXT to match Prisma-created organizations.id (cuid)
 CREATE TABLE IF NOT EXISTS public.groove_types (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  organization_id TEXT NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   
   -- Short code for UI display (e.g., 'D', 'R', 'T', 'BP')
   code VARCHAR(20) NOT NULL,
@@ -48,9 +58,10 @@ CREATE INDEX IF NOT EXISTS idx_groove_types_active ON public.groove_types(is_act
 -- Used for shortcode display like H:S32@F where S32=System 32
 -- ============================================================
 
+-- Note: organization_id is TEXT to match Prisma-created organizations.id (cuid)
 CREATE TABLE IF NOT EXISTS public.hole_types (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  organization_id TEXT NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   
   -- Short code for UI display (e.g., 'S32', 'SP', 'HG35', 'CAM')
   code VARCHAR(20) NOT NULL,
@@ -88,9 +99,10 @@ CREATE INDEX IF NOT EXISTS idx_hole_types_active ON public.hole_types(is_active)
 -- Used for shortcode display like CNC:HINGE
 -- ============================================================
 
+-- Note: organization_id is TEXT to match Prisma-created organizations.id (cuid)
 CREATE TABLE IF NOT EXISTS public.cnc_operation_types (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  organization_id TEXT NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
   
   -- Short code for UI display (e.g., 'HINGE', 'DRAWER', 'PKT', 'SINK')
   code VARCHAR(20) NOT NULL,
@@ -135,11 +147,13 @@ ALTER TABLE public.hole_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cnc_operation_types ENABLE ROW LEVEL SECURITY;
 
 -- Groove types policies
+-- Note: Cast auth.uid() to TEXT to match Prisma users.id type
+-- Joins with roles table since Prisma uses role_id FK
 CREATE POLICY "Users can view their organization's groove types" ON public.groove_types
   FOR SELECT
   USING (
     organization_id IN (
-      SELECT organization_id FROM public.users WHERE id = auth.uid()
+      SELECT organization_id FROM public.users WHERE id = auth.uid()::text
     )
   );
 
@@ -148,7 +162,9 @@ CREATE POLICY "Org admins can manage groove types" ON public.groove_types
   USING (
     organization_id IN (
       SELECT u.organization_id FROM public.users u
-      WHERE u.id = auth.uid() AND u.role IN ('org_admin', 'super_admin', 'admin')
+      LEFT JOIN public.roles r ON u.role_id = r.id
+      WHERE u.id = auth.uid()::text 
+        AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
     )
   );
 
@@ -157,7 +173,7 @@ CREATE POLICY "Users can view their organization's hole types" ON public.hole_ty
   FOR SELECT
   USING (
     organization_id IN (
-      SELECT organization_id FROM public.users WHERE id = auth.uid()
+      SELECT organization_id FROM public.users WHERE id = auth.uid()::text
     )
   );
 
@@ -166,7 +182,9 @@ CREATE POLICY "Org admins can manage hole types" ON public.hole_types
   USING (
     organization_id IN (
       SELECT u.organization_id FROM public.users u
-      WHERE u.id = auth.uid() AND u.role IN ('org_admin', 'super_admin', 'admin')
+      LEFT JOIN public.roles r ON u.role_id = r.id
+      WHERE u.id = auth.uid()::text 
+        AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
     )
   );
 
@@ -175,7 +193,7 @@ CREATE POLICY "Users can view their organization's cnc operation types" ON publi
   FOR SELECT
   USING (
     organization_id IN (
-      SELECT organization_id FROM public.users WHERE id = auth.uid()
+      SELECT organization_id FROM public.users WHERE id = auth.uid()::text
     )
   );
 
@@ -184,7 +202,9 @@ CREATE POLICY "Org admins can manage cnc operation types" ON public.cnc_operatio
   USING (
     organization_id IN (
       SELECT u.organization_id FROM public.users u
-      WHERE u.id = auth.uid() AND u.role IN ('org_admin', 'super_admin', 'admin')
+      LEFT JOIN public.roles r ON u.role_id = r.id
+      WHERE u.id = auth.uid()::text 
+        AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
     )
   );
 
@@ -293,7 +313,7 @@ WHERE NOT EXISTS (
 -- FUNCTION: Create default types for new organization
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION create_default_operation_types(p_org_id UUID)
+CREATE OR REPLACE FUNCTION create_default_operation_types(p_org_id TEXT)
 RETURNS VOID AS $$
 BEGIN
   -- Insert default groove types

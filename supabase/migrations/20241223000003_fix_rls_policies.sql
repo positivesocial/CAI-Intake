@@ -15,12 +15,16 @@ DROP POLICY IF EXISTS "Admins can update shortcode configs" ON shortcode_configs
 DROP POLICY IF EXISTS "Admins can delete shortcode configs" ON shortcode_configs;
 
 -- Create corrected policies with valid role names
+-- Note: Cast auth.uid() to TEXT to match Prisma users.id type
+-- Joins with roles table since Prisma uses role_id FK
 CREATE POLICY "Admins can create shortcode configs"
 ON shortcode_configs FOR INSERT
 WITH CHECK (
   org_id IN (
-    SELECT organization_id FROM users 
-    WHERE id = auth.uid() AND role IN ('super_admin', 'org_admin', 'manager')
+    SELECT u.organization_id FROM users u
+    LEFT JOIN roles r ON u.role_id = r.id
+    WHERE u.id = auth.uid()::text 
+      AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
   )
 );
 
@@ -28,8 +32,10 @@ CREATE POLICY "Admins can update shortcode configs"
 ON shortcode_configs FOR UPDATE
 USING (
   org_id IN (
-    SELECT organization_id FROM users 
-    WHERE id = auth.uid() AND role IN ('super_admin', 'org_admin', 'manager')
+    SELECT u.organization_id FROM users u
+    LEFT JOIN roles r ON u.role_id = r.id
+    WHERE u.id = auth.uid()::text 
+      AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
   )
 );
 
@@ -37,8 +43,10 @@ CREATE POLICY "Admins can delete shortcode configs"
 ON shortcode_configs FOR DELETE
 USING (
   org_id IN (
-    SELECT organization_id FROM users 
-    WHERE id = auth.uid() AND role IN ('super_admin', 'org_admin', 'manager')
+    SELECT u.organization_id FROM users u
+    LEFT JOIN roles r ON u.role_id = r.id
+    WHERE u.id = auth.uid()::text 
+      AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
   )
 );
 
@@ -53,7 +61,9 @@ CREATE POLICY "Org admins can manage groove types" ON public.groove_types
   USING (
     organization_id IN (
       SELECT u.organization_id FROM public.users u
-      WHERE u.id = auth.uid() AND u.role IN ('org_admin', 'super_admin', 'manager')
+      LEFT JOIN public.roles r ON u.role_id = r.id
+      WHERE u.id = auth.uid()::text 
+        AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
     )
   );
 
@@ -68,7 +78,9 @@ CREATE POLICY "Org admins can manage hole types" ON public.hole_types
   USING (
     organization_id IN (
       SELECT u.organization_id FROM public.users u
-      WHERE u.id = auth.uid() AND u.role IN ('org_admin', 'super_admin', 'manager')
+      LEFT JOIN public.roles r ON u.role_id = r.id
+      WHERE u.id = auth.uid()::text 
+        AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
     )
   );
 
@@ -83,7 +95,9 @@ CREATE POLICY "Org admins can manage cnc operation types" ON public.cnc_operatio
   USING (
     organization_id IN (
       SELECT u.organization_id FROM public.users u
-      WHERE u.id = auth.uid() AND u.role IN ('org_admin', 'super_admin', 'manager')
+      LEFT JOIN public.roles r ON u.role_id = r.id
+      WHERE u.id = auth.uid()::text 
+        AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
     )
   );
 
@@ -93,12 +107,13 @@ CREATE POLICY "Org admins can manage cnc operation types" ON public.cnc_operatio
 -- ============================================================
 
 -- Allow super_admin to view all shortcode configs
+-- Uses is_super_admin flag since Prisma uses role_id FK
 CREATE POLICY "Super admins can view all shortcode configs"
 ON shortcode_configs FOR SELECT
 USING (
   EXISTS (
     SELECT 1 FROM users 
-    WHERE id = auth.uid() AND role = 'super_admin'
+    WHERE id = auth.uid()::text AND is_super_admin = true
   )
 );
 
@@ -108,7 +123,7 @@ FOR SELECT
 USING (
   EXISTS (
     SELECT 1 FROM public.users 
-    WHERE id = auth.uid() AND role = 'super_admin'
+    WHERE id = auth.uid()::text AND is_super_admin = true
   )
 );
 
@@ -118,7 +133,7 @@ FOR SELECT
 USING (
   EXISTS (
     SELECT 1 FROM public.users 
-    WHERE id = auth.uid() AND role = 'super_admin'
+    WHERE id = auth.uid()::text AND is_super_admin = true
   )
 );
 
@@ -128,7 +143,7 @@ FOR SELECT
 USING (
   EXISTS (
     SELECT 1 FROM public.users 
-    WHERE id = auth.uid() AND role = 'super_admin'
+    WHERE id = auth.uid()::text AND is_super_admin = true
   )
 );
 

@@ -2,9 +2,10 @@
 -- Stores organization-specific shortcode customizations
 
 -- Create the shortcode_configs table
+-- Note: org_id is TEXT to match Prisma-created organizations.id (cuid)
 CREATE TABLE IF NOT EXISTS shortcode_configs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  org_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   service_type TEXT NOT NULL,
   shortcode TEXT NOT NULL,
   display_name TEXT,
@@ -35,21 +36,25 @@ ALTER TABLE shortcode_configs ENABLE ROW LEVEL SECURITY;
 -- RLS Policies
 
 -- Users can view shortcode configs for their organization
+-- Note: Cast auth.uid() to TEXT to match Prisma users.id type
 CREATE POLICY "Users can view own org shortcode configs"
 ON shortcode_configs FOR SELECT
 USING (
   org_id IN (
-    SELECT organization_id FROM users WHERE id = auth.uid()
+    SELECT organization_id FROM users WHERE id = auth.uid()::text
   )
 );
 
 -- Admins can insert shortcode configs for their organization
+-- Joins with roles table since Prisma uses role_id FK
 CREATE POLICY "Admins can create shortcode configs"
 ON shortcode_configs FOR INSERT
 WITH CHECK (
   org_id IN (
-    SELECT organization_id FROM users 
-    WHERE id = auth.uid() AND role IN ('admin', 'owner')
+    SELECT u.organization_id FROM users u
+    LEFT JOIN roles r ON u.role_id = r.id
+    WHERE u.id = auth.uid()::text 
+      AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
   )
 );
 
@@ -58,8 +63,10 @@ CREATE POLICY "Admins can update shortcode configs"
 ON shortcode_configs FOR UPDATE
 USING (
   org_id IN (
-    SELECT organization_id FROM users 
-    WHERE id = auth.uid() AND role IN ('admin', 'owner')
+    SELECT u.organization_id FROM users u
+    LEFT JOIN roles r ON u.role_id = r.id
+    WHERE u.id = auth.uid()::text 
+      AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
   )
 );
 
@@ -68,8 +75,10 @@ CREATE POLICY "Admins can delete shortcode configs"
 ON shortcode_configs FOR DELETE
 USING (
   org_id IN (
-    SELECT organization_id FROM users 
-    WHERE id = auth.uid() AND role IN ('admin', 'owner')
+    SELECT u.organization_id FROM users u
+    LEFT JOIN roles r ON u.role_id = r.id
+    WHERE u.id = auth.uid()::text 
+      AND (u.is_super_admin = true OR r.name IN ('org_admin', 'manager'))
   )
 );
 
