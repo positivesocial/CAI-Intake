@@ -15,6 +15,7 @@ import { getOrCreateProvider, type ParseOptions as AIParseOptions } from "@/lib/
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { applyRateLimit } from "@/lib/api-middleware";
+import { initMaterialMatcher, matchMaterial, matchEdgeband } from "@/lib/matching/material-matcher";
 import {
   setProgress,
   getProgress,
@@ -55,6 +56,8 @@ const ParseRequestSchema = z.object({
     column_mapping: z.record(z.string(), z.string()).optional(),
     // Enable progress tracking
     track_progress: z.boolean().optional(),
+    // Enable smart material matching against org materials
+    smart_matching: z.boolean().optional(),
   }).optional(),
 });
 
@@ -472,6 +475,97 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    // Apply smart material matching if enabled
+    let matchingSummary = null;
+    if (options?.smart_matching !== false && result.parts.length > 0) {
+      try {
+        updateProgress(sessionId, (s) => updateFileStage(s, 0, "validating", 95, "Matching materials..."));
+        
+        const matcherCtx = await initMaterialMatcher(userData.organization_id);
+        
+        // Apply matching to each part
+        for (const partResult of result.parts) {
+          const part = partResult.part;
+          
+          // Get raw material name from tags or material_id if it looks like a raw name
+          const rawMaterial = part.tags?.[0] || 
+            (part.material_id !== "default" && !part.material_id.match(/^[a-z0-9-]+$/i) 
+              ? part.material_id 
+              : undefined);
+          
+          // Match material
+          const materialMatch = matchMaterial(rawMaterial, part.thickness_mm, matcherCtx);
+          part.material_id = materialMatch.materialId;
+          
+          // Store match info in audit (ensure source_method is always present)
+          const existingAudit = part.audit || { source_method: "paste_parser" as const };
+          part.audit = {
+            ...existingAudit,
+            material_match: {
+              matched_to: materialMatch.materialName,
+              confidence: materialMatch.confidence,
+              match_type: materialMatch.matchType,
+              original_raw: rawMaterial,
+            },
+          };
+          
+          // Match edgebands if edging ops exist
+          if (part.ops?.edging?.edges) {
+            for (const [edge, config] of Object.entries(part.ops.edging.edges)) {
+              if (config.apply && !config.edgeband_id) {
+                // Get raw edgeband name if specified
+                const rawEdgeband = (part.ops.edging as { raw_edgeband?: string })?.raw_edgeband;
+                
+                // Match edgeband based on material
+                const ebMatch = matchEdgeband(rawEdgeband, materialMatch.materialName, matcherCtx);
+                if (ebMatch) {
+                  part.ops.edging.edges[edge] = {
+                    ...config,
+                    edgeband_id: ebMatch.edgebandId,
+                  };
+                  
+                  // Store edgeband match info
+                  if (!part.audit.edgeband_matches) {
+                    part.audit.edgeband_matches = {};
+                  }
+                  part.audit.edgeband_matches[edge] = {
+                    matched_to: ebMatch.edgebandName,
+                    confidence: ebMatch.confidence,
+                    match_type: ebMatch.matchType,
+                  };
+                }
+              }
+            }
+          }
+          
+          // Boost overall confidence based on matching
+          if (partResult.confidence) {
+            partResult.confidence = Math.min(
+              partResult.confidence + (materialMatch.confidence - 0.5) * 0.2,
+              1.0
+            );
+          }
+        }
+        
+        // Calculate matching summary
+        const materialMatches = result.parts.filter(
+          p => p.part.audit?.material_match?.match_type !== "default"
+        ).length;
+        const edgebandMatches = result.parts.filter(
+          p => Object.keys(p.part.audit?.edgeband_matches || {}).length > 0
+        ).length;
+        
+        matchingSummary = {
+          materials_matched: materialMatches,
+          edgebands_auto_matched: edgebandMatches,
+          total_parts: result.parts.length,
+        };
+        
+      } catch (matchError) {
+        logger.warn("Smart material matching failed, continuing without it", { error: matchError });
+      }
+    }
+
     // Mark file as complete in progress tracking
     if (sessionId) {
       updateProgress(sessionId, (s) => completeFile(s, 0, result.totalParsed, {
@@ -520,6 +614,7 @@ export async function POST(request: NextRequest) {
         total_parsed: result.totalParsed,
         total_errors: result.totalErrors,
         average_confidence: result.averageConfidence,
+        ...(matchingSummary && { smart_matching: matchingSummary }),
       },
     });
 

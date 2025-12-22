@@ -38,6 +38,32 @@ export type PartNotes = z.infer<typeof PartNotesSchema>;
 // ============================================================
 
 /**
+ * Material match result for smart matching
+ */
+export const MaterialMatchResultSchema = z.object({
+  /** Material name that was matched to */
+  matched_to: z.string(),
+  /** Match confidence (0-1) */
+  confidence: z.number().min(0).max(1),
+  /** How the match was made */
+  match_type: z.enum(["exact", "fuzzy", "keyword", "default"]),
+  /** Original raw material name from parsed input */
+  original_raw: z.string().optional(),
+});
+
+/**
+ * Edgeband match result for smart matching
+ */
+export const EdgebandMatchResultSchema = z.object({
+  /** Edgeband name that was matched to */
+  matched_to: z.string(),
+  /** Match confidence (0-1) */
+  confidence: z.number().min(0).max(1),
+  /** How the match was made */
+  match_type: z.enum(["exact", "material_match", "default"]),
+});
+
+/**
  * Audit/ingestion metadata for a part
  * Tracks how the part was created and its confidence level
  */
@@ -56,6 +82,10 @@ export const PartAuditSchema = z.object({
   errors: z.array(z.string()).optional(),
   /** Whether a human has verified this part */
   human_verified: z.boolean().optional(),
+  /** Material matching result (from smart matching) */
+  material_match: MaterialMatchResultSchema.optional(),
+  /** Edgeband matching results by edge (from smart matching) */
+  edgeband_matches: z.record(z.string(), EdgebandMatchResultSchema).optional(),
 });
 
 export type PartAudit = z.infer<typeof PartAuditSchema>;
