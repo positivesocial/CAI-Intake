@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
     // Build query
     let query = supabase
       .from("cutlists")
-      .select("*, parts:parts(count)", { count: "exact" })
+      .select("*, parts:cut_parts(count)", { count: "exact" })
       .eq("organization_id", userData.organization_id)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -241,15 +241,15 @@ export async function POST(request: NextRequest) {
     // Create parts if provided
     if (parts && parts.length > 0) {
       const { error: partsError } = await supabase
-        .from("parts")
+        .from("cut_parts")
         .insert(
           parts.map(p => ({
             cutlist_id: cutlist.id,
             part_id: p.part_id,
             label: p.label,
             qty: p.qty,
-            length_mm: p.size.L,
-            width_mm: p.size.W,
+            size_l: p.size.L,
+            size_w: p.size.W,
             thickness_mm: p.thickness_mm,
             material_id: p.material_id,
             grain: p.grain ?? "none",

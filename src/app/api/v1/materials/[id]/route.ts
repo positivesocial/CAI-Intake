@@ -280,7 +280,7 @@ export async function DELETE(
 
     // Check if material is in use (parts table references material_id)
     const { count } = await supabase
-      .from("parts")
+      .from("cut_parts")
       .select("*", { count: "exact", head: true })
       .eq("material_id", existing?.material_id || "");
 

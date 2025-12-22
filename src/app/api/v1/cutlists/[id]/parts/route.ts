@@ -132,7 +132,7 @@ export async function GET(
 
     // Get parts
     const { data: parts, error } = await supabase
-      .from("parts")
+      .from("cut_parts")
       .select("*")
       .eq("cutlist_id", id)
       .order("created_at", { ascending: true });
@@ -151,8 +151,8 @@ export async function GET(
       part_id: string;
       label: string | null;
       qty: number;
-      length_mm: number;
-      width_mm: number;
+      size_l: number;
+      size_w: number;
       thickness_mm: number;
       material_id: string;
       grain: string;
@@ -168,7 +168,7 @@ export async function GET(
       part_id: p.part_id,
       label: p.label,
       qty: p.qty,
-      size: { L: p.length_mm, W: p.width_mm },
+      size: { L: p.size_l, W: p.size_w },
       thickness_mm: p.thickness_mm,
       material_id: p.material_id,
       grain: p.grain,
@@ -263,15 +263,15 @@ export async function POST(
 
     // Insert parts
     const { data: insertedParts, error } = await supabase
-      .from("parts")
+      .from("cut_parts")
       .insert(
         parts.map(p => ({
           cutlist_id: id,
           part_id: p.part_id,
           label: p.label,
           qty: p.qty,
-          length_mm: p.size.L,
-          width_mm: p.size.W,
+          size_l: p.size.L,
+          size_w: p.size.W,
           thickness_mm: p.thickness_mm,
           material_id: p.material_id,
           grain: p.grain ?? "none",
@@ -298,8 +298,8 @@ export async function POST(
       part_id: string;
       label: string | null;
       qty: number;
-      length_mm: number;
-      width_mm: number;
+      size_l: number;
+      size_w: number;
       thickness_mm: number;
       material_id: string;
       grain: string;
@@ -314,7 +314,7 @@ export async function POST(
       part_id: p.part_id,
       label: p.label,
       qty: p.qty,
-      size: { L: p.length_mm, W: p.width_mm },
+      size: { L: p.size_l, W: p.size_w },
       thickness_mm: p.thickness_mm,
       material_id: p.material_id,
       grain: p.grain,
@@ -419,7 +419,7 @@ export async function DELETE(
 
     // Delete parts - cutlist_id constraint ensures we only delete from the verified cutlist
     const { error, count } = await supabase
-      .from("parts")
+      .from("cut_parts")
       .delete()
       .eq("cutlist_id", id)
       .in("part_id", part_ids);
@@ -558,8 +558,8 @@ export async function PATCH(
           if (update.label !== undefined) updateData.label = update.label;
           if (update.qty !== undefined) updateData.qty = update.qty;
           if (update.size !== undefined) {
-            updateData.length_mm = update.size.L;
-            updateData.width_mm = update.size.W;
+            updateData.size_l = update.size.L;
+            updateData.size_w = update.size.W;
           }
           if (update.thickness_mm !== undefined) updateData.thickness_mm = update.thickness_mm;
           if (update.material_id !== undefined) updateData.material_id = update.material_id;
@@ -575,7 +575,7 @@ export async function PATCH(
           }
 
           const { error } = await supabase
-            .from("parts")
+            .from("cut_parts")
             .update(updateData)
             .eq("cutlist_id", id)
             .eq("part_id", update.part_id);

@@ -92,8 +92,8 @@ export async function GET(
           part_id,
           label,
           qty,
-          length_mm,
-          width_mm,
+          size_l,
+          size_w,
           thickness_mm,
           material_id,
           grain,
@@ -141,8 +141,8 @@ export async function GET(
       part_id: string;
       label: string | null;
       qty: number;
-      length_mm: number;
-      width_mm: number;
+      size_l: number;
+      size_w: number;
       thickness_mm: number;
       material_id: string;
       grain: string;
@@ -157,7 +157,7 @@ export async function GET(
       part_id: p.part_id,
       label: p.label,
       qty: p.qty,
-      size: { L: p.length_mm, W: p.width_mm },
+      size: { L: p.size_l, W: p.size_w },
       thickness_mm: p.thickness_mm,
       material_id: p.material_id,
       grain: p.grain,
