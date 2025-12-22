@@ -146,9 +146,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       cutlists: cutlists?.map((c: any) => ({
-        ...c,
-        parts_count: c.parts?.[0]?.count ?? 0,
-        parts: undefined,
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        status: c.status,
+        partsCount: c.parts?.[0]?.count ?? 0,
+        totalPieces: 0, // Will be calculated if needed
+        totalArea: 0,   // Will be calculated if needed
+        materialsCount: 0, // Will be calculated if needed
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+        efficiency: c.efficiency,
       })),
       pagination: {
         page,
