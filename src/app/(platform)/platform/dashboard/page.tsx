@@ -360,7 +360,7 @@ export default function PlatformDashboardPage() {
                   <DropdownMenuLabel>
                     <div className="flex flex-col">
                       <span>{user?.name || "Super Admin"}</span>
-                      <span className="text-xs text-slate-500">{user?.email || "super@caiintake.com"}</span>
+                      <span className="text-xs text-slate-500">{user?.email || "super@cai-intake.io"}</span>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />

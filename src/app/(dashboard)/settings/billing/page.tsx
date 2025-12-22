@@ -284,7 +284,7 @@ function PlanCard({
               Current Plan
             </Button>
           ) : planId === "enterprise" ? (
-            <a href="mailto:sales@caiintake.com">
+            <a href="mailto:sales@cai-intake.io">
               <Button variant="primary" className="w-full">
                 Contact Sales
               </Button>

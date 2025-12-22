@@ -106,7 +106,7 @@ export default function PlatformLoginPage() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="admin@caiintake.com"
+                    placeholder="admin@cai-intake.io"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-10 border-slate-300"

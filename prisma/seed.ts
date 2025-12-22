@@ -176,7 +176,7 @@ const DEMO_ORGANIZATION = {
 // In production, use proper auth (Supabase handles this)
 const DEMO_USERS = [
   {
-    email: "super@caiintake.com",
+    email: "super@cai-intake.io",
     name: "Platform Super Admin",
     jobTitle: "Platform Administrator",
     phone: "+1 (555) 000-0001",
@@ -609,7 +609,7 @@ async function main() {
     console.log("\n================================");
     console.log("✅ Seed completed successfully!\n");
     console.log("Demo Credentials:");
-    console.log("  Super Admin:  super@caiintake.com / SuperAdmin123!");
+    console.log("  Super Admin:  super@cai-intake.io / SuperAdmin123!");
     console.log("  Org Admin:    admin@acmecabinets.com / OrgAdmin123!");
     console.log("  Operator:     operator@acmecabinets.com / Operator123!\n");
   } catch (error) {

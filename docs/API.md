@@ -7,7 +7,7 @@ The CAI Intake API provides programmatic access to cutlist management, parsing, 
 ## Base URL
 
 ```
-Production: https://api.caiintake.com/v1
+Production: https://api.cai-intake.io/v1
 Development: http://localhost:3000/api/v1
 ```
 
@@ -16,7 +16,7 @@ Development: http://localhost:3000/api/v1
 All API requests require authentication using a Bearer token.
 
 ```bash
-curl -X GET https://api.caiintake.com/v1/cutlists \
+curl -X GET https://api.cai-intake.io/v1/cutlists \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -381,7 +381,7 @@ POST /files
     "name": "cutlist.pdf",
     "size_bytes": 245678,
     "mime_type": "application/pdf",
-    "url": "https://storage.caiintake.com/..."
+    "url": "https://storage.cai-intake.io/..."
   }
 }
 ```
@@ -646,9 +646,9 @@ cutlists = client.cutlists.list()
 
 ## Support
 
-- **API Status**: [status.caiintake.com](https://status.caiintake.com)
-- **Developer Support**: api-support@caiintake.com
-- **Documentation**: [docs.caiintake.com/api](https://docs.caiintake.com/api)
+- **API Status**: [status.cai-intake.io](https://status.cai-intake.io)
+- **Developer Support**: api-support@cai-intake.io
+- **Documentation**: [docs.cai-intake.io/api](https://docs.cai-intake.io/api)
 
 ---
 

@@ -61,7 +61,7 @@ import { cn } from "@/lib/utils";
 const DEFAULT_SETTINGS = {
   general: {
     platformName: "CAI Intake",
-    supportEmail: "support@caiintake.com",
+    supportEmail: "support@cai-intake.io",
     maintenanceMode: false,
     allowSignups: true,
   },
@@ -90,7 +90,7 @@ const DEFAULT_SETTINGS = {
     provider: "sendgrid",
     host: "smtp.sendgrid.net",
     port: 587,
-    fromEmail: "noreply@caiintake.com",
+    fromEmail: "noreply@cai-intake.io",
     fromName: "CAI Intake",
   },
   security: {
@@ -241,7 +241,7 @@ export default function PlatformSettingsPage() {
                   <DropdownMenuLabel>
                     <div className="flex flex-col">
                       <span>{user?.name || "Super Admin"}</span>
-                      <span className="text-xs text-slate-500">{user?.email || "super@caiintake.com"}</span>
+                      <span className="text-xs text-slate-500">{user?.email || "super@cai-intake.io"}</span>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />

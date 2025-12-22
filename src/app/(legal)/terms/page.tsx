@@ -236,8 +236,8 @@ export default function TermsOfServicePage() {
             </p>
             <div className="mt-4 p-4 bg-[var(--muted)] rounded-lg">
               <p className="font-medium">CAI Intake</p>
-              <p className="text-[var(--muted-foreground)]">Email: legal@caiintake.com</p>
-              <p className="text-[var(--muted-foreground)]">Support: support@caiintake.com</p>
+              <p className="text-[var(--muted-foreground)]">Email: legal@cai-intake.io</p>
+              <p className="text-[var(--muted-foreground)]">Support: support@cai-intake.io</p>
             </div>
           </section>
         </div>

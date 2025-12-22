@@ -1,6 +1,6 @@
 # CAI Intake User Guide
 
-Welcome to CabinetAI Intake! This guide will help you get started with the platform and make the most of its features.
+Welcome to CAI Intake! This guide will help you get started with the platform and make the most of its features.
 
 ## Table of Contents
 
@@ -22,7 +22,7 @@ Welcome to CabinetAI Intake! This guide will help you get started with the platf
 
 ### Logging In
 
-1. Navigate to [https://app.caiintake.com](https://app.caiintake.com)
+1. Navigate to [https://app.cai-intake.io](https://app.cai-intake.io)
 2. Enter your email and password
 3. Click "Sign In"
 
@@ -370,8 +370,8 @@ A: Yes, we accept both credit cards and PayPal.
 
 Need help? We're here for you:
 
-- **Documentation**: [docs.caiintake.com](https://docs.caiintake.com)
-- **Email**: support@caiintake.com
+- **Documentation**: [docs.cai-intake.io](https://docs.cai-intake.io)
+- **Email**: support@cai-intake.io
 - **Live Chat**: Available in-app (Professional+)
 - **Phone**: Enterprise plans only
 

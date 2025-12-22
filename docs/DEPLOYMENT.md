@@ -57,7 +57,7 @@ Before deploying, ensure you have:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `NEXT_PUBLIC_APP_URL` | Your app's public URL | `https://app.caiintake.com` |
+| `NEXT_PUBLIC_APP_URL` | Your app's public URL | `https://app.cai-intake.io` |
 | `CRON_SECRET` | Secret for cron job authentication | `your-random-secret` |
 | `NODE_ENV` | Environment mode | `production` |
 
@@ -116,7 +116,7 @@ vercel env add DATABASE_URL production
 ### Custom Domain
 
 1. Go to Project Settings > Domains
-2. Add your domain (e.g., `app.caiintake.com`)
+2. Add your domain (e.g., `app.cai-intake.io`)
 3. Update DNS records as instructed
 4. Wait for SSL certificate provisioning
 
@@ -168,8 +168,8 @@ ALTER TABLE cut_parts ENABLE ROW LEVEL SECURITY;
 1. Go to Authentication > Providers
 2. Enable Email provider
 3. Configure redirect URLs:
-   - `https://app.caiintake.com/auth/callback`
-   - `https://app.caiintake.com/auth/verify`
+   - `https://app.cai-intake.io/auth/callback`
+   - `https://app.cai-intake.io/auth/verify`
 
 ---
 
@@ -190,7 +190,7 @@ Products:
 ### 2. Configure Webhook
 
 1. Go to Developers > Webhooks
-2. Add endpoint: `https://app.caiintake.com/api/webhooks/stripe`
+2. Add endpoint: `https://app.cai-intake.io/api/webhooks/stripe`
 3. Select events:
    - `checkout.session.completed`
    - `customer.subscription.created`
@@ -271,7 +271,7 @@ Verify cron is working:
 
 ```bash
 # Test cleanup endpoint
-curl -X GET https://app.caiintake.com/api/cron/cleanup \
+curl -X GET https://app.cai-intake.io/api/cron/cleanup \
   -H "Authorization: Bearer YOUR_CRON_SECRET"
 ```
 

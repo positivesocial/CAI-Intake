@@ -31,7 +31,7 @@ export interface EmailTemplate {
 // =============================================================================
 
 const EMAIL_CONFIG = {
-  from: process.env.EMAIL_FROM || "CAI Intake <noreply@caiintake.com>",
+  from: process.env.EMAIL_FROM || "CAI Intake <noreply@cai-intake.io>",
   smtpHost: process.env.SMTP_HOST,
   smtpPort: parseInt(process.env.SMTP_PORT || "587", 10),
   smtpUser: process.env.SMTP_USER,

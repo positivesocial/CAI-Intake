@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "CAI Intake",
     locale: "en_US",
-    url: process.env.NEXT_PUBLIC_APP_URL || "https://caiintake.com",
+    url: process.env.NEXT_PUBLIC_APP_URL || "https://cai-intake.io",
     images: [
       {
         url: "/og-image.png",

@@ -19,7 +19,7 @@ const prisma = new PrismaClient();
 // Test users to create
 const TEST_USERS = [
   {
-    email: "super@caiintake.com",
+    email: "super@cai-intake.io",
     password: "SuperAdmin123!",
     name: "Platform Super Admin",
     isSuperAdmin: true,
@@ -181,7 +181,7 @@ async function main() {
   console.log("================================");
   console.log("✅ Test users setup complete!\n");
   console.log("Login Credentials:");
-  console.log("  Super Admin:  super@caiintake.com / SuperAdmin123!");
+  console.log("  Super Admin:  super@cai-intake.io / SuperAdmin123!");
   console.log("  Org Admin:    admin@acmecabinets.com / OrgAdmin123!");
   console.log("  Operator:     operator@acmecabinets.com / Operator123!\n");
 }

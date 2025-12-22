@@ -177,7 +177,7 @@ export default function OrganizationSettingsPage() {
                   Organization Slug
                 </label>
                 <div className="flex items-center gap-2">
-                  <span className="text-[var(--muted-foreground)]">caiintake.com/</span>
+                  <span className="text-[var(--muted-foreground)]">cai-intake.io/</span>
                   <Input
                     value={orgSlug}
                     onChange={(e) => setOrgSlug(e.target.value)}

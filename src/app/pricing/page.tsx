@@ -434,7 +434,7 @@ function FAQ() {
     },
     {
       question: "Do you offer discounts for non-profits or education?",
-      answer: "Yes! Contact us at support@caiintake.com for special pricing for educational institutions and non-profit organizations.",
+      answer: "Yes! Contact us at support@cai-intake.io for special pricing for educational institutions and non-profit organizations.",
     },
     {
       question: "Can I cancel anytime?",

@@ -123,7 +123,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Withdraw Consent:</strong> Withdraw previously given consent</li>
             </ul>
             <p className="text-[var(--muted-foreground)] leading-relaxed mt-4">
-              To exercise these rights, contact us at privacy@caiintake.com.
+              To exercise these rights, contact us at privacy@cai-intake.io.
             </p>
           </section>
 
@@ -170,8 +170,8 @@ export default function PrivacyPolicyPage() {
             </p>
             <div className="mt-4 p-4 bg-[var(--muted)] rounded-lg">
               <p className="font-medium">CAI Intake</p>
-              <p className="text-[var(--muted-foreground)]">Email: privacy@caiintake.com</p>
-              <p className="text-[var(--muted-foreground)]">Support: support@caiintake.com</p>
+              <p className="text-[var(--muted-foreground)]">Email: privacy@cai-intake.io</p>
+              <p className="text-[var(--muted-foreground)]">Support: support@cai-intake.io</p>
             </div>
           </section>
         </div>

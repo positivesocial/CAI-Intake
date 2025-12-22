@@ -132,7 +132,7 @@ The application includes demo accounts for testing different user roles:
 
 | Role | Email | Password | Access Level |
 |------|-------|----------|--------------|
-| **Super Admin** | `super@caiintake.com` | `SuperAdmin123!` | Platform-wide admin access |
+| **Super Admin** | `super@cai-intake.io` | `SuperAdmin123!` | Platform-wide admin access |
 | **Org Admin** | `admin@acmecabinets.com` | `OrgAdmin123!` | Organization admin (Acme Cabinets) |
 | **Operator** | `operator@acmecabinets.com` | `Operator123!` | Basic operator access |
 
