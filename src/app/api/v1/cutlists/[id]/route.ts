@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getServiceClient } from "@/lib/supabase/server";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
@@ -66,10 +66,11 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization for authorization check
-    const { data: userData } = await supabase
+    // Get user's organization for authorization check - use service client to bypass RLS
+    const serviceClient = getServiceClient();
+    const { data: userData } = await serviceClient
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin")
       .eq("id", user.id)
       .single();
 
@@ -80,14 +81,14 @@ export async function GET(
       );
     }
 
-    const isSuperAdmin = userData.role === "super_admin";
+    const isSuperAdmin = userData.is_super_admin === true;
 
     // Get cutlist with parts and linked files - CRITICAL: filter by organization_id for multi-tenant isolation
-    let query = supabase
+    let query = serviceClient
       .from("cutlists")
       .select(`
         *,
-        parts (
+        cut_parts (
           id,
           part_id,
           label,
@@ -95,7 +96,7 @@ export async function GET(
           size_l,
           size_w,
           thickness_mm,
-          material_id,
+          material_ref,
           grain,
           allow_rotation,
           group_id,
@@ -136,7 +137,7 @@ export async function GET(
     }
 
     // Transform parts to canonical format
-    const transformedParts = cutlist.parts?.map((p: {
+    const transformedParts = cutlist.cut_parts?.map((p: {
       id: string;
       part_id: string;
       label: string | null;
@@ -235,10 +236,11 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization for authorization
-    const { data: userData } = await supabase
+    // Get user's organization for authorization - use service client to bypass RLS
+    const serviceClient = getServiceClient();
+    const { data: userData } = await serviceClient
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin")
       .eq("id", user.id)
       .single();
 
@@ -261,10 +263,10 @@ export async function PUT(
     }
 
     const updateData = parseResult.data;
-    const isSuperAdmin = userData.role === "super_admin";
+    const isSuperAdmin = userData.is_super_admin === true;
 
     // Update cutlist - CRITICAL: filter by organization_id
-    let query = supabase
+    let query = serviceClient
       .from("cutlists")
       .update({ ...updateData, updated_at: new Date().toISOString() })
       .eq("id", id);
@@ -335,10 +337,11 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization for authorization
-    const { data: userData } = await supabase
+    // Get user's organization for authorization - use service client to bypass RLS
+    const serviceClient = getServiceClient();
+    const { data: userData } = await serviceClient
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin, role_id")
       .eq("id", user.id)
       .single();
 
@@ -349,18 +352,27 @@ export async function DELETE(
       );
     }
 
+    // Get user's role name
+    const { data: roleData } = await serviceClient
+      .from("roles")
+      .select("name")
+      .eq("id", userData.role_id)
+      .single();
+
+    const roleName = roleData?.name || "";
+
     // Check permissions - only admins and managers can delete
-    if (!["super_admin", "org_admin", "manager"].includes(userData.role)) {
+    if (!userData.is_super_admin && !["org_admin", "manager"].includes(roleName)) {
       return NextResponse.json(
         { error: "Insufficient permissions to delete cutlists" },
         { status: 403 }
       );
     }
 
-    const isSuperAdmin = userData.role === "super_admin";
+    const isSuperAdmin = userData.is_super_admin === true;
 
     // First get the cutlist to verify ownership and for audit log
-    let selectQuery = supabase
+    let selectQuery = serviceClient
       .from("cutlists")
       .select("id, name, organization_id")
       .eq("id", id);
@@ -376,18 +388,18 @@ export async function DELETE(
     }
 
     // Get linked files BEFORE deleting the cutlist
-    const { data: linkedFiles } = await supabase
+    const { data: linkedFiles } = await serviceClient
       .from("uploaded_files")
       .select("id, storage_path")
       .eq("cutlist_id", id);
 
     // Delete files from storage first
     if (linkedFiles && linkedFiles.length > 0) {
-      const storagePaths = linkedFiles.map(f => f.storage_path).filter(Boolean);
+      const storagePaths = linkedFiles.map((f: { id: string; storage_path: string }) => f.storage_path).filter(Boolean);
       
       if (storagePaths.length > 0) {
         // Delete from cutlist-files bucket
-        const { error: storageError } = await supabase.storage
+        const { error: storageError } = await serviceClient.storage
           .from("cutlist-files")
           .remove(storagePaths);
         
@@ -402,14 +414,14 @@ export async function DELETE(
       }
 
       // Delete file records from database (in case ON DELETE SET NULL doesn't handle it)
-      await supabase
+      await serviceClient
         .from("uploaded_files")
         .delete()
         .eq("cutlist_id", id);
     }
 
     // Delete cutlist - CRITICAL: filter by organization_id (parts will cascade delete)
-    let deleteQuery = supabase
+    let deleteQuery = serviceClient
       .from("cutlists")
       .delete()
       .eq("id", id);
