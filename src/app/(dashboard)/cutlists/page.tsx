@@ -68,9 +68,13 @@ async function fetchCutlists(params: {
     if (params.sort) searchParams.set("sort", params.sort);
     if (params.order) searchParams.set("order", params.order);
 
-    const response = await fetch(`/api/v1/cutlists?${searchParams.toString()}`);
+    const response = await fetch(`/api/v1/cutlists?${searchParams.toString()}`, {
+      credentials: "include", // Ensure cookies are sent
+    });
     if (!response.ok) {
-      throw new Error("Failed to fetch cutlists");
+      const errorData = await response.json().catch(() => ({}));
+      console.error("Cutlists API error:", response.status, errorData);
+      throw new Error(errorData.error || "Failed to fetch cutlists");
     }
     const data = await response.json();
     return data.cutlists || [];

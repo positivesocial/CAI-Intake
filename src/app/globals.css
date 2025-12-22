@@ -19,6 +19,18 @@
   --cai-teal-light: #33e0bb;
   --cai-teal-dark: #00a888;
   
+  /* Industrial Design System Colors */
+  --industrial-900: #0a0f14;
+  --industrial-800: #111820;
+  --industrial-700: #1a2332;
+  --industrial-600: #243044;
+  --industrial-text: #f0f4f8;
+  --industrial-text-muted: #8b9bb4;
+  --industrial-text-dim: #5a6a7a;
+  --industrial-grid: rgba(0, 212, 170, 0.08);
+  --industrial-grid-accent: rgba(0, 212, 170, 0.15);
+  --industrial-glow: rgba(0, 212, 170, 0.4);
+  
   /* Semantic Colors (constant across themes) */
   --cai-success: #22c55e;
   --cai-warning: #f59e0b;
@@ -139,6 +151,15 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
   
+  /* Industrial Design System */
+  --color-industrial-900: var(--industrial-900);
+  --color-industrial-800: var(--industrial-800);
+  --color-industrial-700: var(--industrial-700);
+  --color-industrial-600: var(--industrial-600);
+  --color-industrial-text: var(--industrial-text);
+  --color-industrial-text-muted: var(--industrial-text-muted);
+  --color-industrial-text-dim: var(--industrial-text-dim);
+  
   /* Shadows */
   --shadow-sm: var(--shadow-sm);
   --shadow: var(--shadow);
@@ -148,6 +169,8 @@
   /* Typography */
   --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), 'JetBrains Mono', monospace;
+  --font-display: 'Syne', var(--font-geist-sans), system-ui, sans-serif;
+  --font-body: 'DM Sans', var(--font-geist-sans), system-ui, sans-serif;
 }
 
 * {
@@ -158,6 +181,21 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+/* Landing page dark mode override - bypasses theme system */
+body:has(> div[data-landing="true"]) {
+  background: #0a0f14;
+}
+
+[data-landing="true"] {
+  --landing-bg: #0a0f14;
+  --landing-bg-secondary: #111820;
+  --landing-bg-tertiary: #1a2332;
+  --landing-text: #f0f4f8;
+  --landing-text-muted: #8b9bb4;
+  --landing-text-dim: #5a6a7a;
+  --landing-accent: #00d4aa;
 }
 
 /* Theme transition - smooth color changes */
@@ -282,6 +320,164 @@ html:not(.dark) {
 
 .animate-fade-in {
   animation: fade-in 0.2s ease-out forwards;
+}
+
+/* Landing Page Animations */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(0, 212, 170, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(0, 212, 170, 0.5);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+.animate-scan-line {
+  animation: scan-line 8s linear infinite;
+}
+
+@keyframes grid-pulse {
+  0%, 100% {
+    opacity: 0.03;
+  }
+  50% {
+    opacity: 0.08;
+  }
+}
+
+.animate-grid-pulse {
+  animation: grid-pulse 4s ease-in-out infinite;
+}
+
+@keyframes counter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-counter {
+  animation: counter 0.5s ease-out forwards;
+}
+
+/* Staggered animation delays for landing page */
+.delay-0 { animation-delay: 0ms; }
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+.delay-600 { animation-delay: 600ms; }
+.delay-700 { animation-delay: 700ms; }
+.delay-800 { animation-delay: 800ms; }
+
+/* Blueprint grid background */
+.blueprint-grid {
+  background-image: 
+    linear-gradient(var(--industrial-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--industrial-grid) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.blueprint-grid-lg {
+  background-image: 
+    linear-gradient(var(--industrial-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--industrial-grid) 1px, transparent 1px),
+    linear-gradient(var(--industrial-grid-accent) 1px, transparent 1px),
+    linear-gradient(90deg, var(--industrial-grid-accent) 1px, transparent 1px);
+  background-size: 40px 40px, 40px 40px, 200px 200px, 200px 200px;
+}
+
+/* Measurement ruler marks */
+.ruler-marks {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.1) 0px,
+    rgba(255, 255, 255, 0.1) 1px,
+    transparent 1px,
+    transparent 10px
+  );
+}
+
+/* Glow effects */
+.glow-teal {
+  box-shadow: 0 0 30px rgba(0, 212, 170, 0.3);
+}
+
+.glow-teal-lg {
+  box-shadow: 0 0 60px rgba(0, 212, 170, 0.4);
+}
+
+.text-glow-teal {
+  text-shadow: 0 0 20px rgba(0, 212, 170, 0.5);
+}
+
+/* Industrial card style */
+.industrial-card {
+  background: linear-gradient(135deg, var(--industrial-800) 0%, var(--industrial-700) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+}
+
+.industrial-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(0, 212, 170, 0.05) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Precision indicator */
+.precision-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
 }
 
 /* Safe area insets for mobile devices (notches, home indicators) */

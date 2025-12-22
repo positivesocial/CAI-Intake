@@ -13,6 +13,7 @@ import { sanitizeLikePattern, SIZE_LIMITS } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
 import { trackUsage } from "@/lib/usage";
+import crypto from "crypto";
 
 // Create cutlist schema
 const CreateCutlistSchema = z.object({
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
     // Get user's organization
     const { data: userData } = await supabase
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id")
       .eq("id", user.id)
       .single();
 
@@ -185,13 +186,16 @@ export async function POST(request: NextRequest) {
 
     const { name, description, job_ref, client_ref, capabilities, parts } = parseResult.data;
 
-    // Generate doc_id
+    // Generate doc_id and unique cutlist ID
     const doc_id = generateId("DOC");
+    const cutlistId = crypto.randomUUID();
 
-    // Create cutlist
+    // Create cutlist - explicitly provide ID and updated_at since database defaults may not work
+    const now = new Date().toISOString();
     const { data: cutlist, error: cutlistError } = await supabase
       .from("cutlists")
       .insert({
+        id: cutlistId, // Explicitly provide UUID
         organization_id: organizationId,
         user_id: user.id,
         doc_id,
@@ -200,6 +204,8 @@ export async function POST(request: NextRequest) {
         job_ref,
         client_ref,
         source_method: "web", // Required field
+        created_at: now,
+        updated_at: now, // Required field - no database default
         capabilities: capabilities ?? {
           core_parts: true,
           edging: true,
@@ -254,6 +260,7 @@ export async function POST(request: NextRequest) {
         .from("cut_parts")
         .insert(
           parts.map(p => ({
+            id: crypto.randomUUID(), // Explicitly provide UUID for each part
             cutlist_id: cutlist.id,
             part_id: p.part_id,
             label: p.label,
@@ -267,6 +274,8 @@ export async function POST(request: NextRequest) {
             group_id: p.group_id,
             ops: p.ops,
             notes: p.notes,
+            created_at: now,
+            updated_at: now,
           }))
         );
 

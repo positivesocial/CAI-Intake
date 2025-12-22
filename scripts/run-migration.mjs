@@ -166,13 +166,17 @@ console.log(`🔗 Supabase URL: ${supabaseUrl}\n`);
 // Since we can't execute raw SQL via supabase-js client directly,
 // we'll output the SQL for manual execution
 console.log('⚠️  To run pending migrations, please:');
+console.log('');
+console.log('OPTION 1: Supabase Dashboard (Recommended)');
 console.log('1. Go to your Supabase dashboard');
 console.log('2. Navigate to SQL Editor');
-console.log('3. Copy and run the migration SQL from these files:');
-console.log(`   - ${join(__dirname, '..', 'supabase', 'migrations', '20241226000000_fix_operations_tables.sql')}`);
-console.log(`   - ${join(__dirname, '..', 'supabase', 'migrations', '20241226000001_fix_cutlists_table.sql')}`);
+console.log('3. Copy and run the migration SQL from this file:');
+console.log(`   ${join(__dirname, '..', 'supabase', 'migrations', '20241226000003_comprehensive_fix.sql')}`);
 console.log('');
-console.log('Or run via Supabase CLI:');
+console.log('OPTION 2: Using psql (if you have DATABASE_URL in .env)');
+console.log('   psql "$DATABASE_URL" -f supabase/migrations/20241226000003_comprehensive_fix.sql');
+console.log('');
+console.log('OPTION 3: Supabase CLI');
 console.log('   npx supabase db push');
 console.log('');
 
