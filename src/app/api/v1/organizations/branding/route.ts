@@ -62,25 +62,37 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createClient();
 
-    // Get user's organization
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("organization_id, role")
-      .eq("id", user.id)
-      .single();
+    // Get user's organization - check demo mode first
+    const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+    let organizationId: string | null = null;
+    let userRole: string = "operator";
 
-    if (profileError || !profile?.organization_id) {
-      return NextResponse.json(
-        { success: false, error: "Organization not found" },
-        { status: 404 }
-      );
+    if (isDemoMode) {
+      // In demo mode, use the org ID from user metadata
+      organizationId = user.user_metadata?.organization_id || "demo-org-id";
+      userRole = "org_admin";
+    } else {
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("organization_id, role")
+        .eq("id", user.id)
+        .single();
+
+      if (userError || !userData?.organization_id) {
+        return NextResponse.json(
+          { success: false, error: "Organization not found" },
+          { status: 404 }
+        );
+      }
+      organizationId = userData.organization_id;
+      userRole = userData.role;
     }
 
     // Get organization branding
     const { data: org, error: orgError } = await supabase
       .from("organizations")
       .select("branding")
-      .eq("id", profile.organization_id)
+      .eq("id", organizationId)
       .single();
 
     if (orgError) {
@@ -122,22 +134,34 @@ export async function PUT(request: NextRequest) {
 
     const supabase = await createClient();
 
-    // Get user's organization and check permissions
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("organization_id, role")
-      .eq("id", user.id)
-      .single();
+    // Get user's organization and check permissions - check demo mode first
+    const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+    let organizationId: string | null = null;
+    let userRole: string = "operator";
 
-    if (profileError || !profile?.organization_id) {
-      return NextResponse.json(
-        { success: false, error: "Organization not found" },
-        { status: 404 }
-      );
+    if (isDemoMode) {
+      // In demo mode, use the org ID from user metadata
+      organizationId = user.user_metadata?.organization_id || "demo-org-id";
+      userRole = "org_admin";
+    } else {
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("organization_id, role")
+        .eq("id", user.id)
+        .single();
+
+      if (userError || !userData?.organization_id) {
+        return NextResponse.json(
+          { success: false, error: "Organization not found" },
+          { status: 404 }
+        );
+      }
+      organizationId = userData.organization_id;
+      userRole = userData.role;
     }
 
     // Only admins can update branding
-    if (!["admin", "org_admin", "super_admin"].includes(profile.role)) {
+    if (!["admin", "org_admin", "super_admin"].includes(userRole)) {
       return NextResponse.json(
         { success: false, error: "Insufficient permissions" },
         { status: 403 }
@@ -159,7 +183,7 @@ export async function PUT(request: NextRequest) {
     const { error: updateError } = await supabase
       .from("organizations")
       .update({ branding: parseResult.data })
-      .eq("id", profile.organization_id);
+      .eq("id", organizationId);
 
     if (updateError) {
       logger.error("Failed to update org branding:", updateError);
@@ -170,7 +194,7 @@ export async function PUT(request: NextRequest) {
     }
 
     logger.info("Organization branding updated", {
-      org_id: profile.organization_id,
+      org_id: organizationId,
       user_id: user.id,
     });
 
@@ -187,4 +211,5 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
 

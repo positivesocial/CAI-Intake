@@ -7,14 +7,28 @@ import {
   Redo2,
   Trash2,
   Settings,
+  Plus,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { PartsTable } from "@/components/parts";
 import { StatsSidebar, ProjectMergePanel } from "@/components/intake";
 import { useIntakeStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { generateId } from "@/lib/utils";
 import { StepNavigation } from "@/components/ui/stepper";
+import type { CutPart } from "@/lib/schema";
 
 export function ReviewStep() {
   const {
@@ -29,13 +43,60 @@ export function ReviewStep() {
     isAdvancedMode,
     toggleAdvancedMode,
     clearParts,
+    addPart,
   } = useIntakeStore();
 
   const [showStats, setShowStats] = React.useState(true);
+  const [showAddModal, setShowAddModal] = React.useState(false);
+  const [newPartForm, setNewPartForm] = React.useState({
+    label: "",
+    L: "",
+    W: "",
+    qty: "1",
+    thickness_mm: "18",
+  });
 
   const totalParts = currentCutlist.parts.length;
   const totalPieces = currentCutlist.parts.reduce((sum, p) => sum + p.qty, 0);
   const canProceed = canProceedToExport();
+
+  // Handle quick add part
+  const handleAddPart = () => {
+    const L = parseFloat(newPartForm.L);
+    const W = parseFloat(newPartForm.W);
+    const qty = parseInt(newPartForm.qty) || 1;
+    const thickness = parseFloat(newPartForm.thickness_mm) || 18;
+
+    if (!L || !W || L <= 0 || W <= 0) {
+      return;
+    }
+
+    const newPart: CutPart = {
+      part_id: generateId("P"),
+      label: newPartForm.label || undefined,
+      qty,
+      size: { L, W },
+      thickness_mm: thickness,
+      material_id: currentCutlist.materials[0]?.material_id || "MAT-WHITE-18",
+      grain: "none",
+      allow_rotation: true,
+      audit: {
+        source_method: "manual",
+        confidence: 1,
+        human_verified: true,
+      },
+    };
+
+    addPart(newPart);
+    setShowAddModal(false);
+    setNewPartForm({
+      label: "",
+      L: "",
+      W: "",
+      qty: "1",
+      thickness_mm: "18",
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -88,6 +149,17 @@ export function ReviewStep() {
             </span>
           </Button>
 
+          {/* Add part */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAddModal(true)}
+            className="text-[var(--cai-teal)] border-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/10"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline ml-1">Add Part</span>
+          </Button>
+
           {/* Clear parts */}
           <Button
             variant="outline"
@@ -134,6 +206,95 @@ export function ReviewStep() {
         nextLabel={canProceed ? "Continue to Export" : "Add Parts First"}
         nextDisabled={!canProceed}
       />
+
+      {/* Add Part Modal */}
+      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-[var(--cai-teal)]" />
+              Add New Part
+            </DialogTitle>
+            <DialogDescription>
+              Quickly add a part to the cutlist. Use the table for more details.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="part-label">Part Name / Label</Label>
+              <Input
+                id="part-label"
+                placeholder="e.g., Side Panel"
+                value={newPartForm.label}
+                onChange={(e) => setNewPartForm(prev => ({ ...prev, label: e.target.value }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="part-length">Length (mm) *</Label>
+                <Input
+                  id="part-length"
+                  type="number"
+                  placeholder="800"
+                  min={0}
+                  value={newPartForm.L}
+                  onChange={(e) => setNewPartForm(prev => ({ ...prev, L: e.target.value }))}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="part-width">Width (mm) *</Label>
+                <Input
+                  id="part-width"
+                  type="number"
+                  placeholder="600"
+                  min={0}
+                  value={newPartForm.W}
+                  onChange={(e) => setNewPartForm(prev => ({ ...prev, W: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="part-qty">Quantity</Label>
+                <Input
+                  id="part-qty"
+                  type="number"
+                  min={1}
+                  value={newPartForm.qty}
+                  onChange={(e) => setNewPartForm(prev => ({ ...prev, qty: e.target.value }))}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="part-thickness">Thickness (mm)</Label>
+                <Input
+                  id="part-thickness"
+                  type="number"
+                  min={1}
+                  value={newPartForm.thickness_mm}
+                  onChange={(e) => setNewPartForm(prev => ({ ...prev, thickness_mm: e.target.value }))}
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddModal(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAddPart}
+              disabled={!newPartForm.L || !newPartForm.W || parseFloat(newPartForm.L) <= 0 || parseFloat(newPartForm.W) <= 0}
+              className="bg-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/90"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add Part
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

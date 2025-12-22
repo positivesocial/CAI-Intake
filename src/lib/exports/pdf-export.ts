@@ -32,6 +32,37 @@ interface SimpleCutlist {
   capabilities: CutlistCapabilities;
 }
 
+interface OrgBranding {
+  logo_url?: string;
+  logo_dark_url?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  accent_color?: string;
+  company_name?: string;
+  company_tagline?: string;
+  contact_info?: {
+    phone?: string;
+    email?: string;
+    address?: string;
+    website?: string;
+  };
+  template_settings?: {
+    header_text?: string;
+    footer_text?: string;
+    include_logo?: boolean;
+    include_qr_code?: boolean;
+    qr_style?: "standard" | "rounded" | "dots";
+    page_size?: "A4" | "Letter" | "A3";
+    orientation?: "portrait" | "landscape";
+  };
+  pdf_theme?: {
+    font_family?: string;
+    heading_size?: number;
+    body_size?: number;
+    table_style?: "bordered" | "striped" | "minimal";
+  };
+}
+
 interface PDFExportOptions {
   includeOperations?: boolean;
   includeSourceMethod?: boolean;
@@ -39,6 +70,7 @@ interface PDFExportOptions {
   includeDetailedMetrics?: boolean;
   companyLogo?: string;
   companyName?: string;
+  branding?: OrgBranding;
 }
 
 interface PartStats {
@@ -618,6 +650,19 @@ function formatDate(date: Date): string {
 // PDF GENERATION
 // ============================================================
 
+// Helper to convert hex color to RGB array
+function hexToRgb(hex: string): [number, number, number] {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (result) {
+    return [
+      parseInt(result[1], 16),
+      parseInt(result[2], 16),
+      parseInt(result[3], 16),
+    ];
+  }
+  return [0, 128, 128]; // Default teal
+}
+
 export function generateCutlistPDF(
   cutlist: SimpleCutlist,
   options: PDFExportOptions = {}
@@ -628,12 +673,24 @@ export function generateCutlistPDF(
     includeNotes = true,
     includeDetailedMetrics = true,
     companyName = "CAI Intake",
+    branding,
   } = options;
 
+  // Get branding settings with fallbacks
+  const brandCompanyName = branding?.company_name || companyName;
+  const brandPrimaryColor = branding?.primary_color || "#008080";
+  const brandSecondaryColor = branding?.secondary_color || "#F0F0F0";
+  const brandFooterText = branding?.template_settings?.footer_text || "All dimensions in mm. Verify before cutting.";
+  const brandHeaderText = branding?.template_settings?.header_text;
+  const brandContactInfo = branding?.contact_info;
+  const brandTagline = branding?.company_tagline;
+  const pageSize = branding?.template_settings?.page_size || "a4";
+  const orientation = branding?.template_settings?.orientation || "landscape";
+
   const doc = new jsPDF({
-    orientation: "landscape",
+    orientation: orientation as "portrait" | "landscape",
     unit: "mm",
-    format: "a4",
+    format: pageSize.toLowerCase() as "a4" | "letter" | "a3",
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -641,9 +698,9 @@ export function generateCutlistPDF(
   const margin = 15;
   let yPos = margin;
 
-  // Colors
-  const primaryColor: [number, number, number] = [0, 128, 128];
-  const headerBg: [number, number, number] = [240, 240, 240];
+  // Colors from branding
+  const primaryColor: [number, number, number] = hexToRgb(brandPrimaryColor);
+  const headerBg: [number, number, number] = hexToRgb(brandSecondaryColor);
   const textColor: [number, number, number] = [50, 50, 50];
   const blueColor: [number, number, number] = [59, 130, 246];
   const amberColor: [number, number, number] = [217, 119, 6];
@@ -658,22 +715,36 @@ export function generateCutlistPDF(
   const cncMetrics = calculateCncMetrics(cutlist.parts);
 
   // ============================================================
-  // HEADER
+  // HEADER (with branding)
   // ============================================================
 
   doc.setFillColor(...primaryColor);
-  doc.rect(0, 0, pageWidth, 20, "F");
+  doc.rect(0, 0, pageWidth, 22, "F");
 
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
-  doc.text(companyName, margin, 13);
+  doc.text(brandCompanyName, margin, 12);
+
+  // Add tagline if present
+  if (brandTagline) {
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "italic");
+    doc.text(brandTagline, margin, 18);
+  }
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text("Cutlist Report", pageWidth - margin, 13, { align: "right" });
+  doc.text("Cutlist Report", pageWidth - margin, 12, { align: "right" });
 
-  yPos = 30;
+  // Add contact info in header if available
+  if (brandContactInfo?.phone || brandContactInfo?.email) {
+    doc.setFontSize(8);
+    const contactText = [brandContactInfo.phone, brandContactInfo.email].filter(Boolean).join(" | ");
+    doc.text(contactText, pageWidth - margin, 18, { align: "right" });
+  }
+
+  yPos = 32;
 
   // Cutlist Name
   doc.setTextColor(...textColor);
@@ -883,6 +954,13 @@ export function generateCutlistPDF(
       const pageCount = (doc as any).internal.getNumberOfPages();
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
+      
+      // Footer with branding
+      doc.text(
+        brandFooterText,
+        margin,
+        pageHeight - 10
+      );
       doc.text(
         `Page ${data.pageNumber} of ${pageCount}`,
         pageWidth / 2,
@@ -890,7 +968,7 @@ export function generateCutlistPDF(
         { align: "center" }
       );
       doc.text(
-        `Generated by ${companyName}`,
+        `Generated by ${brandCompanyName}`,
         pageWidth - margin,
         pageHeight - 10,
         { align: "right" }

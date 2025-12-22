@@ -68,3 +68,4 @@ CREATE TRIGGER trigger_update_branding_timestamp
   FOR EACH ROW
   EXECUTE FUNCTION update_branding_timestamp();
 
+

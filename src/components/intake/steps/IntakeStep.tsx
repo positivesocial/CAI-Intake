@@ -25,6 +25,7 @@ import {
   FileUpload,
   TemplateGenerator,
 } from "@/components/intake";
+import type { ManualEntryFormRef } from "@/components/intake/ManualEntryForm";
 import { useIntakeStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { StepNavigation } from "@/components/ui/stepper";
@@ -79,6 +80,9 @@ export function IntakeStep() {
     canProceedToReview,
   } = useIntakeStore();
 
+  // Ref to ManualEntryForm for QuickAdd integration
+  const manualEntryRef = React.useRef<ManualEntryFormRef>(null);
+
   const totalParts = currentCutlist.parts.length;
   const inboxCount = inboxParts.filter((p) => p._status !== "rejected").length;
   const canProceed = canProceedToReview();
@@ -110,10 +114,16 @@ export function IntakeStep() {
         <TabsContent value="manual" className="space-y-6 mt-4">
           <Card>
             <CardContent className="pt-6">
-              <QuickAddField />
+              <QuickAddField 
+                addToStore={false}
+                onPartParsed={(part) => {
+                  // Add parsed part to the manual entry table instead of parts list
+                  manualEntryRef.current?.addRowFromPart(part);
+                }}
+              />
             </CardContent>
           </Card>
-          <ManualEntryForm />
+          <ManualEntryForm ref={manualEntryRef} />
         </TabsContent>
         
         {/* Paste & Parse */}

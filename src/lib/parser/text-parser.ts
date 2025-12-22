@@ -254,8 +254,9 @@ export class TextParser {
         const W = parseDimensionValue(match[2]);
         
         if (L > 0 && W > 0) {
-          // Ensure L >= W (standard convention: length is longer side)
-          return L >= W ? { L, W } : { L: W, W: L };
+          // Use dimensions as-is - L represents grain direction in cabinet context
+          // (may be smaller than W for grain-sensitive parts)
+          return { L, W };
         }
       }
     }

@@ -491,15 +491,13 @@ function extractDimensions(
         let L = toMm(d1, units);
         let W = toMm(d2, units);
         
-        // Apply dimension order hint
+        // Apply dimension order hint - only swap if explicit WxL format
+        // (Do NOT auto-swap based on size - L represents grain direction
+        // in cabinet context and may be smaller than W)
         if (options.dimOrderHint === "WxL") {
           [L, W] = [W, L];
-        } else if (options.dimOrderHint === "infer") {
-          // Assume larger dimension is L (common convention)
-          if (W > L) {
-            [L, W] = [W, L];
-          }
         }
+        // Removed "infer" auto-swap logic - keep dimensions as entered
         
         return { L, W, confidence: 0.95 };
       }

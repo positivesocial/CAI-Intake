@@ -90,3 +90,4 @@ EXECUTE FUNCTION update_shortcode_configs_updated_at();
 -- Add comment
 COMMENT ON TABLE shortcode_configs IS 'Organization-specific shortcode configurations with system defaults fallback';
 
+

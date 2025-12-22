@@ -118,6 +118,11 @@ export default function BrandingPage() {
   const [isSaving, setIsSaving] = React.useState(false);
   const [hasChanges, setHasChanges] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [isUploading, setIsUploading] = React.useState<"light" | "dark" | null>(null);
+  
+  // File input refs
+  const lightLogoInputRef = React.useRef<HTMLInputElement>(null);
+  const darkLogoInputRef = React.useRef<HTMLInputElement>(null);
 
   // Load branding settings
   React.useEffect(() => {
@@ -196,12 +201,79 @@ export default function BrandingPage() {
     }
   };
 
-  // Logo upload handler (placeholder)
-  const handleLogoUpload = async (variant: "light" | "dark") => {
-    // In production, this would open a file picker and upload to storage
-    toast.info("Logo upload", {
-      description: `${variant === "light" ? "Light" : "Dark"} logo upload coming soon!`,
-    });
+  // Trigger file input click
+  const handleLogoClick = (variant: "light" | "dark") => {
+    if (variant === "light") {
+      lightLogoInputRef.current?.click();
+    } else {
+      darkLogoInputRef.current?.click();
+    }
+  };
+
+  // Logo upload handler
+  const handleLogoUpload = async (variant: "light" | "dark", file: File) => {
+    // Validate file type
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Invalid file type", {
+        description: "Please upload a PNG, JPG, SVG, or WebP image",
+      });
+      return;
+    }
+
+    // Validate file size (2MB max)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("File too large", {
+        description: "Maximum file size is 2MB",
+      });
+      return;
+    }
+
+    setIsUploading(variant);
+    
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("variant", variant);
+
+      const response = await fetch("/api/v1/organizations/branding/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || "Failed to upload");
+      }
+
+      // Update local state with new URL
+      if (variant === "light") {
+        updateBranding("logo_url", data.url);
+      } else {
+        updateBranding("logo_dark_url", data.url);
+      }
+
+      toast.success("Logo uploaded", {
+        description: `${variant === "light" ? "Light" : "Dark"} mode logo saved successfully`,
+      });
+    } catch (err) {
+      toast.error("Upload failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setIsUploading(null);
+    }
+  };
+
+  // Handle file input change
+  const handleFileChange = (variant: "light" | "dark") => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleLogoUpload(variant, file);
+    }
+    // Reset input so same file can be selected again
+    e.target.value = "";
   };
 
   if (isLoading) {
@@ -284,6 +356,22 @@ export default function BrandingPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Hidden file inputs */}
+              <input
+                ref={lightLogoInputRef}
+                type="file"
+                accept=".png,.jpg,.jpeg,.svg,.webp"
+                className="hidden"
+                onChange={handleFileChange("light")}
+              />
+              <input
+                ref={darkLogoInputRef}
+                type="file"
+                accept=".png,.jpg,.jpeg,.svg,.webp"
+                className="hidden"
+                onChange={handleFileChange("dark")}
+              />
+              
               <div className="grid grid-cols-2 gap-6">
                 {/* Light Logo */}
                 <div className="space-y-3">
@@ -291,11 +379,17 @@ export default function BrandingPage() {
                   <div
                     className={cn(
                       "border-2 border-dashed rounded-lg p-6 text-center cursor-pointer",
-                      "hover:border-[var(--cai-teal)] transition-colors"
+                      "hover:border-[var(--cai-teal)] transition-colors",
+                      isUploading === "light" && "opacity-50 pointer-events-none"
                     )}
-                    onClick={() => handleLogoUpload("light")}
+                    onClick={() => handleLogoClick("light")}
                   >
-                    {branding.logo_url ? (
+                    {isUploading === "light" ? (
+                      <div className="flex flex-col items-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-[var(--cai-teal)] mb-2" />
+                        <p className="text-sm text-[var(--muted-foreground)]">Uploading...</p>
+                      </div>
+                    ) : branding.logo_url ? (
                       <div className="relative group">
                         <img
                           src={branding.logo_url}
@@ -309,6 +403,7 @@ export default function BrandingPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             updateBranding("logo_url", undefined);
+                            setHasChanges(true);
                           }}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -334,11 +429,17 @@ export default function BrandingPage() {
                   <div
                     className={cn(
                       "border-2 border-dashed rounded-lg p-6 text-center cursor-pointer bg-gray-900",
-                      "hover:border-[var(--cai-teal)] transition-colors"
+                      "hover:border-[var(--cai-teal)] transition-colors",
+                      isUploading === "dark" && "opacity-50 pointer-events-none"
                     )}
-                    onClick={() => handleLogoUpload("dark")}
+                    onClick={() => handleLogoClick("dark")}
                   >
-                    {branding.logo_dark_url ? (
+                    {isUploading === "dark" ? (
+                      <div className="flex flex-col items-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-[var(--cai-teal)] mb-2" />
+                        <p className="text-sm text-gray-400">Uploading...</p>
+                      </div>
+                    ) : branding.logo_dark_url ? (
                       <div className="relative group">
                         <img
                           src={branding.logo_dark_url}
@@ -352,6 +453,7 @@ export default function BrandingPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             updateBranding("logo_dark_url", undefined);
+                            setHasChanges(true);
                           }}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -943,4 +1045,5 @@ export default function BrandingPage() {
     </div>
   );
 }
+
 

@@ -58,6 +58,120 @@ import { PartPreviewSvg, type SimplePartPreviewProps } from "@/components/parts/
 import { convertOpsToPreview, type PartPreviewData } from "@/lib/services";
 
 // ============================================================
+// SHORTCODE FORMATTERS
+// ============================================================
+
+import type { PartOps, GrooveOp, HoleOp, CustomCncOp } from "@/lib/schema/operations";
+
+/**
+ * Format operations to shortcode badges
+ */
+function formatOpsShortcodes(ops: PartOps | undefined): { 
+  edging: string | null; 
+  grooves: string | null; 
+  holes: string | null; 
+  cnc: string | null;
+} {
+  const result = {
+    edging: null as string | null,
+    grooves: null as string | null,
+    holes: null as string | null,
+    cnc: null as string | null,
+  };
+  
+  if (!ops) return result;
+  
+  // Edging
+  const edges = ops.edging?.edges;
+  if (edges) {
+    const applied = Object.entries(edges)
+      .filter(([, v]) => v?.apply)
+      .map(([k]) => k)
+      .sort();
+    
+    if (applied.length > 0) {
+      const key = applied.join(",");
+      const mapping: Record<string, string> = {
+        "L1": "EB:L1",
+        "L2": "EB:L2",
+        "W1": "EB:W1",
+        "W2": "EB:W2",
+        "L1,L2": "EB:2L",
+        "W1,W2": "EB:2W",
+        "L1,W1,W2": "EB:L+2W",
+        "L1,L2,W1": "EB:2L+W",
+        "L1,L2,W1,W2": "EB:4",
+      };
+      result.edging = mapping[key] ?? `EB:${applied.join("+")}`;
+    }
+  }
+  
+  // Grooves
+  const grooves = ops.grooves;
+  if (grooves && grooves.length > 0) {
+    const sides = [...new Set(grooves.map((g: GrooveOp) => g.side))];
+    result.grooves = `GR:${sides.join("+")}`;
+  }
+  
+  // Holes
+  const holes = ops.holes;
+  if (holes && holes.length > 0) {
+    const patternNames = holes.map((h: HoleOp) => h.pattern_id || "custom").slice(0, 2);
+    result.holes = `H:${patternNames.join("+")}`;
+  }
+  
+  // CNC
+  const routing = ops.routing || [];
+  const custom = ops.custom_cnc_ops || [];
+  const cncCount = routing.length + custom.length;
+  if (cncCount > 0) {
+    const programs = custom.slice(0, 2).map((c: CustomCncOp) => {
+      const payload = c.payload as { program_name?: string } | undefined;
+      return payload?.program_name || c.op_type;
+    });
+    result.cnc = programs.length > 0 ? `CNC:${programs.join("+")}` : `CNC:${cncCount}`;
+  }
+  
+  return result;
+}
+
+/**
+ * Render shortcode badges for a part
+ */
+function OpsShortcodeBadges({ ops }: { ops: PartOps | undefined }) {
+  const codes = formatOpsShortcodes(ops);
+  
+  if (!codes.edging && !codes.grooves && !codes.holes && !codes.cnc) {
+    return <span className="text-[var(--muted-foreground)] text-xs">—</span>;
+  }
+  
+  return (
+    <div className="flex flex-wrap gap-1">
+      {codes.edging && (
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-mono bg-blue-50 text-blue-700 border-blue-200">
+          {codes.edging}
+        </Badge>
+      )}
+      {codes.grooves && (
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-mono bg-purple-50 text-purple-700 border-purple-200">
+          {codes.grooves}
+        </Badge>
+      )}
+      {codes.holes && (
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-mono bg-amber-50 text-amber-700 border-amber-200">
+          {codes.holes}
+        </Badge>
+      )}
+      {codes.cnc && (
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-mono bg-green-50 text-green-700 border-green-200">
+          {codes.cnc}
+        </Badge>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // CONFIDENCE BADGE
 // ============================================================
 
@@ -430,6 +544,11 @@ function InboxPartRow({
             ))}
           </SelectContent>
         </Select>
+      </td>
+
+      {/* Operations Shortcodes */}
+      <td className="px-2 py-2 min-w-[100px]">
+        <OpsShortcodeBadges ops={part.ops} />
       </td>
 
       {/* Confidence */}
@@ -1361,6 +1480,7 @@ export function IntakeInbox() {
               <th className="w-[70px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">W</th>
               <th className="w-[60px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Qty</th>
               <th className="px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Material</th>
+              <th className="min-w-[100px] px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Ops</th>
               <th className="w-[80px] px-2 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">Conf.</th>
               <th className="w-[100px] px-2 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Actions</th>
             </tr>

@@ -512,9 +512,10 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         continue;
       }
 
-      // Ensure L >= W
-      const L = Math.max(aiPart.length || 0, aiPart.width || 0);
-      const W = Math.min(aiPart.length || 0, aiPart.width || 0);
+      // Use dimensions as-is - L represents grain direction in cabinet context
+      // (may be smaller than W for grain-sensitive parts)
+      const L = aiPart.length || 0;
+      const W = aiPart.width || 0;
 
       const cutPart: CutPart = {
         part_id: generateId("P"),

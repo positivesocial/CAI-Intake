@@ -28,6 +28,10 @@ import type { CutPart, CutlistCapabilities } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import { useColumnOrder } from "@/hooks/use-column-order";
 
+export interface ManualEntryFormRef {
+  addRowFromPart: (part: CutPart) => void;
+}
+
 interface ManualEntryFormProps {
   onPartAdded?: (part: CutPart) => void;
 }
@@ -199,7 +203,8 @@ function SortableHeaderCell({
   );
 }
 
-export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
+export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryFormProps>(
+  function ManualEntryForm({ onPartAdded }, ref) {
   const { currentCutlist, addPart, isAdvancedMode } = useIntakeStore();
   const capabilities = currentCutlist.capabilities;
   const defaultMaterial = currentCutlist.materials[0]?.material_id || "";
@@ -219,6 +224,50 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
   ]);
   const [focusedCell, setFocusedCell] = React.useState<{ row: number; col: number } | null>(null);
   const [errors, setErrors] = React.useState<Record<string, Record<string, boolean>>>({});
+
+  // Expose addRowFromPart method to parent via ref
+  React.useImperativeHandle(ref, () => ({
+    addRowFromPart: (part: CutPart) => {
+      // Convert CutPart to RowData format
+      const newRow: RowData = {
+        id: generateId("ROW"),
+        label: part.label || "",
+        qty: part.qty.toString(),
+        L: part.size.L.toString(),
+        W: part.size.W.toString(),
+        thickness_mm: part.thickness_mm.toString(),
+        material_id: part.material_id || defaultMaterial,
+        allow_rotation: part.allow_rotation ?? true,
+        group_id: part.group_id || "",
+        notes: part.notes?.operator || "",
+        // Edging
+        edge_L1: !!part.ops?.edging?.edges?.L1?.apply,
+        edge_L2: !!part.ops?.edging?.edges?.L2?.apply,
+        edge_W1: !!part.ops?.edging?.edges?.W1?.apply,
+        edge_W2: !!part.ops?.edging?.edges?.W2?.apply,
+        edgeband_id: part.ops?.edging?.edges?.L1?.edgeband_id || defaultEdgeband,
+        // Grooves
+        groove_count: part.ops?.grooves?.length?.toString() || "",
+        groove_side: part.ops?.grooves?.[0]?.side || "",
+        // Holes
+        hole_pattern: part.ops?.holes?.[0]?.pattern_id || "",
+        // CNC
+        cnc_program: (part.ops?.custom_cnc_ops?.[0]?.payload as { program_name?: string } | undefined)?.program_name || "",
+      };
+
+      // Add the row to the table (insert at first empty row or at end)
+      setRows((prev) => {
+        // Find first empty row (no L and W)
+        const emptyIndex = prev.findIndex(r => !r.L && !r.W);
+        if (emptyIndex >= 0) {
+          // Replace empty row
+          return prev.map((r, i) => i === emptyIndex ? newRow : r);
+        }
+        // Add to end
+        return [...prev, newRow];
+      });
+    },
+  }), [defaultMaterial, defaultEdgeband]);
 
   const tableRef = React.useRef<HTMLDivElement>(null);
   const inputRefs = React.useRef<Map<string, HTMLInputElement | HTMLSelectElement>>(new Map());
@@ -805,4 +854,4 @@ export function ManualEntryForm({ onPartAdded }: ManualEntryFormProps) {
       </CardContent>
     </Card>
   );
-}
+});

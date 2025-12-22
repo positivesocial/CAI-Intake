@@ -16,6 +16,7 @@ import {
   Redo2,
   CheckSquare,
   Square,
+  ArrowLeftRight,
 } from "lucide-react";
 import {
   DndContext,
@@ -396,6 +397,7 @@ export function PartsTable() {
   const {
     currentCutlist,
     removePart,
+    updatePart,
     selectedPartIds,
     selectPart,
     deselectPart,
@@ -960,6 +962,30 @@ export function PartsTable() {
                     })}
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-[var(--cai-teal)] hover:text-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/10"
+                                onClick={() => {
+                                  // Swap L and W dimensions
+                                  const updatedPart = {
+                                    ...part,
+                                    size: { L: part.size.W, W: part.size.L },
+                                  };
+                                  updatePart(part.part_id, updatedPart);
+                                }}
+                              >
+                                <ArrowLeftRight className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Swap L ↔ W</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                         <Button
                           variant="ghost"
                           size="icon"

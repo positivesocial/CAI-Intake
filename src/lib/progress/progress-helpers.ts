@@ -404,3 +404,4 @@ export function getStageProgress(stage: OCRStage): number {
   return weights[stage] ?? 0;
 }
 
+

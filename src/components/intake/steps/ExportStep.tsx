@@ -37,6 +37,37 @@ interface ExportOption {
   disabled?: boolean;
 }
 
+interface OrgBranding {
+  logo_url?: string;
+  logo_dark_url?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  accent_color?: string;
+  company_name?: string;
+  company_tagline?: string;
+  contact_info?: {
+    phone?: string;
+    email?: string;
+    address?: string;
+    website?: string;
+  };
+  template_settings?: {
+    header_text?: string;
+    footer_text?: string;
+    include_logo?: boolean;
+    include_qr_code?: boolean;
+    qr_style?: "standard" | "rounded" | "dots";
+    page_size?: "A4" | "Letter" | "A3";
+    orientation?: "portrait" | "landscape";
+  };
+  pdf_theme?: {
+    font_family?: string;
+    heading_size?: number;
+    body_size?: number;
+    table_style?: "bordered" | "striped" | "minimal";
+  };
+}
+
 export function ExportStep() {
   const {
     currentCutlist,
@@ -51,6 +82,23 @@ export function ExportStep() {
 
   const [exportStatus, setExportStatus] = React.useState<string | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [branding, setBranding] = React.useState<OrgBranding | null>(null);
+
+  // Fetch org branding on mount
+  React.useEffect(() => {
+    async function fetchBranding() {
+      try {
+        const response = await fetch("/api/v1/organizations/branding");
+        const data = await response.json();
+        if (data.success && data.branding) {
+          setBranding(data.branding);
+        }
+      } catch (err) {
+        console.error("Failed to fetch branding:", err);
+      }
+    }
+    fetchBranding();
+  }, []);
 
   const totalParts = currentCutlist.parts.length;
   const totalPieces = currentCutlist.parts.reduce((sum, p) => sum + p.qty, 0);
@@ -129,12 +177,13 @@ export function ExportStep() {
     try {
       switch (optionId) {
         case "pdf": {
-          // Generate and download PDF report
+          // Generate and download PDF report with org branding
           downloadCutlistPDF(currentCutlist, {
             includeOperations: true,
             includeSourceMethod: true,
             includeNotes: true,
-            companyName: "CAI Intake",
+            companyName: branding?.company_name || "CAI Intake",
+            branding: branding || undefined,
           });
           setExportStatus("PDF downloaded successfully!");
           break;

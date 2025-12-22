@@ -481,3 +481,4 @@ export function resetPythonOCRClient(): void {
   clientInstance = null;
 }
 
+
