@@ -74,83 +74,9 @@ async function fetchCutlists(params: {
     }
     const data = await response.json();
     return data.cutlists || [];
-  } catch {
-    // Return demo data if API fails
-    return [
-      {
-        id: "cl-001",
-        name: "Kitchen Cabinets - Smith Residence",
-        description: "Full kitchen cabinet set including uppers and lowers",
-        status: "completed",
-        partsCount: 45,
-        totalPieces: 98,
-        totalArea: 12.5,
-        materialsCount: 3,
-        createdAt: "2024-12-18T10:30:00Z",
-        updatedAt: "2024-12-19T14:20:00Z",
-        efficiency: 0.82,
-      },
-      {
-        id: "cl-002",
-        name: "Office Storage Units",
-        description: "Modular storage system for home office",
-        status: "optimized",
-        partsCount: 28,
-        totalPieces: 56,
-        totalArea: 8.3,
-        materialsCount: 2,
-        createdAt: "2024-12-19T09:15:00Z",
-        updatedAt: "2024-12-19T16:45:00Z",
-        efficiency: 0.78,
-      },
-      {
-        id: "cl-003",
-        name: "Bathroom Vanity",
-        status: "processing",
-        partsCount: 12,
-        totalPieces: 24,
-        totalArea: 3.2,
-        materialsCount: 2,
-        createdAt: "2024-12-19T11:00:00Z",
-        updatedAt: "2024-12-19T11:30:00Z",
-      },
-      {
-        id: "cl-004",
-        name: "Wardrobe Set - Johnson",
-        description: "Master bedroom walk-in wardrobe",
-        status: "draft",
-        partsCount: 56,
-        totalPieces: 0,
-        totalArea: 0,
-        materialsCount: 1,
-        createdAt: "2024-12-20T08:00:00Z",
-        updatedAt: "2024-12-20T08:00:00Z",
-      },
-      {
-        id: "cl-005",
-        name: "TV Unit Custom",
-        status: "completed",
-        partsCount: 18,
-        totalPieces: 36,
-        totalArea: 4.8,
-        materialsCount: 2,
-        createdAt: "2024-12-20T13:20:00Z",
-        updatedAt: "2024-12-20T15:10:00Z",
-        efficiency: 0.85,
-      },
-      {
-        id: "cl-006",
-        name: "Bookshelf Wall Unit",
-        description: "Floor to ceiling bookshelf system",
-        status: "draft",
-        partsCount: 32,
-        totalPieces: 0,
-        totalArea: 0,
-        materialsCount: 1,
-        createdAt: "2024-12-20T14:00:00Z",
-        updatedAt: "2024-12-20T14:00:00Z",
-      },
-    ];
+  } catch (error) {
+    console.error("Failed to fetch cutlists:", error);
+    return [];
   }
 }
 

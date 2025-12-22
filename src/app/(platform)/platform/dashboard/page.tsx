@@ -24,6 +24,7 @@ import {
   ChevronDown,
   Bell,
   Search,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,43 +49,73 @@ import {
 import { useAuthStore } from "@/lib/auth/store";
 import { cn } from "@/lib/utils";
 
-// Mock platform stats
-const PLATFORM_STATS = {
-  totalOrganizations: 156,
-  activeOrganizations: 142,
-  totalUsers: 847,
-  newUsersThisMonth: 67,
-  totalCutlists: 12453,
-  parseJobsToday: 234,
-  averageConfidence: 93.7,
-  totalPartsProcessed: 2847562,
+// =============================================================================
+// TYPES
+// =============================================================================
+
+interface PlatformStats {
+  totalOrganizations: number;
+  activeOrganizations: number;
+  totalUsers: number;
+  newUsersThisMonth: number;
+  totalCutlists: number;
+  parseJobsToday: number;
+  averageConfidence: number;
+  totalPartsProcessed: number;
   revenue: {
-    monthly: 24560,
-    growth: 12.5,
-  },
-};
+    monthly: number;
+    growth: number;
+  };
+}
 
-const SYSTEM_HEALTH = {
-  api: { status: "healthy", latency: 45 },
-  database: { status: "healthy", latency: 12 },
-  storage: { status: "healthy", usage: 67 },
-  queue: { status: "warning", pending: 23 },
-};
+interface SystemHealth {
+  api: { status: string; latency: number };
+  database: { status: string; latency: number };
+  storage: { status: string; usage: number };
+  queue: { status: string; pending: number };
+}
 
-const TOP_ORGANIZATIONS = [
-  { id: "1", name: "Premium Cabinets Inc", users: 24, cutlists: 456, plan: "enterprise", status: "active" },
-  { id: "2", name: "Modern Woodworks", users: 12, cutlists: 234, plan: "professional", status: "active" },
-  { id: "3", name: "FastCut Solutions", users: 18, cutlists: 189, plan: "professional", status: "active" },
-  { id: "4", name: "Artisan Furniture Co", users: 8, cutlists: 156, plan: "starter", status: "active" },
-  { id: "5", name: "QuickPanel Shop", users: 6, cutlists: 98, plan: "starter", status: "trial" },
-];
+interface TopOrganization {
+  id: string;
+  name: string;
+  users: number;
+  cutlists: number;
+  plan: string;
+  status: string;
+}
 
-const RECENT_ACTIVITY = [
-  { id: "1", type: "signup", message: "New organization registered: Panel Masters", time: "5 min ago" },
-  { id: "2", type: "upgrade", message: "Premium Cabinets upgraded to Enterprise", time: "1 hour ago" },
-  { id: "3", type: "alert", message: "High API usage detected from Modern Woodworks", time: "2 hours ago" },
-  { id: "4", type: "signup", message: "New user: john@fastcut.com joined FastCut Solutions", time: "3 hours ago" },
-];
+interface ActivityItem {
+  id: string;
+  type: "signup" | "upgrade" | "alert";
+  message: string;
+  time: string;
+}
+
+// =============================================================================
+// DATA FETCHING
+// =============================================================================
+
+async function fetchPlatformStats(): Promise<{
+  stats: PlatformStats;
+  systemHealth: SystemHealth;
+  topOrganizations: TopOrganization[];
+  recentActivity: ActivityItem[];
+} | null> {
+  try {
+    const response = await fetch("/api/v1/platform/stats");
+    if (!response.ok) {
+      throw new Error("Failed to fetch platform stats");
+    }
+    return response.json();
+  } catch (error) {
+    console.error("Failed to fetch platform stats:", error);
+    return null;
+  }
+}
+
+// =============================================================================
+// COMPONENTS
+// =============================================================================
 
 function StatusIndicator({ status }: { status: string }) {
   const colors: Record<string, string> = {
@@ -115,15 +146,62 @@ function PlanBadge({ plan }: { plan: string }) {
   );
 }
 
+function LoadingSkeleton() {
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white sticky top-0 z-50">
+        <div className="max-w-[1600px] mx-auto px-6">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
+                <Shield className="h-5 w-5 text-purple-300" />
+              </div>
+              <span className="font-bold text-lg">CAI Platform</span>
+            </div>
+          </div>
+        </div>
+      </header>
+      <main className="max-w-[1600px] mx-auto px-6 py-8">
+        <div className="flex items-center justify-center py-24">
+          <div className="flex flex-col items-center gap-4">
+            <RefreshCw className="h-8 w-8 animate-spin text-purple-600" />
+            <p className="text-slate-500">Loading platform data...</p>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// =============================================================================
+// MAIN PAGE
+// =============================================================================
+
 export default function PlatformDashboardPage() {
   const router = useRouter();
   const { user, logout, isSuperAdmin } = useAuthStore();
+  
+  const [loading, setLoading] = React.useState(true);
+  const [data, setData] = React.useState<{
+    stats: PlatformStats;
+    systemHealth: SystemHealth;
+    topOrganizations: TopOrganization[];
+    recentActivity: ActivityItem[];
+  } | null>(null);
 
-  // Redirect if not super admin
+  // Fetch data on mount
   React.useEffect(() => {
-    if (!isSuperAdmin()) {
-      router.push("/platform/login");
+    async function loadData() {
+      if (!isSuperAdmin()) {
+        router.push("/platform/login");
+        return;
+      }
+      setLoading(true);
+      const result = await fetchPlatformStats();
+      setData(result);
+      setLoading(false);
     }
+    loadData();
   }, [isSuperAdmin, router]);
 
   const handleLogout = async () => {
@@ -141,6 +219,33 @@ export default function PlatformDashboardPage() {
       </div>
     );
   }
+
+  if (loading) {
+    return <LoadingSkeleton />;
+  }
+
+  // Default values if data is null
+  const stats = data?.stats || {
+    totalOrganizations: 0,
+    activeOrganizations: 0,
+    totalUsers: 0,
+    newUsersThisMonth: 0,
+    totalCutlists: 0,
+    parseJobsToday: 0,
+    averageConfidence: 0,
+    totalPartsProcessed: 0,
+    revenue: { monthly: 0, growth: 0 },
+  };
+
+  const systemHealth = data?.systemHealth || {
+    api: { status: "unknown", latency: 0 },
+    database: { status: "unknown", latency: 0 },
+    storage: { status: "unknown", usage: 0 },
+    queue: { status: "unknown", pending: 0 },
+  };
+
+  const topOrganizations = data?.topOrganizations || [];
+  const recentActivity = data?.recentActivity || [];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -173,10 +278,10 @@ export default function PlatformDashboardPage() {
                     Organizations
                   </Button>
                 </Link>
-                <Link href="/platform/users">
+                <Link href="/platform/analytics">
                   <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10">
-                    <Users className="h-4 w-4 mr-2" />
-                    Users
+                    <Activity className="h-4 w-4 mr-2" />
+                    Analytics
                   </Button>
                 </Link>
                 <Link href="/platform/settings">
@@ -201,7 +306,9 @@ export default function PlatformDashboardPage() {
               
               <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10 relative">
                 <Bell className="h-5 w-5" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+                {recentActivity.length > 0 && (
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+                )}
               </Button>
 
               <DropdownMenu>
@@ -254,14 +361,14 @@ export default function PlatformDashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-blue-100 text-sm">Organizations</p>
-                  <p className="text-3xl font-bold">{PLATFORM_STATS.totalOrganizations}</p>
+                  <p className="text-3xl font-bold">{stats.totalOrganizations}</p>
                 </div>
                 <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
                   <Building2 className="h-6 w-6" />
                 </div>
               </div>
               <p className="mt-2 text-sm text-blue-100">
-                {PLATFORM_STATS.activeOrganizations} active
+                {stats.activeOrganizations} active
               </p>
             </CardContent>
           </Card>
@@ -271,14 +378,14 @@ export default function PlatformDashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-purple-100 text-sm">Total Users</p>
-                  <p className="text-3xl font-bold">{PLATFORM_STATS.totalUsers}</p>
+                  <p className="text-3xl font-bold">{stats.totalUsers}</p>
                 </div>
                 <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
                   <Users className="h-6 w-6" />
                 </div>
               </div>
               <p className="mt-2 text-sm text-purple-100">
-                +{PLATFORM_STATS.newUsersThisMonth} this month
+                +{stats.newUsersThisMonth} this month
               </p>
             </CardContent>
           </Card>
@@ -288,14 +395,14 @@ export default function PlatformDashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-teal-100 text-sm">Cutlists Created</p>
-                  <p className="text-3xl font-bold">{PLATFORM_STATS.totalCutlists.toLocaleString()}</p>
+                  <p className="text-3xl font-bold">{stats.totalCutlists.toLocaleString()}</p>
                 </div>
                 <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
                   <FileSpreadsheet className="h-6 w-6" />
                 </div>
               </div>
               <p className="mt-2 text-sm text-teal-100">
-                {PLATFORM_STATS.parseJobsToday} today
+                {stats.parseJobsToday} parsed today
               </p>
             </CardContent>
           </Card>
@@ -304,15 +411,17 @@ export default function PlatformDashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-green-100 text-sm">Monthly Revenue</p>
-                  <p className="text-3xl font-bold">${(PLATFORM_STATS.revenue.monthly / 1000).toFixed(1)}k</p>
+                  <p className="text-green-100 text-sm">Parts Processed</p>
+                  <p className="text-3xl font-bold">
+                    {(stats.totalPartsProcessed / 1000).toFixed(1)}k
+                  </p>
                 </div>
                 <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
                   <TrendingUp className="h-6 w-6" />
                 </div>
               </div>
               <p className="mt-2 text-sm text-green-100">
-                +{PLATFORM_STATS.revenue.growth}% growth
+                {stats.averageConfidence.toFixed(1)}% avg confidence
               </p>
             </CardContent>
           </Card>
@@ -335,10 +444,10 @@ export default function PlatformDashboardPage() {
                   </div>
                   <div>
                     <p className="font-medium text-sm">API Server</p>
-                    <p className="text-xs text-slate-500">{SYSTEM_HEALTH.api.latency}ms</p>
+                    <p className="text-xs text-slate-500">{systemHealth.api.latency}ms</p>
                   </div>
                 </div>
-                <StatusIndicator status={SYSTEM_HEALTH.api.status} />
+                <StatusIndicator status={systemHealth.api.status} />
               </div>
 
               <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
@@ -348,10 +457,10 @@ export default function PlatformDashboardPage() {
                   </div>
                   <div>
                     <p className="font-medium text-sm">Database</p>
-                    <p className="text-xs text-slate-500">{SYSTEM_HEALTH.database.latency}ms</p>
+                    <p className="text-xs text-slate-500">{systemHealth.database.latency}ms</p>
                   </div>
                 </div>
-                <StatusIndicator status={SYSTEM_HEALTH.database.status} />
+                <StatusIndicator status={systemHealth.database.status} />
               </div>
 
               <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
@@ -361,10 +470,10 @@ export default function PlatformDashboardPage() {
                   </div>
                   <div>
                     <p className="font-medium text-sm">Storage</p>
-                    <p className="text-xs text-slate-500">{SYSTEM_HEALTH.storage.usage}% used</p>
+                    <p className="text-xs text-slate-500">{systemHealth.storage.usage}% used</p>
                   </div>
                 </div>
-                <StatusIndicator status={SYSTEM_HEALTH.storage.status} />
+                <StatusIndicator status={systemHealth.storage.status} />
               </div>
 
               <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
@@ -374,10 +483,10 @@ export default function PlatformDashboardPage() {
                   </div>
                   <div>
                     <p className="font-medium text-sm">Job Queue</p>
-                    <p className="text-xs text-slate-500">{SYSTEM_HEALTH.queue.pending} pending</p>
+                    <p className="text-xs text-slate-500">{systemHealth.queue.pending} pending</p>
                   </div>
                 </div>
-                <StatusIndicator status={SYSTEM_HEALTH.queue.status} />
+                <StatusIndicator status={systemHealth.queue.status} />
               </div>
             </div>
           </CardContent>
@@ -401,35 +510,42 @@ export default function PlatformDashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Organization</TableHead>
-                    <TableHead className="text-right">Users</TableHead>
-                    <TableHead className="text-right">Cutlists</TableHead>
-                    <TableHead>Plan</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {TOP_ORGANIZATIONS.map((org) => (
-                    <TableRow key={org.id} className="hover:bg-slate-50">
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
-                            <Building2 className="h-4 w-4 text-slate-500" />
-                          </div>
-                          <span className="font-medium">{org.name}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">{org.users}</TableCell>
-                      <TableCell className="text-right">{org.cutlists}</TableCell>
-                      <TableCell>
-                        <PlanBadge plan={org.plan} />
-                      </TableCell>
+              {topOrganizations.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <Building2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>No organizations yet</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Organization</TableHead>
+                      <TableHead className="text-right">Users</TableHead>
+                      <TableHead className="text-right">Cutlists</TableHead>
+                      <TableHead>Plan</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {topOrganizations.map((org) => (
+                      <TableRow key={org.id} className="hover:bg-slate-50">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
+                              <Building2 className="h-4 w-4 text-slate-500" />
+                            </div>
+                            <span className="font-medium">{org.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">{org.users}</TableCell>
+                        <TableCell className="text-right">{org.cutlists}</TableCell>
+                        <TableCell>
+                          <PlanBadge plan={org.plan} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
 
@@ -442,26 +558,33 @@ export default function PlatformDashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {RECENT_ACTIVITY.map((activity) => (
-                  <div key={activity.id} className="flex items-start gap-3">
-                    <div className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                      activity.type === "signup" && "bg-green-100",
-                      activity.type === "upgrade" && "bg-purple-100",
-                      activity.type === "alert" && "bg-amber-100",
-                    )}>
-                      {activity.type === "signup" && <Users className="h-4 w-4 text-green-600" />}
-                      {activity.type === "upgrade" && <TrendingUp className="h-4 w-4 text-purple-600" />}
-                      {activity.type === "alert" && <AlertTriangle className="h-4 w-4 text-amber-600" />}
+              {recentActivity.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <Activity className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>No recent activity</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {recentActivity.map((activity) => (
+                    <div key={activity.id} className="flex items-start gap-3">
+                      <div className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
+                        activity.type === "signup" && "bg-green-100",
+                        activity.type === "upgrade" && "bg-purple-100",
+                        activity.type === "alert" && "bg-amber-100",
+                      )}>
+                        {activity.type === "signup" && <Users className="h-4 w-4 text-green-600" />}
+                        {activity.type === "upgrade" && <TrendingUp className="h-4 w-4 text-purple-600" />}
+                        {activity.type === "alert" && <AlertTriangle className="h-4 w-4 text-amber-600" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-700">{activity.message}</p>
+                        <p className="text-xs text-slate-500">{activity.time}</p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-slate-700">{activity.message}</p>
-                      <p className="text-xs text-slate-500">{activity.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -469,4 +592,3 @@ export default function PlatformDashboardPage() {
     </div>
   );
 }
-

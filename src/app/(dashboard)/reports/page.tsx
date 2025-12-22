@@ -75,56 +75,16 @@ async function fetchReportData(timeRange: TimeRange): Promise<{
   monthlyData: MonthlyData[];
   materialUsage: MaterialUsage[];
   recentCutlists: RecentCutlist[];
-}> {
+} | null> {
   try {
     const response = await fetch(`/api/v1/reports?range=${timeRange}`);
     if (!response.ok) {
       throw new Error("Failed to fetch report data");
     }
     return response.json();
-  } catch {
-    // Return demo data if API fails
-    return {
-      stats: {
-        totalCutlists: 156,
-        totalParts: 4823,
-        totalPieces: 12456,
-        totalArea: 892.5,
-        avgEfficiency: 0.78,
-        avgPartsPerCutlist: 31,
-        cutlistsThisPeriod: 25,
-        partsThisPeriod: 798,
-        periodGrowth: {
-          cutlists: 12,
-          parts: 8,
-          area: 15,
-          efficiency: 2.3,
-        },
-      },
-      monthlyData: [
-        { month: "Jul", cutlists: 12, parts: 312, area: 45.2 },
-        { month: "Aug", cutlists: 15, parts: 425, area: 58.3 },
-        { month: "Sep", cutlists: 18, parts: 521, area: 72.1 },
-        { month: "Oct", cutlists: 22, parts: 687, area: 89.5 },
-        { month: "Nov", cutlists: 25, parts: 798, area: 105.2 },
-        { month: "Dec", cutlists: 20, parts: 612, area: 82.4 },
-      ],
-      materialUsage: [
-        { material: "White Melamine 18mm", area: 245.3, percentage: 27.5, color: "#00838F" },
-        { material: "Oak Veneer 18mm", area: 189.2, percentage: 21.2, color: "#C4A35A" },
-        { material: "Black Melamine 16mm", area: 156.8, percentage: 17.6, color: "#1A1A1A" },
-        { material: "MDF 18mm", area: 134.5, percentage: 15.1, color: "#8B7355" },
-        { material: "Walnut Veneer 19mm", area: 98.2, percentage: 11.0, color: "#5D4037" },
-        { material: "Other", area: 68.5, percentage: 7.6, color: "#9E9E9E" },
-      ],
-      recentCutlists: [
-        { id: "CL-001", name: "Kitchen Cabinets - Smith", parts: 45, status: "completed", date: "2024-12-18" },
-        { id: "CL-002", name: "Office Storage Units", parts: 28, status: "processing", date: "2024-12-19" },
-        { id: "CL-003", name: "Bathroom Vanity", parts: 12, status: "completed", date: "2024-12-19" },
-        { id: "CL-004", name: "Wardrobe Set - Johnson", parts: 56, status: "draft", date: "2024-12-20" },
-        { id: "CL-005", name: "TV Unit Custom", parts: 18, status: "completed", date: "2024-12-20" },
-      ],
-    };
+  } catch (error) {
+    console.error("Failed to fetch report data:", error);
+    return null;
   }
 }
 
@@ -184,12 +144,32 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url);
   };
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-4">
           <RefreshCw className="h-8 w-8 animate-spin text-[var(--cai-teal)]" />
           <p className="text-[var(--muted-foreground)]">Loading report data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <AlertCircle className="h-12 w-12 text-[var(--muted-foreground)]" />
+          <div>
+            <h3 className="font-semibold text-lg mb-1">Unable to load reports</h3>
+            <p className="text-[var(--muted-foreground)] mb-4">
+              There was a problem fetching your analytics data.
+            </p>
+            <Button onClick={() => window.location.reload()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
+          </div>
         </div>
       </div>
     );
