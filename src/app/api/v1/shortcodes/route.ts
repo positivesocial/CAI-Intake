@@ -11,6 +11,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { sanitizeInput } from "@/lib/security";
 import { logAudit, AUDIT_ACTIONS } from "@/lib/audit";
+import { getRoleName, type RoleJoin } from "@/lib/utils/role-helpers";
 
 // ============================================================
 // VALIDATION
@@ -44,20 +45,24 @@ export async function GET(request: NextRequest) {
     // Get user's organization and role
     const { data: userData } = await supabase
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin, role:roles(name)")
       .eq("id", user.id)
       .single();
+
+    // Extract role name safely
+    const roleName = getRoleName(userData?.role as RoleJoin);
+    const isSuperAdmin = userData?.is_super_admin === true;
 
     // Determine organization to query
     let organizationId = userData?.organization_id;
     
     // Super admins can optionally query specific org via query param
-    if (userData?.role === "super_admin" && searchParams.get("org_id")) {
+    if (isSuperAdmin && searchParams.get("org_id")) {
       organizationId = searchParams.get("org_id");
     }
 
     // Non-super-admins must have an organization
-    if (!organizationId && userData?.role !== "super_admin") {
+    if (!organizationId && !isSuperAdmin) {
       return NextResponse.json({ error: "No organization" }, { status: 403 });
     }
 

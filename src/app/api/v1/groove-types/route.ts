@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { getRoleName, type RoleJoin } from "@/lib/utils/role-helpers";
 
 // Validation schema
 const CreateGrooveTypeSchema = z.object({
@@ -33,20 +34,24 @@ export async function GET(request: NextRequest) {
     // Get user's organization and role
     const { data: userData } = await supabase
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin, role:roles(name)")
       .eq("id", user.id)
       .single();
+
+    // Extract role name safely
+    const roleName = getRoleName(userData?.role as RoleJoin);
+    const isSuperAdmin = userData?.is_super_admin === true;
 
     // Determine organization to query
     let organizationId = userData?.organization_id;
     
     // Super admins can optionally query specific org via query param
-    if (userData?.role === "super_admin" && searchParams.get("org_id")) {
+    if (isSuperAdmin && searchParams.get("org_id")) {
       organizationId = searchParams.get("org_id");
     }
 
     // Non-super-admins must have an organization
-    if (!organizationId && userData?.role !== "super_admin") {
+    if (!organizationId && !isSuperAdmin) {
       return NextResponse.json(
         { error: "User not associated with an organization" },
         { status: 400 }
@@ -105,7 +110,7 @@ export async function POST(request: NextRequest) {
     // Get user's organization and role
     const { data: userData } = await supabase
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin, role:roles(name)")
       .eq("id", user.id)
       .single();
 
@@ -116,8 +121,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check permission - roles from user_role enum
-    if (!["super_admin", "org_admin", "manager"].includes(userData.role)) {
+    // Extract role name safely
+    const roleName = getRoleName(userData?.role as RoleJoin);
+    const isSuperAdmin = userData?.is_super_admin === true;
+
+    // Check permission
+    if (!isSuperAdmin && !["org_admin", "manager"].includes(roleName || "")) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
         { status: 403 }

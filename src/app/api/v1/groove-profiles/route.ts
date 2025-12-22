@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import type { GrooveProfileInput } from "@/lib/operations/types";
+import { getRoleName, type RoleJoin } from "@/lib/utils/role-helpers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     const { data: userData } = await supabase
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin, role:roles(name)")
       .eq("id", user.id)
       .single();
 
@@ -97,7 +98,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!["super_admin", "org_admin", "manager"].includes(userData.role)) {
+    // Extract role name safely
+    const roleName = getRoleName(userData?.role as RoleJoin);
+    const isSuperAdmin = userData?.is_super_admin === true;
+
+    if (!isSuperAdmin && !["org_admin", "manager"].includes(roleName || "")) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
         { status: 403 }
