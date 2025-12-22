@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { createClient, getUser } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/server";
 import { z } from "zod";
 
 // =============================================================================
@@ -68,18 +68,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = await createClient();
-    
-    // Get user's organization
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id, role")
-      .eq("id", user.id)
-      .single();
+    // Get user's organization using Prisma (faster, with relations)
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        organizationId: true,
+        isSuperAdmin: true,
+        role: { select: { name: true } },
+      },
+    });
 
-    if (!userData?.organization_id) {
+    if (!dbUser?.organizationId) {
       return NextResponse.json({ error: "No organization" }, { status: 403 });
     }
+
+    const roleName = dbUser.role?.name || "";
+    const isSuperAdmin = dbUser.isSuperAdmin === true;
 
     const now = new Date();
     const startOfWeek = new Date(now);
@@ -88,7 +92,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch team members with Prisma for relations
     const members = await prisma.user.findMany({
-      where: { organizationId: userData.organization_id },
+      where: { organizationId: dbUser.organizationId },
       select: {
         id: true,
         name: true,
@@ -126,7 +130,7 @@ export async function GET(request: NextRequest) {
     // Fetch pending invitations
     const invitations = await prisma.invitation.findMany({
       where: {
-        organizationId: userData.organization_id,
+        organizationId: dbUser.organizationId,
         acceptedAt: null,
       },
       select: {
@@ -188,21 +192,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = await createClient();
-    
-    // Get user's organization and check permissions
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id, role")
-      .eq("id", user.id)
-      .single();
+    // Get user's organization and check permissions using Prisma
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        organizationId: true,
+        isSuperAdmin: true,
+        role: { select: { name: true } },
+      },
+    });
 
-    if (!userData?.organization_id) {
+    if (!dbUser?.organizationId) {
       return NextResponse.json({ error: "No organization" }, { status: 403 });
     }
 
+    const roleName = dbUser.role?.name || "";
+    const isSuperAdmin = dbUser.isSuperAdmin === true;
+
     // Only org_admin and manager can invite
-    if (!["org_admin", "manager"].includes(userData.role)) {
+    if (!isSuperAdmin && !["org_admin", "manager"].includes(roleName)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
@@ -221,7 +229,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user already exists
     const existingUser = await prisma.user.findFirst({
-      where: { email, organizationId: userData.organization_id },
+      where: { email, organizationId: dbUser.organizationId },
     });
 
     if (existingUser) {
@@ -235,7 +243,7 @@ export async function POST(request: NextRequest) {
     const existingInvite = await prisma.invitation.findFirst({
       where: {
         email,
-        organizationId: userData.organization_id,
+        organizationId: dbUser.organizationId,
         acceptedAt: null,
         expiresAt: { gt: new Date() },
       },
@@ -266,7 +274,7 @@ export async function POST(request: NextRequest) {
         email,
         token: crypto.randomUUID(),
         roleId: roleRecord.id,
-        organizationId: userData.organization_id,
+        organizationId: dbUser.organizationId,
         invitedById: user.id,
         expiresAt,
       },
