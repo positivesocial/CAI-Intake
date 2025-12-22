@@ -30,28 +30,42 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await createClient();
+    const { searchParams } = new URL(request.url);
 
-    // Get user's organization
+    // Get user's organization and role
     const { data: userData } = await supabase
       .from("users")
-      .select("organization_id")
+      .select("organization_id, role")
       .eq("id", user.id)
       .single();
 
-    if (!userData?.organization_id) {
+    // Determine organization to query
+    let organizationId = userData?.organization_id;
+    
+    // Super admins can optionally query specific org via query param
+    if (userData?.role === "super_admin" && searchParams.get("org_id")) {
+      organizationId = searchParams.get("org_id");
+    }
+
+    // Non-super-admins must have an organization
+    if (!organizationId && userData?.role !== "super_admin") {
       return NextResponse.json(
         { error: "User not associated with an organization" },
         { status: 400 }
       );
     }
 
-    const { searchParams } = new URL(request.url);
+    // If no organization context at all, return empty
+    if (!organizationId) {
+      return NextResponse.json({ types: [], count: 0 });
+    }
+
     const activeOnly = searchParams.get("active") !== "false";
 
     let query = supabase
       .from("hole_types")
       .select("*")
-      .eq("organization_id", userData.organization_id)
+      .eq("organization_id", organizationId)
       .order("code", { ascending: true });
 
     if (activeOnly) {
@@ -104,8 +118,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check permission
-    if (!["super_admin", "org_admin", "admin", "manager"].includes(userData.role)) {
+    // Check permission - roles from user_role enum
+    if (!["super_admin", "org_admin", "manager"].includes(userData.role)) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
         { status: 403 }

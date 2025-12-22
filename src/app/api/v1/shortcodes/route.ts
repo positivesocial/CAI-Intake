@@ -16,7 +16,8 @@ import { logAudit, AUDIT_ACTIONS } from "@/lib/audit";
 // VALIDATION
 // ============================================================
 
-const ServiceTypeSchema = z.enum(["edgebanding", "grooves", "holes", "cnc"]);
+// Match the DB constraint: 'edgeband', 'groove', 'hole', 'cnc', 'material', 'custom'
+const ServiceTypeSchema = z.enum(["edgeband", "groove", "hole", "cnc", "material", "custom"]);
 
 const ShortcodeInputSchema = z.object({
   shortcode: z.string().min(1).max(20),
@@ -38,26 +39,40 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await createClient();
+    const { searchParams } = new URL(request.url);
 
-    // Get user's organization
+    // Get user's organization and role
     const { data: userData } = await supabase
       .from("users")
-      .select("organization_id")
+      .select("organization_id, role")
       .eq("id", user.id)
       .single();
 
-    if (!userData?.organization_id) {
+    // Determine organization to query
+    let organizationId = userData?.organization_id;
+    
+    // Super admins can optionally query specific org via query param
+    if (userData?.role === "super_admin" && searchParams.get("org_id")) {
+      organizationId = searchParams.get("org_id");
+    }
+
+    // Non-super-admins must have an organization
+    if (!organizationId && userData?.role !== "super_admin") {
       return NextResponse.json({ error: "No organization" }, { status: 403 });
     }
 
-    const { searchParams } = new URL(request.url);
+    // If no organization context at all, return empty
+    if (!organizationId) {
+      return NextResponse.json({ configs: [] });
+    }
+
     const serviceType = searchParams.get("service_type");
     const activeOnly = searchParams.get("active") !== "all";
 
     let query = supabase
       .from("shortcode_configs")
       .select("*")
-      .eq("org_id", userData.organization_id)
+      .eq("org_id", organizationId)
       .order("shortcode", { ascending: true });
 
     if (serviceType) {
