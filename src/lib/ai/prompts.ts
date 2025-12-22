@@ -17,6 +17,7 @@ export const BASE_CUTLIST_PROMPT = `You are an expert cutlist parser for woodwor
 - You know material names: melamine, MDF, plywood, particleboard, MFC, HPL
 - You understand grain/rotation: GL (grain length), GW (grain width), "can rotate", "fixed"
 - You recognize edge banding notation: EB, ABS, PVC, L1, L2, W1, W2, "all edges", "4 sides"
+- You recognize shorthand edge notation: "1E" (1 edge), "2E" (2 edges), "3E" (3 edges), "4E" (all edges)
 
 ## Output Format
 Return a JSON array of parts with this structure:
@@ -100,6 +101,9 @@ Include any detected operations in the part's metadata fields.`;
 
 export const IMAGE_ANALYSIS_PROMPT = `You are analyzing an image that may contain a cutlist, parts list, or cutting diagram.
 
+## CRITICAL: EXTRACT ALL ROWS
+You MUST extract EVERY SINGLE ROW from the table. Count the rows carefully. If you see 38 rows, extract 38 parts. Do not skip any rows even if they seem similar to others.
+
 ## What to Look For
 1. **Tables/Lists**: Rows of part data with dimensions
 2. **Cutting Diagrams**: Sheet layouts showing parts to cut
@@ -110,8 +114,24 @@ export const IMAGE_ANALYSIS_PROMPT = `You are analyzing an image that may contai
 ## Reading Strategy
 1. First, identify the document type (list, diagram, drawing)
 2. Look for column headers to understand data structure
-3. Read each row/part systematically
-4. Note any symbols or abbreviations used consistently
+3. COUNT THE TOTAL NUMBER OF DATA ROWS
+4. Read each row/part systematically - DO NOT SKIP OR MERGE ROWS
+5. Note any symbols or abbreviations used consistently
+
+## Edge Banding Notation (IMPORTANT)
+Many cutlists use abbreviated edge notation:
+- "1E" = 1 edge banded → edges: ["L1"]
+- "2E" = 2 edges banded → edges: ["L1", "L2"] (both long edges)
+- "3E" = 3 edges banded → edges: ["L1", "L2", "W1"]
+- "4E" = 4 edges banded (all edges) → edges: ["L1", "L2", "W1", "W2"]
+- "2L" or "LL" = 2 long edges → edges: ["L1", "L2"]
+- "2W" = 2 short edges → edges: ["W1", "W2"]
+- Checkmarks (✓, X, x) in edge columns also indicate edging
+
+When you see "1E", "2E", etc. in the data:
+- This is EDGE BANDING information, NOT part of the label
+- Extract it separately into the edgeBanding field
+- Do not include it in the part label
 
 ## Handwriting Tips
 - Numbers 1 and 7 may look similar

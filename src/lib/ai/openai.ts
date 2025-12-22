@@ -26,8 +26,9 @@ const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 /**
  * Maximum completion tokens for response generation.
  * GPT-4o supports up to 128K context, 16K output.
+ * Increased to 12000 to handle larger cutlists (40+ parts).
  */
-const MAX_COMPLETION_TOKENS = 8000;
+const MAX_COMPLETION_TOKENS = 12000;
 import { generateId } from "@/lib/utils";
 import type { CutPart } from "@/lib/schema";
 import {
@@ -548,9 +549,21 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
       const L = aiPart.length || 0;
       const W = aiPart.width || 0;
 
+      // Post-process label to extract edge notation if present
+      let cleanLabel = aiPart.label || "";
+      let extractedEdges: string[] | undefined;
+      
+      // Check for edge notation in label (1E, 2E, 3E, 4E, 2L, etc.)
+      const edgeNotationMatch = cleanLabel.match(/^(\d+E|[1-4]L|LL|2W)\s*[\n\r]*/i);
+      if (edgeNotationMatch) {
+        const notation = edgeNotationMatch[1].toUpperCase();
+        cleanLabel = cleanLabel.slice(edgeNotationMatch[0].length).trim();
+        extractedEdges = this.parseEdgeNotation(notation);
+      }
+
       const cutPart: CutPart = {
         part_id: generateId("P"),
-        label: aiPart.label || undefined,
+        label: cleanLabel || undefined,
         qty: aiPart.quantity || 1,
         size: { L, W },
         thickness_mm: aiPart.thickness || options.defaultThicknessMm || 18,
@@ -565,11 +578,13 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         },
       };
 
-      // Add edge banding operations if detected
-      if (aiPart.edgeBanding?.detected && aiPart.edgeBanding.edges) {
+      // Add edge banding operations - from AI detection OR post-processing extraction
+      const edgesToApply = extractedEdges || (aiPart.edgeBanding?.detected ? aiPart.edgeBanding.edges : undefined);
+      
+      if (edgesToApply && edgesToApply.length > 0) {
         cutPart.ops = {
           edging: {
-            edges: aiPart.edgeBanding.edges.reduce((acc, edge) => {
+            edges: edgesToApply.reduce((acc, edge) => {
               if (["L1", "L2", "W1", "W2"].includes(edge)) {
                 acc[edge] = { apply: true };
               }
@@ -645,6 +660,40 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
     }
     
     return undefined;
+  }
+
+  /**
+   * Parse edge notation shorthand into edge array
+   * "1E" → ["L1"] (1 long edge)
+   * "2E" → ["L1", "L2"] (both long edges)
+   * "3E" → ["L1", "L2", "W1"] (both long + 1 short)
+   * "4E" → ["L1", "L2", "W1", "W2"] (all edges)
+   * "2L" or "LL" → ["L1", "L2"] (both long edges)
+   * "2W" → ["W1", "W2"] (both short edges)
+   */
+  private parseEdgeNotation(notation: string): string[] {
+    const upper = notation.toUpperCase();
+    
+    if (upper === "1E" || upper === "1L") {
+      return ["L1"];
+    }
+    if (upper === "2E" || upper === "2L" || upper === "LL") {
+      return ["L1", "L2"];
+    }
+    if (upper === "3E") {
+      return ["L1", "L2", "W1"];
+    }
+    if (upper === "4E") {
+      return ["L1", "L2", "W1", "W2"];
+    }
+    if (upper === "2W") {
+      return ["W1", "W2"];
+    }
+    if (upper === "1W") {
+      return ["W1"];
+    }
+    
+    return [];
   }
 }
 
