@@ -157,12 +157,38 @@ export class OpenAIProvider implements AIProvider {
       // Convert ArrayBuffer to base64 if needed
       let imageUrl: string;
       if (typeof imageData === "string") {
-        imageUrl = imageData.startsWith("data:") 
-          ? imageData 
-          : `data:image/jpeg;base64,${imageData}`;
+        // Validate data URL format
+        if (imageData.startsWith("data:")) {
+          // Verify it's a valid data URL pattern
+          const dataUrlMatch = imageData.match(/^data:([^;]+);base64,(.+)$/);
+          if (!dataUrlMatch) {
+            return {
+              success: false,
+              parts: [],
+              totalConfidence: 0,
+              errors: ["Invalid image data URL format"],
+              processingTime: Date.now() - startTime,
+            };
+          }
+          imageUrl = imageData;
+        } else {
+          // Assume raw base64
+          imageUrl = `data:image/jpeg;base64,${imageData}`;
+        }
       } else {
         const base64 = Buffer.from(imageData).toString("base64");
         imageUrl = `data:image/jpeg;base64,${base64}`;
+      }
+
+      // Validate the URL isn't empty or malformed
+      if (imageUrl.length < 100) {
+        return {
+          success: false,
+          parts: [],
+          totalConfidence: 0,
+          errors: ["Image data is too small or empty"],
+          processingTime: Date.now() - startTime,
+        };
       }
 
       const response = await client.chat.completions.create({
@@ -200,11 +226,16 @@ export class OpenAIProvider implements AIProvider {
       return this.processResults(parts, rawResponse, startTime, options);
       
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      
+      // Log specific error for debugging
+      console.error("[OpenAI parseImage] Error:", errorMessage);
+      
       return {
         success: false,
         parts: [],
         totalConfidence: 0,
-        errors: [error instanceof Error ? error.message : "Unknown error occurred"],
+        errors: [errorMessage],
         processingTime: Date.now() - startTime,
       };
     }

@@ -351,6 +351,11 @@ export function FileUpload() {
                   description: "Try uploading as an image (PNG/JPG) instead.",
                   duration: 6000,
                 });
+              } else if (data.code === "IMAGE_FORMAT_ERROR" || data.code === "IMAGE_ENCODE_ERROR") {
+                toast.error("Image format issue", {
+                  description: "Please convert your image to JPG or PNG format and try again.",
+                  duration: 6000,
+                });
               }
               throw new Error(data.error || "Failed to process file");
             }

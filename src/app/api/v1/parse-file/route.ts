@@ -103,11 +103,78 @@ export async function POST(request: NextRequest) {
     if (fileType === "image") {
       // Process image - use AI vision directly
       const imageBuffer = await file.arrayBuffer();
+      
+      // Validate image size (OpenAI has a ~20MB limit for vision)
+      const imageSizeKB = imageBuffer.byteLength / 1024;
+      logger.info("Processing image", { 
+        fileName: file.name, 
+        size: `${imageSizeKB.toFixed(1)}KB`,
+        type: file.type 
+      });
+      
+      if (imageSizeKB > 15000) { // 15MB warning threshold
+        logger.warn("Image is very large, may fail", { sizeKB: imageSizeKB });
+      }
+      
       const base64 = Buffer.from(imageBuffer).toString("base64");
-      const mimeType = file.type || "image/jpeg";
+      
+      // Validate base64 encoding
+      if (!base64 || base64.length < 100) {
+        return NextResponse.json(
+          { 
+            error: "Failed to encode image. Please try with a different image format.",
+            code: "IMAGE_ENCODE_ERROR"
+          },
+          { status: 400 }
+        );
+      }
+      
+      // Detect proper MIME type - ensure it's a supported format
+      let mimeType = file.type || "image/jpeg";
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      
+      // Normalize MIME type based on extension
+      if (!mimeType || mimeType === "application/octet-stream") {
+        const mimeMap: Record<string, string> = {
+          "jpg": "image/jpeg",
+          "jpeg": "image/jpeg",
+          "png": "image/png",
+          "gif": "image/gif",
+          "webp": "image/webp",
+        };
+        mimeType = mimeMap[ext || ""] || "image/jpeg";
+      }
+      
       const dataUrl = `data:${mimeType};base64,${base64}`;
       
-      aiResult = await provider.parseImage(dataUrl, parseOptions);
+      logger.info("Sending image to AI", { 
+        mimeType, 
+        base64Length: base64.length,
+        dataUrlPrefix: dataUrl.substring(0, 50)
+      });
+      
+      try {
+        aiResult = await provider.parseImage(dataUrl, parseOptions);
+      } catch (imageError) {
+        const errorMessage = imageError instanceof Error ? imageError.message : "Unknown error";
+        logger.error("AI vision error", { error: errorMessage, fileName: file.name });
+        
+        // Handle specific error patterns
+        if (errorMessage.includes("did not match the expected pattern") || 
+            errorMessage.includes("Invalid URL") ||
+            errorMessage.includes("invalid_image")) {
+          return NextResponse.json(
+            { 
+              error: "The image format is not supported. Please try converting to JPG or PNG format and uploading again.",
+              code: "IMAGE_FORMAT_ERROR",
+              details: errorMessage
+            },
+            { status: 400 }
+          );
+        }
+        
+        throw imageError;
+      }
       
     } else if (fileType === "pdf") {
       // Process PDF - use Python OCR service
