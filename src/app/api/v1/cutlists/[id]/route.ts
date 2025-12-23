@@ -83,7 +83,8 @@ export async function GET(
 
     const isSuperAdmin = userData.is_super_admin === true;
 
-    // Get cutlist with parts and linked files - CRITICAL: filter by organization_id for multi-tenant isolation
+    // Get cutlist with parts - CRITICAL: filter by organization_id for multi-tenant isolation
+    // NOTE: Source files are fetched separately since not all cutlists have them (manual entry, voice, etc.)
     let query = serviceClient
       .from("cutlists")
       .select(`
@@ -103,16 +104,6 @@ export async function GET(
           ops,
           notes,
           audit,
-          created_at
-        ),
-        source_files:uploaded_files (
-          id,
-          file_name,
-          original_name,
-          mime_type,
-          size_bytes,
-          storage_path,
-          kind,
           created_at
         )
       `)
@@ -170,28 +161,44 @@ export async function GET(
       created_at: p.created_at,
     })) ?? [];
 
-    // Generate signed URLs for source files
-    const sourceFilesWithUrls = await Promise.all(
-      (cutlist.source_files || []).map(async (file: {
-        id: string;
-        file_name: string;
-        original_name: string;
-        mime_type: string;
-        size_bytes: number;
-        storage_path: string;
-        kind: string;
-        created_at: string;
-      }) => {
-        const { data: urlData } = await supabase.storage
-          .from("cutlist-files")
-          .createSignedUrl(file.storage_path, 3600); // 1 hour expiry
-        
-        return {
-          ...file,
-          url: urlData?.signedUrl,
-        };
-      })
-    );
+    // Fetch source files separately (optional - not all cutlists have them)
+    // This handles manual entry, voice input, pasted text, etc. which don't have source files
+    let sourceFilesWithUrls: Array<{
+      id: string;
+      file_name: string;
+      original_name: string;
+      mime_type: string;
+      size_bytes: number;
+      storage_path: string;
+      kind: string;
+      created_at: string;
+      url?: string;
+    }> = [];
+
+    try {
+      const { data: sourceFiles } = await serviceClient
+        .from("uploaded_files")
+        .select("id, file_name, original_name, mime_type, size_bytes, storage_path, kind, created_at")
+        .eq("cutlist_id", id);
+
+      if (sourceFiles && sourceFiles.length > 0) {
+        sourceFilesWithUrls = await Promise.all(
+          sourceFiles.map(async (file) => {
+            const { data: urlData } = await supabase.storage
+              .from("cutlist-files")
+              .createSignedUrl(file.storage_path, 3600); // 1 hour expiry
+            
+            return {
+              ...file,
+              url: urlData?.signedUrl,
+            };
+          })
+        );
+      }
+    } catch (fileError) {
+      // Source files are optional - log but don't fail the request
+      console.warn("Could not fetch source files for cutlist:", id, fileError);
+    }
 
     return NextResponse.json({
       cutlist: {
