@@ -409,13 +409,23 @@ export default function CutlistDetailPage() {
         </div>
 
         {/* Source Files */}
-        <div>
+        <div id="files">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileIcon className="h-5 w-5" />
-                Source Files
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <FileIcon className="h-5 w-5" />
+                  Source Files
+                </CardTitle>
+                {cutlist.source_files && cutlist.source_files.length > 0 && (
+                  <a href={`/cutlists/${id}/files`}>
+                    <Button variant="outline" size="sm">
+                      <ExternalLink className="h-4 w-4 mr-1" />
+                      Gallery View
+                    </Button>
+                  </a>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {(!cutlist.source_files || cutlist.source_files.length === 0) ? (

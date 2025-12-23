@@ -432,10 +432,10 @@ export default function CutlistsPage() {
                       <StatusBadge status={cutlist.status} />
                       {cutlist.filesCount && cutlist.filesCount > 0 && (
                         <a
-                          href={`/cutlists/${cutlist.id}#files`}
+                          href={`/cutlists/${cutlist.id}/files`}
                           onClick={(e) => e.stopPropagation()}
                           className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
-                          title={`${cutlist.filesCount} source file${cutlist.filesCount > 1 ? 's' : ''}`}
+                          title={`View ${cutlist.filesCount} source file${cutlist.filesCount > 1 ? 's' : ''} with parsed parts`}
                         >
                           <Paperclip className="h-3 w-3" />
                           {cutlist.filesCount}
@@ -551,9 +551,9 @@ export default function CutlistsPage() {
                     <td className="p-3 text-center">
                       {cutlist.filesCount && cutlist.filesCount > 0 ? (
                         <a
-                          href={`/cutlists/${cutlist.id}#files`}
+                          href={`/cutlists/${cutlist.id}/files`}
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
-                          title={`View ${cutlist.filesCount} source file${cutlist.filesCount > 1 ? 's' : ''}`}
+                          title={`View ${cutlist.filesCount} source file${cutlist.filesCount > 1 ? 's' : ''} with parsed parts`}
                         >
                           <Paperclip className="h-3 w-3" />
                           {cutlist.filesCount}
