@@ -15,7 +15,7 @@
  */
 
 import * as React from "react";
-import { Plus, Trash2, ArrowDown, Keyboard, LayoutGrid, LayoutList } from "lucide-react";
+import { Plus, Trash2, ArrowDown, Keyboard, LayoutGrid, LayoutList, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -134,6 +134,9 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
       createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband),
     ]);
 
+    // Selection state
+    const [selectedRowIds, setSelectedRowIds] = React.useState<Set<string>>(new Set());
+
     // Validation errors
     const [errors, setErrors] = React.useState<Record<string, Record<string, boolean>>>({});
 
@@ -197,6 +200,68 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
         label: rowToCopy.label ? `${rowToCopy.label} (copy)` : "",
       };
       setRows(prev => [...prev.slice(0, index + 1), newRow, ...prev.slice(index + 1)]);
+    };
+
+    // Selection handlers
+    const toggleRowSelection = (rowId: string) => {
+      setSelectedRowIds(prev => {
+        const next = new Set(prev);
+        if (next.has(rowId)) {
+          next.delete(rowId);
+        } else {
+          next.add(rowId);
+        }
+        return next;
+      });
+    };
+
+    const selectAllRows = () => {
+      setSelectedRowIds(new Set(rows.map(r => r.id)));
+    };
+
+    const clearSelection = () => {
+      setSelectedRowIds(new Set());
+    };
+
+    const deleteSelectedRows = () => {
+      if (selectedRowIds.size === 0) return;
+      setRows(prev => prev.filter(r => !selectedRowIds.has(r.id)));
+      setSelectedRowIds(new Set());
+      // Ensure at least one row remains
+      if (rows.length - selectedRowIds.size === 0) {
+        setRows([createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband)]);
+      }
+    };
+
+    const duplicateSelectedRows = () => {
+      if (selectedRowIds.size === 0) return;
+      const newRows: PartCardData[] = [];
+      rows.forEach(row => {
+        newRows.push(row);
+        if (selectedRowIds.has(row.id)) {
+          newRows.push({
+            ...row,
+            id: generateId("ROW"),
+            label: row.label ? `${row.label} (copy)` : "",
+          });
+        }
+      });
+      setRows(newRows);
+      setSelectedRowIds(new Set());
+    };
+
+    const addSelectedRowsToParts = () => {
+      let addedCount = 0;
+      rows.forEach((row, index) => {
+        if (selectedRowIds.has(row.id) && row.L && row.W) {
+          if (validateRow(row)) {
+            handleSubmitRow(index);
+            addedCount++;
+          }
+        }
+      });
+      setSelectedRowIds(new Set());
+      return addedCount;
     };
 
     const validateRow = (row: PartCardData): boolean => {
@@ -374,23 +439,52 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
         </CardHeader>
 
         <CardContent className="p-0">
+          {/* Toolbar */}
+          {selectedRowIds.size > 0 && (
+            <div className="flex items-center gap-2 p-2 border-b border-[var(--border)] bg-[var(--cai-teal)]/5">
+              <Badge variant="outline" className="bg-[var(--cai-teal)]/10 text-[var(--cai-teal)]">
+                {selectedRowIds.size} selected
+              </Badge>
+              <div className="flex-1" />
+              <Button variant="ghost" size="sm" onClick={addSelectedRowsToParts} className="h-8 px-2 text-[var(--cai-teal)]">
+                <Check className="h-4 w-4 mr-1" /> Add to Parts
+              </Button>
+              <Button variant="ghost" size="sm" onClick={duplicateSelectedRows} className="h-8 px-2">
+                <Copy className="h-4 w-4 mr-1" /> Duplicate
+              </Button>
+              <Button variant="ghost" size="sm" onClick={deleteSelectedRows} className="h-8 px-2 text-red-600 hover:bg-red-50">
+                <Trash2 className="h-4 w-4 mr-1" /> Delete
+              </Button>
+              <Button variant="ghost" size="sm" onClick={clearSelection} className="h-8 px-2">
+                Clear
+              </Button>
+            </div>
+          )}
+
           {viewMode === "table" ? (
             /* TABLE VIEW */
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px] border-collapse">
+              <table className="w-full min-w-[500px] border-collapse">
                 <thead>
                   <tr className="bg-[var(--muted)]">
-                    <th className="w-10 px-2 py-2 text-xs font-medium text-[var(--muted-foreground)] border-b border-r">#</th>
-                    <th className="w-32 px-2 py-2 text-left text-xs font-medium border-b border-r">Label</th>
-                    <th className="w-36 px-2 py-2 text-center text-xs font-medium border-b border-r">
+                    <th className="w-10 px-2 py-2 border-b">
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIds.size === rows.length && rows.length > 0}
+                        ref={(el) => { if (el) el.indeterminate = selectedRowIds.size > 0 && selectedRowIds.size < rows.length; }}
+                        onChange={(e) => e.target.checked ? selectAllRows() : clearSelection()}
+                        className="rounded border-[var(--border)]"
+                      />
+                    </th>
+                    <th className="w-32 px-2 py-2 text-left text-xs font-medium border-b">Label</th>
+                    <th className="w-36 px-2 py-2 text-center text-xs font-medium border-b">
                       Dimensions (mm)
                     </th>
-                    <th className="w-24 px-2 py-2 text-center text-xs font-medium border-b border-r">Qty</th>
-                    <th className="w-40 px-2 py-2 text-left text-xs font-medium border-b border-r">Material</th>
+                    <th className="w-24 px-2 py-2 text-center text-xs font-medium border-b">Qty</th>
+                    <th className="w-40 px-2 py-2 text-left text-xs font-medium border-b">Material</th>
                     {hasOpsEnabled && (
-                      <th className="w-28 px-2 py-2 text-center text-xs font-medium border-b border-r text-teal-600">Ops</th>
+                      <th className="w-28 px-2 py-2 text-center text-xs font-medium border-b text-teal-600">Ops</th>
                     )}
-                    <th className="w-24 px-2 py-2 text-center text-xs font-medium border-b">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -401,9 +495,8 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
                       index={index}
                       materials={materialOptions}
                       onChange={(updates) => updateRow(index, updates)}
-                      onDelete={() => removeRow(index)}
-                      onDuplicate={() => duplicateRow(index)}
-                      onSubmit={() => handleSubmitRow(index)}
+                      isSelected={selectedRowIds.has(row.id)}
+                      onSelect={() => toggleRowSelection(row.id)}
                       errors={errors[row.id]}
                       compact={true}
                     />
@@ -421,8 +514,8 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
                   index={index}
                   materials={materialOptions}
                   onChange={(updates) => updateRow(index, updates)}
-                  onDelete={() => removeRow(index)}
-                  onDuplicate={() => duplicateRow(index)}
+                  isSelected={selectedRowIds.has(row.id)}
+                  onSelect={() => toggleRowSelection(row.id)}
                   onSubmit={() => handleSubmitRow(index)}
                   errors={errors[row.id]}
                   compact={false}

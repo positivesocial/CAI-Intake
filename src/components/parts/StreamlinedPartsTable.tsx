@@ -15,7 +15,6 @@
 import * as React from "react";
 import {
   Trash2,
-  Edit2,
   ArrowUpDown,
   Layers,
   RotateCcw,
@@ -23,7 +22,6 @@ import {
   Copy,
   Undo2,
   Redo2,
-  Square,
   Settings2,
   LayoutGrid,
   LayoutList,
@@ -200,18 +198,12 @@ function PartRow({
   part,
   isSelected,
   onSelect,
-  onEdit,
-  onDelete,
-  onSwapDimensions,
   onEditOps,
   materials,
 }: {
   part: CutPart;
   isSelected: boolean;
   onSelect: (e: React.MouseEvent) => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onSwapDimensions: () => void;
   onEditOps: () => void;
   materials: Array<{ value: string; label: string }>;
 }) {
@@ -264,38 +256,6 @@ function PartRow({
       <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
         <OpsIndicator part={part} onClick={onEditOps} />
       </td>
-
-      {/* Actions */}
-      <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-[var(--cai-teal)]"
-                  onClick={onSwapDimensions}
-                >
-                  <ArrowLeftRight className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Swap L ↔ W</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit}>
-            <Edit2 className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-            onClick={onDelete}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </td>
     </tr>
   );
 }
@@ -308,111 +268,65 @@ function PartCardView({
   part,
   isSelected,
   onSelect,
-  onEdit,
-  onDelete,
-  onSwapDimensions,
   onEditOps,
   materials,
 }: {
   part: CutPart;
   isSelected: boolean;
   onSelect: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onSwapDimensions: () => void;
   onEditOps: () => void;
   materials: Array<{ value: string; label: string }>;
 }) {
-  const [isExpanded, setIsExpanded] = React.useState(false);
-
   return (
     <div
+      onClick={onSelect}
       className={cn(
-        "rounded-lg border bg-[var(--card)] transition-all",
-        isSelected && "ring-2 ring-[var(--cai-teal)]"
+        "rounded-lg border bg-[var(--card)] transition-all p-3 space-y-2 cursor-pointer",
+        isSelected && "ring-2 ring-[var(--cai-teal)] bg-[var(--cai-teal)]/5"
       )}
     >
-      {/* Main content */}
-      <div className="p-3 space-y-2" onClick={onSelect}>
-        {/* Top row: Label + Expand */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={() => {}}
-              className="rounded border-[var(--border)]"
-              onClick={(e) => e.stopPropagation()}
-            />
-            <span className="font-medium text-sm">
-              {part.label || part.part_id}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsExpanded(!isExpanded);
-            }}
-            className="p-1 rounded hover:bg-[var(--muted)]"
-          >
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-        </div>
-
-        {/* Middle row: Dimensions + Qty */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-lg font-semibold">
-              {part.size.L} × {part.size.W}
-            </span>
-            <Badge variant="secondary" className="text-xs">
-              ×{part.qty}
-            </Badge>
-          </div>
-          <div onClick={(e) => e.stopPropagation()}>
-            <OpsIndicator part={part} onClick={onEditOps} />
-          </div>
-        </div>
-
-        {/* Material */}
-        <div className="flex items-center justify-between">
-          <Badge variant="outline" className="font-normal text-xs">
-            {materials.find(m => m.value === part.material_id)?.label?.split(" (")[0] || part.material_id}
-          </Badge>
-          {part.allow_rotation ? (
-            <span className="text-xs text-[var(--cai-teal)] flex items-center gap-1">
-              <RotateCcw className="h-3 w-3" /> Rotatable
-            </span>
-          ) : (
-            <span className="text-xs text-[var(--muted-foreground)] flex items-center gap-1">
-              <Lock className="h-3 w-3" /> Fixed
-            </span>
-          )}
-        </div>
+      {/* Top row: Checkbox + Label */}
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => {}}
+          className="rounded border-[var(--border)]"
+          onClick={(e) => e.stopPropagation()}
+        />
+        <span className="font-medium text-sm flex-1">
+          {part.label || part.part_id}
+        </span>
+        <Badge variant="secondary" className="text-xs">
+          ×{part.qty}
+        </Badge>
       </div>
 
-      {/* Expanded actions */}
-      {isExpanded && (
-        <div className="px-3 pb-3 pt-0 border-t border-[var(--border)] bg-[var(--muted)]/30">
-          <div className="flex items-center gap-2 pt-3">
-            <Button variant="outline" size="sm" onClick={onSwapDimensions} className="flex-1">
-              <ArrowLeftRight className="h-4 w-4 mr-1" /> Swap L×W
-            </Button>
-            <Button variant="outline" size="sm" onClick={onEdit}>
-              <Edit2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onDelete}
-              className="text-red-500 hover:text-red-600"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
+      {/* Dimensions + Material */}
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-lg font-semibold">
+          {part.size.L} × {part.size.W}
+        </span>
+        <Badge variant="outline" className="font-normal text-xs">
+          {materials.find(m => m.value === part.material_id)?.label?.split(" (")[0] || part.material_id}
+        </Badge>
+      </div>
+
+      {/* Ops + Rotation indicator */}
+      <div className="flex items-center justify-between">
+        <div onClick={(e) => e.stopPropagation()}>
+          <OpsIndicator part={part} onClick={onEditOps} />
         </div>
-      )}
+        {part.allow_rotation ? (
+          <span className="text-xs text-[var(--cai-teal)] flex items-center gap-1">
+            <RotateCcw className="h-3 w-3" /> Rotatable
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--muted-foreground)] flex items-center gap-1">
+            <Lock className="h-3 w-3" /> Fixed
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -448,7 +362,6 @@ export function StreamlinedPartsTable() {
   const [sortField, setSortField] = React.useState<"label" | "qty" | "L" | "W" | "material_id">("label");
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc");
   const [lastSelectedId, setLastSelectedId] = React.useState<string | null>(null);
-  const [editingPartId, setEditingPartId] = React.useState<string | null>(null);
   const [opsEditingPart, setOpsEditingPart] = React.useState<CutPart | null>(null);
 
   const parts = currentCutlist.parts;
@@ -536,6 +449,26 @@ export function StreamlinedPartsTable() {
     });
   };
 
+  // Swap dimensions for all selected parts
+  const handleSwapSelectedDimensions = () => {
+    selectedPartIds.forEach(partId => {
+      const part = parts.find(p => p.part_id === partId);
+      if (part) {
+        handleSwapDimensions(part);
+      }
+    });
+  };
+
+  // Edit ops for selected part (only works with single selection)
+  const handleEditSelectedOps = () => {
+    if (selectedPartIds.length === 1) {
+      const part = parts.find(p => p.part_id === selectedPartIds[0]);
+      if (part) {
+        setOpsEditingPart(part);
+      }
+    }
+  };
+
   const handleOpsChange = (ops: OperationsData) => {
     if (!opsEditingPart) return;
     const newOps = opsDataToPartOps(ops, defaultEdgeband);
@@ -600,11 +533,37 @@ export function StreamlinedPartsTable() {
               {/* Selection Actions */}
               {hasSelection ? (
                 <>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={handleSwapSelectedDimensions} 
+                          className="h-8 px-2"
+                        >
+                          <ArrowLeftRight className="h-4 w-4 mr-1" /> Swap L↔W
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Swap Length and Width for selected parts</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={handleEditSelectedOps} 
+                    className="h-8 px-2"
+                    disabled={selectedPartIds.length !== 1}
+                    title={selectedPartIds.length !== 1 ? "Select exactly 1 part to edit ops" : "Edit operations"}
+                  >
+                    <Settings2 className="h-4 w-4 mr-1" /> Ops
+                  </Button>
+                  <div className="w-px h-6 bg-[var(--border)] mx-1" />
                   <Button variant="ghost" size="sm" onClick={copySelectedParts} className="h-8 px-2">
                     <Copy className="h-4 w-4 mr-1" /> Copy
                   </Button>
                   <Button variant="ghost" size="sm" onClick={duplicateSelectedParts} className="h-8 px-2">
-                    Duplicate
+                    <Layers className="h-4 w-4 mr-1" /> Duplicate
                   </Button>
                   <Button
                     variant="ghost"
@@ -614,12 +573,16 @@ export function StreamlinedPartsTable() {
                   >
                     <Trash2 className="h-4 w-4 mr-1" /> Delete
                   </Button>
+                  <div className="w-px h-6 bg-[var(--border)] mx-1" />
                   <Button variant="ghost" size="sm" onClick={clearSelection} className="h-8 px-2">
-                    <Square className="h-4 w-4 mr-1" /> Clear
+                    Clear
                   </Button>
                 </>
               ) : (
                 <>
+                  <Button variant="ghost" size="sm" onClick={selectAllParts} className="h-8 px-2">
+                    <Check className="h-4 w-4 mr-1" /> Select All
+                  </Button>
                   {clipboard.length > 0 && (
                     <Button variant="ghost" size="sm" onClick={pasteParts} className="h-8 px-2">
                       Paste ({clipboard.length})
@@ -705,7 +668,6 @@ export function StreamlinedPartsTable() {
                       <th className="px-2 py-2 text-center text-xs font-medium text-teal-600">
                         Ops
                       </th>
-                      <th className="w-24 px-2 py-2"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -715,9 +677,6 @@ export function StreamlinedPartsTable() {
                         part={part}
                         isSelected={selectedPartIds.includes(part.part_id)}
                         onSelect={(e) => handlePartClick(part.part_id, e)}
-                        onEdit={() => setEditingPartId(part.part_id)}
-                        onDelete={() => removePart(part.part_id)}
-                        onSwapDimensions={() => handleSwapDimensions(part)}
                         onEditOps={() => setOpsEditingPart(part)}
                         materials={materialOptions}
                       />
@@ -735,9 +694,6 @@ export function StreamlinedPartsTable() {
                   part={part}
                   isSelected={selectedPartIds.includes(part.part_id)}
                   onSelect={() => togglePartSelection(part.part_id)}
-                  onEdit={() => setEditingPartId(part.part_id)}
-                  onDelete={() => removePart(part.part_id)}
-                  onSwapDimensions={() => handleSwapDimensions(part)}
                   onEditOps={() => setOpsEditingPart(part)}
                   materials={materialOptions}
                 />

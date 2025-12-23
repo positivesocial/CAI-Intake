@@ -23,7 +23,6 @@ import {
   Lock,
   GripVertical,
   Check,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -235,23 +234,29 @@ export function PartCard({
     return (
       <>
         <tr
+          onClick={() => onSelect?.()}
           className={cn(
-            "group transition-colors",
+            "group transition-colors cursor-pointer",
             isSelected && "bg-[var(--cai-teal)]/10",
             !isSelected && "hover:bg-[var(--muted)]/50"
           )}
         >
-          {/* Row number / drag handle */}
-          <td className="w-10 px-2 py-1.5 text-center border-r border-[var(--border)]">
+          {/* Checkbox */}
+          <td className="w-10 px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
             {showDragHandle ? (
               <GripVertical className="h-4 w-4 mx-auto text-[var(--muted-foreground)] cursor-grab" />
             ) : (
-              <span className="text-xs text-[var(--muted-foreground)]">{index + 1}</span>
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => onSelect?.()}
+                className="rounded border-[var(--border)] cursor-pointer"
+              />
             )}
           </td>
 
           {/* Label */}
-          <td className="px-1 py-1 border-r border-[var(--border)]">
+          <td className="px-1 py-1" onClick={(e) => e.stopPropagation()}>
             <Input
               ref={labelRef}
               type="text"
@@ -267,7 +272,7 @@ export function PartCard({
           </td>
 
           {/* L × W */}
-          <td className="px-1 py-1 border-r border-[var(--border)]">
+          <td className="px-1 py-1" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-1">
               <Input
                 ref={lRef}
@@ -302,12 +307,12 @@ export function PartCard({
           </td>
 
           {/* Qty */}
-          <td className="px-1 py-1 border-r border-[var(--border)]">
+          <td className="px-1 py-1" onClick={(e) => e.stopPropagation()}>
             <QtyStepper value={data.qty} onChange={(v) => onChange({ qty: v })} />
           </td>
 
           {/* Material */}
-          <td className="px-1 py-1 border-r border-[var(--border)]">
+          <td className="px-1 py-1" onClick={(e) => e.stopPropagation()}>
             <Select value={data.material_id} onValueChange={(v) => onChange({ material_id: v })}>
               <SelectTrigger className="h-8 text-sm border-0 bg-transparent">
                 <SelectValue placeholder="Material" />
@@ -323,51 +328,8 @@ export function PartCard({
           </td>
 
           {/* Operations */}
-          <td className="px-1 py-1 border-r border-[var(--border)]">
+          <td className="px-1 py-1" onClick={(e) => e.stopPropagation()}>
             <OpsIndicator operations={data.operations} onClick={() => setShowOpsPanel(true)} />
-          </td>
-
-          {/* Actions */}
-          <td className="px-1 py-1">
-            <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              {onSubmit && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={onSubmit}
-                  disabled={!data.L || !data.W}
-                  className="h-7 w-7 text-[var(--cai-teal)]"
-                  title="Add part"
-                >
-                  <Check className="h-4 w-4" />
-                </Button>
-              )}
-              {onDuplicate && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={onDuplicate}
-                  className="h-7 w-7"
-                  title="Duplicate"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
-              )}
-              {onDelete && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={onDelete}
-                  className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-                  title="Delete"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
           </td>
         </tr>
 
