@@ -3,19 +3,16 @@
 /**
  * CAI Intake - Unified Operations Panel
  * 
- * A single slide-out/modal panel for managing ALL part operations:
- * - Edgebanding (material + sides)
- * - Grooves (type + specs + sides)
- * - Holes (patterns + face)
- * - CNC (programs/operations)
- * 
- * Mobile-optimized with touch-friendly controls.
+ * A single slide-out panel for managing ALL part operations.
+ * All operations follow the same simple pattern:
+ * 1. Select type from dropdown
+ * 2. Toggle sides/faces with buttons
+ * 3. Quick presets available
  */
 
 import * as React from "react";
-import { X, Check, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
@@ -52,8 +49,26 @@ interface UnifiedOpsPanelProps {
   onOpenChange: (open: boolean) => void;
   value: OperationsData;
   onChange: (value: OperationsData) => void;
-  /** Part label for context */
   partLabel?: string;
+}
+
+// Simplified local state
+interface SimplifiedOps {
+  edgebanding: {
+    edgeband_id?: string;
+    sides: Record<string, boolean>;
+  };
+  grooves: {
+    groove_type_id?: string;
+    sides: Record<string, boolean>;
+  };
+  holes: {
+    hole_type_id?: string;
+    faces: { front: boolean; back: boolean };
+  };
+  cnc: {
+    types: string[];
+  };
 }
 
 // ============================================================
@@ -69,7 +84,7 @@ function SideToggle({
   side: string;
   active: boolean;
   onClick: () => void;
-  color?: "blue" | "amber";
+  color?: "blue" | "amber" | "purple" | "emerald";
 }) {
   const colorClasses = {
     blue: active
@@ -78,6 +93,12 @@ function SideToggle({
     amber: active
       ? "bg-amber-500 text-white border-amber-500"
       : "border-[var(--border)] hover:border-amber-300 hover:bg-amber-50",
+    purple: active
+      ? "bg-purple-500 text-white border-purple-500"
+      : "border-[var(--border)] hover:border-purple-300 hover:bg-purple-50",
+    emerald: active
+      ? "bg-emerald-500 text-white border-emerald-500"
+      : "border-[var(--border)] hover:border-emerald-300 hover:bg-emerald-50",
   };
 
   const sideLabels: Record<string, string> = {
@@ -105,46 +126,155 @@ function SideToggle({
 }
 
 // ============================================================
-// FACE TOGGLE (Front/Back for holes)
+// FACE TOGGLE BUTTON
 // ============================================================
 
 function FaceToggle({
   face,
-  onChange,
+  active,
+  onClick,
 }: {
-  face: "F" | "B";
-  onChange: (face: "F" | "B") => void;
+  face: string;
+  active: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div className="flex gap-2">
-      <button
-        type="button"
-        onClick={() => onChange("F")}
-        className={cn(
-          "flex-1 h-10 rounded-lg border-2 text-sm font-medium transition-all",
-          "active:scale-95",
-          face === "F"
-            ? "bg-purple-500 text-white border-purple-500"
-            : "border-[var(--border)] hover:border-purple-300"
-        )}
-      >
-        Front
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange("B")}
-        className={cn(
-          "flex-1 h-10 rounded-lg border-2 text-sm font-medium transition-all",
-          "active:scale-95",
-          face === "B"
-            ? "bg-purple-500 text-white border-purple-500"
-            : "border-[var(--border)] hover:border-purple-300"
-        )}
-      >
-        Back
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex-1 h-12 rounded-lg border-2 text-sm font-medium transition-all",
+        "flex flex-col items-center justify-center gap-0.5",
+        "active:scale-95",
+        active
+          ? "bg-purple-500 text-white border-purple-500"
+          : "border-[var(--border)] hover:border-purple-300 hover:bg-purple-50"
+      )}
+    >
+      <span className="font-medium">{face}</span>
+    </button>
   );
+}
+
+// ============================================================
+// CNC TYPE TOGGLE
+// ============================================================
+
+function CncTypeToggle({
+  code,
+  name,
+  active,
+  onClick,
+}: {
+  code: string;
+  name: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "w-full p-3 rounded-lg border-2 text-left transition-all",
+        "active:scale-[0.98]",
+        active
+          ? "bg-emerald-500 text-white border-emerald-500"
+          : "border-[var(--border)] hover:border-emerald-300 hover:bg-emerald-50"
+      )}
+    >
+      <span className="font-mono text-sm font-bold">{code}</span>
+      <span className={cn("block text-xs mt-0.5", active ? "text-emerald-100" : "text-[var(--muted-foreground)]")}>
+        {name}
+      </span>
+    </button>
+  );
+}
+
+// ============================================================
+// CONVERSION FUNCTIONS
+// ============================================================
+
+function opsDataToSimplified(ops: OperationsData): SimplifiedOps {
+  // Extract groove info: take first groove's type and collect all sides
+  const grooveSides: Record<string, boolean> = { L1: false, L2: false, W1: false, W2: false };
+  let grooveTypeId: string | undefined;
+  
+  ops.grooves.forEach(g => {
+    if (!grooveTypeId) grooveTypeId = g.type_code;
+    if (g.side && g.type_code === grooveTypeId) {
+      grooveSides[g.side] = true;
+    }
+  });
+
+  // Extract hole info: take first hole's type and collect all faces
+  const holeFaces = { front: false, back: false };
+  let holeTypeId: string | undefined;
+  
+  ops.holes.forEach(h => {
+    if (!holeTypeId) holeTypeId = h.type_code;
+    if (h.type_code === holeTypeId) {
+      if (h.face === "F") holeFaces.front = true;
+      if (h.face === "B") holeFaces.back = true;
+    }
+  });
+
+  // Extract CNC types
+  const cncTypes = ops.cnc.map(c => c.type_code);
+
+  return {
+    edgebanding: ops.edgebanding,
+    grooves: {
+      groove_type_id: grooveTypeId,
+      sides: grooveSides,
+    },
+    holes: {
+      hole_type_id: holeTypeId,
+      faces: holeFaces,
+    },
+    cnc: {
+      types: cncTypes,
+    },
+  };
+}
+
+function simplifiedToOpsData(
+  simplified: SimplifiedOps,
+  grooveTypes: { code: string; default_width_mm?: number | null; default_depth_mm?: number | null }[]
+): OperationsData {
+  // Convert grooves: generate entries for each active side
+  const grooveType = grooveTypes.find(g => g.code === simplified.grooves.groove_type_id);
+  const grooves = simplified.grooves.groove_type_id
+    ? Object.entries(simplified.grooves.sides)
+        .filter(([, active]) => active)
+        .map(([side]) => ({
+          type_code: simplified.grooves.groove_type_id!,
+          side,
+          width_mm: grooveType?.default_width_mm || 4,
+          depth_mm: grooveType?.default_depth_mm || 8,
+        }))
+    : [];
+
+  // Convert holes: generate entries for each active face
+  const holes: { type_code: string; face: "F" | "B" }[] = [];
+  if (simplified.holes.hole_type_id) {
+    if (simplified.holes.faces.front) {
+      holes.push({ type_code: simplified.holes.hole_type_id, face: "F" });
+    }
+    if (simplified.holes.faces.back) {
+      holes.push({ type_code: simplified.holes.hole_type_id, face: "B" });
+    }
+  }
+
+  // Convert CNC: one entry per selected type
+  const cnc = simplified.cnc.types.map(type_code => ({ type_code }));
+
+  return {
+    edgebanding: simplified.edgebanding,
+    grooves,
+    holes,
+    cnc,
+  };
 }
 
 // ============================================================
@@ -163,25 +293,24 @@ export function UnifiedOpsPanel({
     grooveTypes,
     holeTypes,
     cncTypes,
-    isLoading,
   } = useOperationTypes();
 
-  // Local state for editing (commit on close)
-  const [localOps, setLocalOps] = React.useState<OperationsData>(value);
+  // Convert incoming OperationsData to simplified state
+  const [localOps, setLocalOps] = React.useState<SimplifiedOps>(() => opsDataToSimplified(value));
 
   // Sync local state when panel opens or value changes
   React.useEffect(() => {
     if (open) {
-      setLocalOps(value);
+      setLocalOps(opsDataToSimplified(value));
     }
   }, [open, value]);
 
-  // Calculate operation counts for accordion badges
+  // Calculate counts
   const edgingSideCount = Object.values(localOps.edgebanding.sides).filter(Boolean).length;
-  const grooveCount = localOps.grooves.length;
-  const holeCount = localOps.holes.length;
-  const cncCount = localOps.cnc.length;
-  const totalOps = edgingSideCount + grooveCount + holeCount + cncCount;
+  const grooveSideCount = Object.values(localOps.grooves.sides).filter(Boolean).length;
+  const holeFaceCount = (localOps.holes.faces.front ? 1 : 0) + (localOps.holes.faces.back ? 1 : 0);
+  const cncCount = localOps.cnc.types.length;
+  const totalOps = edgingSideCount + grooveSideCount + holeFaceCount + cncCount;
 
   // Handlers
   const toggleEdgeSide = (side: string) => {
@@ -189,105 +318,54 @@ export function UnifiedOpsPanel({
       ...prev,
       edgebanding: {
         ...prev.edgebanding,
-        sides: {
-          ...prev.edgebanding.sides,
-          [side]: !prev.edgebanding.sides[side],
-        },
+        sides: { ...prev.edgebanding.sides, [side]: !prev.edgebanding.sides[side] },
       },
     }));
   };
 
-  const setEdgebandMaterial = (id: string) => {
+  const toggleGrooveSide = (side: string) => {
     setLocalOps(prev => ({
       ...prev,
-      edgebanding: { ...prev.edgebanding, edgeband_id: id },
-    }));
-  };
-
-  const addGroove = (typeCode: string) => {
-    const type = grooveTypes.find(t => t.code === typeCode);
-    if (!type) return;
-    
-    setLocalOps(prev => ({
-      ...prev,
-      grooves: [
+      grooves: {
         ...prev.grooves,
-        {
-          type_code: type.code,
-          width_mm: type.default_width_mm || 4,
-          depth_mm: type.default_depth_mm || 8,
-          side: "W1",
-        },
-      ],
+        sides: { ...prev.grooves.sides, [side]: !prev.grooves.sides[side] },
+      },
     }));
   };
 
-  const updateGroove = (index: number, updates: Partial<typeof localOps.grooves[0]>) => {
+  const toggleHoleFace = (face: "front" | "back") => {
     setLocalOps(prev => ({
       ...prev,
-      grooves: prev.grooves.map((g, i) => (i === index ? { ...g, ...updates } : g)),
+      holes: {
+        ...prev.holes,
+        faces: { ...prev.holes.faces, [face]: !prev.holes.faces[face] },
+      },
     }));
   };
 
-  const removeGroove = (index: number) => {
+  const toggleCncType = (code: string) => {
     setLocalOps(prev => ({
       ...prev,
-      grooves: prev.grooves.filter((_, i) => i !== index),
-    }));
-  };
-
-  const addHole = (typeCode: string) => {
-    const type = holeTypes.find(t => t.code === typeCode);
-    if (!type) return;
-    
-    setLocalOps(prev => ({
-      ...prev,
-      holes: [...prev.holes, { type_code: type.code, face: "F" as const }],
-    }));
-  };
-
-  const updateHole = (index: number, updates: Partial<typeof localOps.holes[0]>) => {
-    setLocalOps(prev => ({
-      ...prev,
-      holes: prev.holes.map((h, i) => (i === index ? { ...h, ...updates } : h)),
-    }));
-  };
-
-  const removeHole = (index: number) => {
-    setLocalOps(prev => ({
-      ...prev,
-      holes: prev.holes.filter((_, i) => i !== index),
-    }));
-  };
-
-  const addCnc = (typeCode: string) => {
-    const type = cncTypes.find(t => t.code === typeCode);
-    if (!type) return;
-    
-    setLocalOps(prev => ({
-      ...prev,
-      cnc: [...prev.cnc, { type_code: type.code }],
-    }));
-  };
-
-  const removeCnc = (index: number) => {
-    setLocalOps(prev => ({
-      ...prev,
-      cnc: prev.cnc.filter((_, i) => i !== index),
+      cnc: {
+        types: prev.cnc.types.includes(code)
+          ? prev.cnc.types.filter(c => c !== code)
+          : [...prev.cnc.types, code],
+      },
     }));
   };
 
   const handleSave = () => {
-    onChange(localOps);
+    const opsData = simplifiedToOpsData(localOps, grooveTypes);
+    onChange(opsData);
     onOpenChange(false);
   };
 
   const handleClear = () => {
     setLocalOps({
       edgebanding: { edgeband_id: undefined, sides: { L1: false, L2: false, W1: false, W2: false } },
-      grooves: [],
-      holes: [],
-      cnc: [],
+      grooves: { groove_type_id: undefined, sides: { L1: false, L2: false, W1: false, W2: false } },
+      holes: { hole_type_id: undefined, faces: { front: false, back: false } },
+      cnc: { types: [] },
     });
   };
 
@@ -324,12 +402,14 @@ export function UnifiedOpsPanel({
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-4 pb-4 space-y-4">
-                {/* Material Select */}
                 <div className="space-y-2">
                   <Label className="text-xs text-[var(--muted-foreground)]">Material</Label>
                   <Select
                     value={localOps.edgebanding.edgeband_id || ""}
-                    onValueChange={setEdgebandMaterial}
+                    onValueChange={(id) => setLocalOps(prev => ({
+                      ...prev,
+                      edgebanding: { ...prev.edgebanding, edgeband_id: id },
+                    }))}
                   >
                     <SelectTrigger className="h-11">
                       <SelectValue placeholder="Select edgeband material..." />
@@ -350,7 +430,6 @@ export function UnifiedOpsPanel({
                   </Select>
                 </div>
 
-                {/* Side Toggles */}
                 <div className="space-y-2">
                   <Label className="text-xs text-[var(--muted-foreground)]">Apply to Sides</Label>
                   <div className="grid grid-cols-4 gap-2">
@@ -366,20 +445,14 @@ export function UnifiedOpsPanel({
                   </div>
                 </div>
 
-                {/* Quick presets */}
                 <div className="flex gap-2 flex-wrap">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setLocalOps(prev => ({
-                        ...prev,
-                        edgebanding: {
-                          ...prev.edgebanding,
-                          sides: { L1: true, L2: true, W1: true, W2: true },
-                        },
-                      }))
-                    }
+                    onClick={() => setLocalOps(prev => ({
+                      ...prev,
+                      edgebanding: { ...prev.edgebanding, sides: { L1: true, L2: true, W1: true, W2: true } },
+                    }))}
                     className="text-xs"
                   >
                     All Sides (2L2W)
@@ -387,15 +460,10 @@ export function UnifiedOpsPanel({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setLocalOps(prev => ({
-                        ...prev,
-                        edgebanding: {
-                          ...prev.edgebanding,
-                          sides: { L1: true, L2: true, W1: false, W2: false },
-                        },
-                      }))
-                    }
+                    onClick={() => setLocalOps(prev => ({
+                      ...prev,
+                      edgebanding: { ...prev.edgebanding, sides: { L1: true, L2: true, W1: false, W2: false } },
+                    }))}
                     className="text-xs"
                   >
                     2L
@@ -403,15 +471,10 @@ export function UnifiedOpsPanel({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setLocalOps(prev => ({
-                        ...prev,
-                        edgebanding: {
-                          ...prev.edgebanding,
-                          sides: { L1: false, L2: false, W1: true, W2: true },
-                        },
-                      }))
-                    }
+                    onClick={() => setLocalOps(prev => ({
+                      ...prev,
+                      edgebanding: { ...prev.edgebanding, sides: { L1: false, L2: false, W1: true, W2: true } },
+                    }))}
                     className="text-xs"
                   >
                     2W
@@ -420,102 +483,100 @@ export function UnifiedOpsPanel({
               </AccordionContent>
             </AccordionItem>
 
-            {/* ====== GROOVES ====== */}
+            {/* ====== GROOVES (same pattern) ====== */}
             <AccordionItem value="grooves" className="border-b">
               <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-[var(--muted)]/50">
                 <div className="flex items-center gap-3">
                   <div className="w-3 h-3 rounded-full bg-amber-500" />
                   <span className="font-medium">Grooves</span>
-                  {grooveCount > 0 && (
+                  {grooveSideCount > 0 && (
                     <Badge className="bg-amber-100 text-amber-700 text-xs">
-                      {grooveCount}
+                      {grooveSideCount} side{grooveSideCount > 1 ? "s" : ""}
                     </Badge>
                   )}
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-4 pb-4 space-y-4">
-                {/* Existing grooves */}
-                {localOps.grooves.map((groove, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 border rounded-lg bg-[var(--muted)]/30 space-y-3"
+                <div className="space-y-2">
+                  <Label className="text-xs text-[var(--muted-foreground)]">Groove Type</Label>
+                  <Select
+                    value={localOps.grooves.groove_type_id || ""}
+                    onValueChange={(id) => setLocalOps(prev => ({
+                      ...prev,
+                      grooves: { ...prev.grooves, groove_type_id: id },
+                    }))}
                   >
-                    <div className="flex items-center justify-between">
-                      <Badge className="bg-amber-100 text-amber-700">
-                        {groove.type_code}
-                      </Badge>
-                      <button
-                        type="button"
-                        onClick={() => removeGroove(idx)}
-                        className="p-1.5 rounded hover:bg-red-100 text-red-500"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <Label className="text-xs text-[var(--muted-foreground)]">Depth</Label>
-                        <Input
-                          type="number"
-                          value={groove.depth_mm}
-                          onChange={(e) =>
-                            updateGroove(idx, { depth_mm: parseFloat(e.target.value) || 0 })
-                          }
-                          className="h-10 text-center"
-                          step="0.5"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-[var(--muted-foreground)]">Width</Label>
-                        <Input
-                          type="number"
-                          value={groove.width_mm}
-                          onChange={(e) =>
-                            updateGroove(idx, { width_mm: parseFloat(e.target.value) || 0 })
-                          }
-                          className="h-10 text-center"
-                          step="0.5"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-[var(--muted-foreground)]">Side</Label>
-                        <Select
-                          value={groove.side}
-                          onValueChange={(v) => updateGroove(idx, { side: v })}
-                        >
-                          <SelectTrigger className="h-10">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent position="popper" sideOffset={4} className="z-[200]">
-                            {["L1", "L2", "W1", "W2"].map((s) => (
-                              <SelectItem key={s} value={s}>
-                                {s}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Select groove type..." />
+                    </SelectTrigger>
+                    <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
+                      {grooveTypes.map((g) => (
+                        <SelectItem key={g.id} value={g.code}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-amber-600 font-bold">{g.code}</span>
+                            <span className="text-[var(--muted-foreground)]">{g.name}</span>
+                            {g.default_width_mm && g.default_depth_mm && (
+                              <span className="text-xs text-[var(--muted-foreground)]">
+                                ({g.default_width_mm}×{g.default_depth_mm}mm)
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                {/* Add groove */}
-                <Select value="" onValueChange={addGroove}>
-                  <SelectTrigger className="h-11 border-dashed">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Groove
-                  </SelectTrigger>
-                  <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
-                    {grooveTypes.map((t) => (
-                      <SelectItem key={t.id} value={t.code}>
-                        <span className="font-mono text-amber-600">{t.code}</span>
-                        <span className="ml-2 text-[var(--muted-foreground)]">
-                          {t.name}
-                        </span>
-                      </SelectItem>
+                <div className="space-y-2">
+                  <Label className="text-xs text-[var(--muted-foreground)]">Apply to Sides</Label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {["L1", "L2", "W1", "W2"].map((side) => (
+                      <SideToggle
+                        key={side}
+                        side={side}
+                        active={!!localOps.grooves.sides[side]}
+                        onClick={() => toggleGrooveSide(side)}
+                        color="amber"
+                      />
                     ))}
-                  </SelectContent>
-                </Select>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setLocalOps(prev => ({
+                      ...prev,
+                      grooves: { ...prev.grooves, sides: { L1: true, L2: true, W1: true, W2: true } },
+                    }))}
+                    className="text-xs"
+                  >
+                    All Sides (2L2W)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setLocalOps(prev => ({
+                      ...prev,
+                      grooves: { ...prev.grooves, sides: { L1: true, L2: true, W1: false, W2: false } },
+                    }))}
+                    className="text-xs"
+                  >
+                    2L
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setLocalOps(prev => ({
+                      ...prev,
+                      grooves: { ...prev.grooves, sides: { L1: false, L2: false, W1: true, W2: true } },
+                    }))}
+                    className="text-xs"
+                  >
+                    2W
+                  </Button>
+                </div>
               </AccordionContent>
             </AccordionItem>
 
@@ -525,56 +586,68 @@ export function UnifiedOpsPanel({
                 <div className="flex items-center gap-3">
                   <div className="w-3 h-3 rounded-full bg-purple-500" />
                   <span className="font-medium">Holes</span>
-                  {holeCount > 0 && (
+                  {holeFaceCount > 0 && (
                     <Badge className="bg-purple-100 text-purple-700 text-xs">
-                      {holeCount}
+                      {holeFaceCount} face{holeFaceCount > 1 ? "s" : ""}
                     </Badge>
                   )}
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-4 pb-4 space-y-4">
-                {/* Existing holes */}
-                {localOps.holes.map((hole, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 border rounded-lg bg-[var(--muted)]/30 space-y-3"
+                <div className="space-y-2">
+                  <Label className="text-xs text-[var(--muted-foreground)]">Hole Pattern</Label>
+                  <Select
+                    value={localOps.holes.hole_type_id || ""}
+                    onValueChange={(id) => setLocalOps(prev => ({
+                      ...prev,
+                      holes: { ...prev.holes, hole_type_id: id },
+                    }))}
                   >
-                    <div className="flex items-center justify-between">
-                      <Badge className="bg-purple-100 text-purple-700">
-                        {hole.type_code}
-                      </Badge>
-                      <button
-                        type="button"
-                        onClick={() => removeHole(idx)}
-                        className="p-1.5 rounded hover:bg-red-100 text-red-500"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Select hole pattern..." />
+                    </SelectTrigger>
+                    <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
+                      {holeTypes.map((h) => (
+                        <SelectItem key={h.id} value={h.code}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-purple-600 font-bold">{h.code}</span>
+                            <span className="text-[var(--muted-foreground)]">{h.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-[var(--muted-foreground)]">Apply to Faces</Label>
+                  <div className="grid grid-cols-2 gap-2">
                     <FaceToggle
-                      face={hole.face}
-                      onChange={(f) => updateHole(idx, { face: f })}
+                      face="Front"
+                      active={localOps.holes.faces.front}
+                      onClick={() => toggleHoleFace("front")}
+                    />
+                    <FaceToggle
+                      face="Back"
+                      active={localOps.holes.faces.back}
+                      onClick={() => toggleHoleFace("back")}
                     />
                   </div>
-                ))}
+                </div>
 
-                {/* Add hole */}
-                <Select value="" onValueChange={addHole}>
-                  <SelectTrigger className="h-11 border-dashed">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Hole Pattern
-                  </SelectTrigger>
-                  <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
-                    {holeTypes.map((t) => (
-                      <SelectItem key={t.id} value={t.code}>
-                        <span className="font-mono text-purple-600">{t.code}</span>
-                        <span className="ml-2 text-[var(--muted-foreground)]">
-                          {t.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setLocalOps(prev => ({
+                      ...prev,
+                      holes: { ...prev.holes, faces: { front: true, back: true } },
+                    }))}
+                    className="text-xs"
+                  >
+                    Both Faces
+                  </Button>
+                </div>
               </AccordionContent>
             </AccordionItem>
 
@@ -592,42 +665,23 @@ export function UnifiedOpsPanel({
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-4 pb-4 space-y-4">
-                {/* Existing CNC ops */}
-                {localOps.cnc.map((cnc, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-3 border rounded-lg bg-[var(--muted)]/30"
-                  >
-                    <Badge className="bg-emerald-100 text-emerald-700">
-                      {cnc.type_code}
-                    </Badge>
-                    <button
-                      type="button"
-                      onClick={() => removeCnc(idx)}
-                      className="p-1.5 rounded hover:bg-red-100 text-red-500"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-
-                {/* Add CNC */}
-                <Select value="" onValueChange={addCnc}>
-                  <SelectTrigger className="h-11 border-dashed">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add CNC Operation
-                  </SelectTrigger>
-                  <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
-                    {cncTypes.map((t) => (
-                      <SelectItem key={t.id} value={t.code}>
-                        <span className="font-mono text-emerald-600">{t.code}</span>
-                        <span className="ml-2 text-[var(--muted-foreground)]">
-                          {t.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs text-[var(--muted-foreground)]">Select Operations</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {cncTypes.map((c) => (
+                    <CncTypeToggle
+                      key={c.id}
+                      code={c.code}
+                      name={c.name}
+                      active={localOps.cnc.types.includes(c.code)}
+                      onClick={() => toggleCncType(c.code)}
+                    />
+                  ))}
+                </div>
+                {cncTypes.length === 0 && (
+                  <p className="text-sm text-[var(--muted-foreground)] text-center py-4">
+                    No CNC operation types configured
+                  </p>
+                )}
               </AccordionContent>
             </AccordionItem>
           </Accordion>
@@ -646,4 +700,3 @@ export function UnifiedOpsPanel({
     </Sheet>
   );
 }
-
