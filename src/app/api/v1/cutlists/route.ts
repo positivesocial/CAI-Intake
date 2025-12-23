@@ -15,7 +15,7 @@ import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
 import { trackUsage } from "@/lib/usage";
 import crypto from "crypto";
 
-// Create cutlist schema
+// Create cutlist schema - use coerce for flexibility with string/number values
 const CreateCutlistSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
@@ -33,16 +33,19 @@ const CreateCutlistSchema = z.object({
   }).optional(),
   parts: z.array(z.object({
     part_id: z.string(),
-    label: z.string().optional(),
-    qty: z.number().int().positive(),
-    size: z.object({ L: z.number(), W: z.number() }),
-    thickness_mm: z.number().positive(),
+    label: z.string().optional().nullable(),
+    qty: z.coerce.number().int().positive(),
+    size: z.object({ 
+      L: z.coerce.number().positive(), 
+      W: z.coerce.number().positive() 
+    }),
+    thickness_mm: z.coerce.number().positive(),
     material_id: z.string(),
-    grain: z.string().optional(),
-    allow_rotation: z.boolean().optional(),
-    group_id: z.string().optional(),
-    ops: z.any().optional(),
-    notes: z.any().optional(),
+    grain: z.string().optional().nullable(),
+    allow_rotation: z.boolean().optional().nullable(),
+    group_id: z.string().optional().nullable(),
+    ops: z.any().optional().nullable(),
+    notes: z.any().optional().nullable(),
   })).optional(),
 });
 
@@ -227,9 +230,27 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
+    
+    // Log incoming data for debugging
+    logger.info("Creating cutlist", {
+      userId: user.id,
+      name: body.name,
+      partsCount: body.parts?.length,
+      hasCapabilities: !!body.capabilities,
+    });
+    
     const parseResult = CreateCutlistSchema.safeParse(body);
     
     if (!parseResult.success) {
+      logger.error("Cutlist validation failed", {
+        issues: parseResult.error.issues,
+        receivedKeys: Object.keys(body),
+        name: body.name,
+        nameType: typeof body.name,
+        partsCount: body.parts?.length,
+        firstPartThickness: body.parts?.[0]?.thickness_mm,
+        firstPartThicknessType: typeof body.parts?.[0]?.thickness_mm,
+      });
       return NextResponse.json(
         { error: "Invalid request", details: parseResult.error.issues },
         { status: 400 }
