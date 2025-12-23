@@ -2,13 +2,8 @@
 
 import * as React from "react";
 import {
-  ChevronRight,
-  Undo2,
-  Redo2,
   Trash2,
-  Settings,
   Plus,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +17,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { PartsTable } from "@/components/parts";
+import { StreamlinedPartsTable } from "@/components/parts";
 import { StatsSidebar, ProjectMergePanel } from "@/components/intake";
 import { useIntakeStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -36,12 +31,6 @@ export function ReviewStep() {
     goToPreviousStep,
     goToNextStep,
     canProceedToExport,
-    undo,
-    redo,
-    canUndo,
-    canRedo,
-    isAdvancedMode,
-    toggleAdvancedMode,
     clearParts,
     addPart,
   } = useIntakeStore();
@@ -113,42 +102,6 @@ export function ReviewStep() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Undo/Redo */}
-          <div className="flex items-center gap-1 border-r border-[var(--border)] pr-2 mr-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={undo}
-              disabled={!canUndo()}
-              className="h-8 px-2"
-              title="Undo (⌘Z)"
-            >
-              <Undo2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={redo}
-              disabled={!canRedo()}
-              className="h-8 px-2"
-              title="Redo (⌘⇧Z)"
-            >
-              <Redo2 className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Toggle advanced mode */}
-          <Button
-            variant={isAdvancedMode ? "default" : "outline"}
-            size="sm"
-            onClick={toggleAdvancedMode}
-          >
-            <Settings className="h-4 w-4" />
-            <span className="hidden sm:inline ml-1">
-              {isAdvancedMode ? "Advanced" : "Simple"}
-            </span>
-          </Button>
-
           {/* Add part */}
           <Button
             variant="outline"
@@ -188,7 +141,7 @@ export function ReviewStep() {
       <div className="flex gap-6">
         {/* Parts Table - Main area */}
         <div className={cn("flex-1 min-w-0", showStats && "xl:mr-0")}>
-          <PartsTable />
+          <StreamlinedPartsTable />
         </div>
 
         {/* Stats Sidebar - Desktop only */}

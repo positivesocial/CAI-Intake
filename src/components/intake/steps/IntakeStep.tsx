@@ -18,14 +18,14 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   QuickAddField,
   PasteParsePanel,
-  ManualEntryForm,
+  StreamlinedEntryForm,
   IntakeInbox,
   ExcelImport,
   VoiceDictation,
   FileUpload,
   TemplateGenerator,
 } from "@/components/intake";
-import type { ManualEntryFormRef } from "@/components/intake/ManualEntryForm";
+import type { StreamlinedEntryFormRef } from "@/components/intake/StreamlinedEntryForm";
 import { useIntakeStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { StepNavigation } from "@/components/ui/stepper";
@@ -80,8 +80,8 @@ export function IntakeStep() {
     canProceedToReview,
   } = useIntakeStore();
 
-  // Ref to ManualEntryForm for QuickAdd integration
-  const manualEntryRef = React.useRef<ManualEntryFormRef>(null);
+  // Ref to StreamlinedEntryForm for QuickAdd integration
+  const entryFormRef = React.useRef<StreamlinedEntryFormRef>(null);
 
   const totalParts = currentCutlist.parts.length;
   const inboxCount = inboxParts.filter((p) => p._status !== "rejected").length;
@@ -117,13 +117,13 @@ export function IntakeStep() {
               <QuickAddField 
                 addToStore={false}
                 onPartParsed={(part) => {
-                  // Add parsed part to the manual entry table instead of parts list
-                  manualEntryRef.current?.addRowFromPart(part);
+                  // Add parsed part to the entry form
+                  entryFormRef.current?.addRowFromPart(part);
                 }}
               />
             </CardContent>
           </Card>
-          <ManualEntryForm ref={manualEntryRef} />
+          <StreamlinedEntryForm ref={entryFormRef} />
         </TabsContent>
         
         {/* Paste & Parse */}
