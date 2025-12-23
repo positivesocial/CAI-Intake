@@ -141,8 +141,9 @@ export function Stepper({
         aria-label="Progress"
         className={cn("md:hidden", className)}
       >
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-[var(--foreground)]">
+        {/* Header: Label + Step count */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-semibold text-[var(--foreground)]">
             {steps[currentIndex]?.label}
           </span>
           <span className="text-xs text-[var(--muted-foreground)]">
@@ -150,61 +151,54 @@ export function Stepper({
           </span>
         </div>
 
-        {/* Progress Bar */}
-        <div className="flex gap-1">
-          {steps.map((step, index) => {
-            const status = getStepStatus(step, index);
-            return (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => handleStepClick(step, index)}
-                disabled={!allowJump && index > currentIndex}
-                className={cn(
-                  "h-1.5 flex-1 rounded-full transition-colors",
-                  status === "completed" && "bg-[var(--cai-teal)]",
-                  status === "current" && "bg-[var(--cai-teal)]",
-                  status === "upcoming" && "bg-[var(--border)]",
-                  allowJump && "cursor-pointer hover:opacity-80"
-                )}
-                aria-label={`Go to ${step.label}`}
-              />
-            );
-          })}
-        </div>
-
-        {/* Step Indicators (dots) */}
-        <div className="flex justify-center gap-2 mt-3">
+        {/* Step Indicators - Compact inline row */}
+        <div className="flex items-center justify-between gap-2">
           {steps.map((step, index) => {
             const status = getStepStatus(step, index);
             const Icon = step.icon;
+            const isLast = index === steps.length - 1;
+
             return (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => handleStepClick(step, index)}
-                disabled={!allowJump && index > currentIndex}
-                className={cn(
-                  "flex items-center justify-center w-8 h-8 rounded-full transition-all",
-                  status === "completed" &&
-                    "bg-[var(--cai-teal)] text-white",
-                  status === "current" &&
-                    "bg-[var(--cai-teal)]/20 text-[var(--cai-teal)] ring-2 ring-[var(--cai-teal)]",
-                  status === "upcoming" &&
-                    "bg-[var(--muted)] text-[var(--muted-foreground)]",
-                  (allowJump || index <= currentIndex) && "cursor-pointer"
+              <React.Fragment key={step.id}>
+                {/* Step Circle */}
+                <button
+                  type="button"
+                  onClick={() => handleStepClick(step, index)}
+                  disabled={!allowJump && index > currentIndex}
+                  className={cn(
+                    "flex items-center justify-center w-9 h-9 rounded-full transition-all flex-shrink-0",
+                    status === "completed" &&
+                      "bg-[var(--cai-teal)] text-white",
+                    status === "current" &&
+                      "bg-[var(--cai-teal)]/20 text-[var(--cai-teal)] ring-2 ring-[var(--cai-teal)]",
+                    status === "upcoming" &&
+                      "bg-[var(--muted)] text-[var(--muted-foreground)]",
+                    (allowJump || index <= currentIndex) && "cursor-pointer"
+                  )}
+                  aria-label={step.label}
+                  aria-current={status === "current" ? "step" : undefined}
+                >
+                  {status === "completed" ? (
+                    <Check className="h-4 w-4" />
+                  ) : Icon ? (
+                    <Icon className="h-4 w-4" />
+                  ) : (
+                    <span className="text-xs font-semibold">{index + 1}</span>
+                  )}
+                </button>
+
+                {/* Connector Line */}
+                {!isLast && (
+                  <div
+                    className={cn(
+                      "h-0.5 flex-1 rounded-full transition-colors",
+                      index < currentIndex
+                        ? "bg-[var(--cai-teal)]"
+                        : "bg-[var(--border)]"
+                    )}
+                  />
                 )}
-                aria-label={step.label}
-                aria-current={status === "current" ? "step" : undefined}
-              >
-                {status === "completed" ? (
-                  <Check className="h-4 w-4" />
-                ) : Icon ? (
-                  <Icon className="h-4 w-4" />
-                ) : (
-                  <span className="text-xs font-semibold">{index + 1}</span>
-                )}
-              </button>
+              </React.Fragment>
             );
           })}
         </div>
