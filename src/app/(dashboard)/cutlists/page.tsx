@@ -22,6 +22,8 @@ import {
   SortDesc,
   Grid3X3,
   List,
+  Paperclip,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,6 +47,8 @@ interface Cutlist {
   createdAt: string;
   updatedAt: string;
   efficiency?: number;
+  filesCount?: number;
+  sourceMethod?: string;
 }
 
 type ViewMode = "grid" | "list";
@@ -424,7 +428,20 @@ export default function CutlistsPage() {
 
                   {/* Footer */}
                   <div className="flex items-center justify-between">
-                    <StatusBadge status={cutlist.status} />
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={cutlist.status} />
+                      {cutlist.filesCount && cutlist.filesCount > 0 && (
+                        <a
+                          href={`/cutlists/${cutlist.id}#files`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
+                          title={`${cutlist.filesCount} source file${cutlist.filesCount > 1 ? 's' : ''}`}
+                        >
+                          <Paperclip className="h-3 w-3" />
+                          {cutlist.filesCount}
+                        </a>
+                      )}
+                    </div>
                     {cutlist.efficiency && (
                       <span className="text-sm text-green-600 font-medium">
                         {(cutlist.efficiency * 100).toFixed(0)}% efficient
@@ -483,6 +500,7 @@ export default function CutlistsPage() {
                     </button>
                   </th>
                   <th className="p-3 text-left text-sm font-medium">Efficiency</th>
+                  <th className="p-3 text-center text-sm font-medium">Files</th>
                   <th className="p-3 text-right text-sm font-medium">Actions</th>
                 </tr>
               </thead>
@@ -526,6 +544,20 @@ export default function CutlistsPage() {
                         <span className="text-green-600 font-medium">
                           {(cutlist.efficiency * 100).toFixed(0)}%
                         </span>
+                      ) : (
+                        <span className="text-[var(--muted-foreground)]">—</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-center">
+                      {cutlist.filesCount && cutlist.filesCount > 0 ? (
+                        <a
+                          href={`/cutlists/${cutlist.id}#files`}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
+                          title={`View ${cutlist.filesCount} source file${cutlist.filesCount > 1 ? 's' : ''}`}
+                        >
+                          <Paperclip className="h-3 w-3" />
+                          {cutlist.filesCount}
+                        </a>
                       ) : (
                         <span className="text-[var(--muted-foreground)]">—</span>
                       )}

@@ -261,6 +261,12 @@ export default function CutlistDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Edit Button - Load cutlist in intake flow */}
+          <Button onClick={() => router.push(`/intake?edit=${id}`)}>
+            <Edit2 className="h-4 w-4 mr-2" />
+            Edit Cutlist
+          </Button>
+
           {/* Export dropdown */}
           <div className="relative">
             <Button variant="outline" onClick={() => setExportMenuOpen(!exportMenuOpen)}>

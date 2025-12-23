@@ -143,6 +143,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Get file counts for each cutlist (separate query since relationship may not exist)
+    const cutlistIds = cutlists?.map((c: { id: string }) => c.id) || [];
+    let fileCounts: Record<string, number> = {};
+    
+    if (cutlistIds.length > 0) {
+      try {
+        const { data: fileData } = await serviceClient
+          .from("uploaded_files")
+          .select("cutlist_id")
+          .in("cutlist_id", cutlistIds);
+        
+        if (fileData) {
+          fileCounts = fileData.reduce((acc: Record<string, number>, f: { cutlist_id: string }) => {
+            acc[f.cutlist_id] = (acc[f.cutlist_id] || 0) + 1;
+            return acc;
+          }, {});
+        }
+      } catch {
+        // File counts are optional - table may not have cutlist_id column
+      }
+    }
+
     return NextResponse.json({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       cutlists: cutlists?.map((c: any) => ({
@@ -157,6 +179,8 @@ export async function GET(request: NextRequest) {
         createdAt: c.created_at,
         updatedAt: c.updated_at,
         efficiency: c.efficiency,
+        filesCount: fileCounts[c.id] || 0,
+        sourceMethod: c.source_method,
       })),
       pagination: {
         page,

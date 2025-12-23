@@ -202,6 +202,15 @@ export interface IntakeState {
   saveCutlist: () => Promise<{ success: boolean; cutlistId?: string; error?: string }>;
   saveCutlistAsDraft: () => Promise<{ success: boolean; cutlistId?: string; error?: string }>;
   loadCutlist: (cutlistId: string) => Promise<{ success: boolean; error?: string }>;
+  loadCutlistForEditing: (cutlist: {
+    id: string;
+    doc_id?: string;
+    name: string;
+    description?: string;
+    status?: string;
+    capabilities?: CutlistCapabilities;
+    parts?: CutPart[];
+  }) => void;
   isSaving: boolean;
   lastSavedAt: string | null;
   savedCutlistId: string | null;
@@ -1057,6 +1066,29 @@ export const useIntakeStore = create<IntakeState>()(
         } catch (error) {
           console.error("Load cutlist error:", error);
           return { success: false, error: "Network error" };
+
+      /**
+       * Load cutlist for editing (synchronous, used when data is already fetched)
+       */
+      loadCutlistForEditing: (cutlist) => {
+        set((state) => ({
+          currentCutlist: {
+            doc_id: cutlist.doc_id || cutlist.id,
+            name: cutlist.name,
+            parts: cutlist.parts || [],
+            materials: state.currentCutlist.materials, // Keep loaded materials
+            edgebands: state.currentCutlist.edgebands,
+            capabilities: cutlist.capabilities || defaultCapabilities,
+          },
+          savedCutlistId: cutlist.id,
+          lastSavedAt: new Date().toISOString(),
+          currentStep: cutlist.parts && cutlist.parts.length > 0 ? "review" : "intake",
+          inboxParts: [],
+          // Clear undo/redo stacks for fresh editing session
+          undoStack: [],
+          redoStack: [],
+        }));
+      },
         }
       },
       

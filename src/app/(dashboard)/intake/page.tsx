@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Settings,
   Plus,
@@ -11,6 +12,7 @@ import {
   X,
   BarChart3,
   ChevronLeft,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,7 @@ import { useIntakeStore, type StepId } from "@/lib/store";
 import { Stepper, type Step } from "@/components/ui/stepper";
 import { KeyboardShortcutsDialog } from "@/components/ui/keyboard-shortcuts-dialog";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const STEPS: Step[] = [
   { id: "setup", label: "Setup", icon: Settings },
@@ -36,6 +39,9 @@ const STEPS: Step[] = [
 ];
 
 export default function IntakePage() {
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+
   const {
     currentCutlist,
     inboxParts,
@@ -46,9 +52,51 @@ export default function IntakePage() {
     setCutlistName,
     canProceedToReview,
     canProceedToExport,
+    loadCutlistForEditing,
+    resetCutlist,
   } = useIntakeStore();
 
   const [showMobileStats, setShowMobileStats] = React.useState(false);
+  const [isLoadingCutlist, setIsLoadingCutlist] = React.useState(false);
+  const [loadedCutlistId, setLoadedCutlistId] = React.useState<string | null>(null);
+
+  // Load existing cutlist for editing
+  React.useEffect(() => {
+    if (editId && editId !== loadedCutlistId) {
+      setIsLoadingCutlist(true);
+      
+      fetch(`/api/v1/cutlists/${editId}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error("Failed to load cutlist");
+          const data = await res.json();
+          
+          if (data.cutlist) {
+            // Load the cutlist into the store
+            loadCutlistForEditing({
+              id: data.cutlist.id,
+              doc_id: data.cutlist.doc_id,
+              name: data.cutlist.name,
+              description: data.cutlist.description,
+              status: data.cutlist.status,
+              capabilities: data.cutlist.capabilities || {},
+              parts: data.cutlist.parts || [],
+            });
+            
+            // Go to review step since we're editing
+            setCurrentStep("review");
+            setLoadedCutlistId(editId);
+            toast.success(`Loaded "${data.cutlist.name}" for editing`);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load cutlist for editing:", err);
+          toast.error("Failed to load cutlist for editing");
+        })
+        .finally(() => {
+          setIsLoadingCutlist(false);
+        });
+    }
+  }, [editId, loadedCutlistId, loadCutlistForEditing, setCurrentStep]);
 
   const totalParts = currentCutlist.parts.length;
   const totalPieces = currentCutlist.parts.reduce((sum, p) => sum + p.qty, 0);
@@ -180,11 +228,21 @@ export default function IntakePage() {
       {/* Main Content Area */}
       <main className="p-4 lg:p-6 pb-24 md:pb-6">
         <div className="max-w-6xl mx-auto">
-          {/* Step Content */}
-          {currentStep === "setup" && <SetupStep />}
-          {currentStep === "intake" && <IntakeStep />}
-          {currentStep === "review" && <ReviewStep />}
-          {currentStep === "export" && <ExportStep />}
+          {/* Loading state when loading cutlist for editing */}
+          {isLoadingCutlist ? (
+            <div className="flex flex-col items-center justify-center h-64">
+              <RefreshCw className="h-10 w-10 animate-spin text-[var(--cai-teal)] mb-4" />
+              <p className="text-[var(--muted-foreground)]">Loading cutlist for editing...</p>
+            </div>
+          ) : (
+            <>
+              {/* Step Content */}
+              {currentStep === "setup" && <SetupStep />}
+              {currentStep === "intake" && <IntakeStep />}
+              {currentStep === "review" && <ReviewStep />}
+              {currentStep === "export" && <ExportStep />}
+            </>
+          )}
         </div>
       </main>
 
