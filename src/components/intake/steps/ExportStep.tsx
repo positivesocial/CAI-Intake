@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   Download,
   Send,
@@ -8,6 +9,7 @@ import {
   FileSpreadsheet,
   FileText,
   Check,
+  CheckCircle2,
   ExternalLink,
   RefreshCw,
   Package,
@@ -69,6 +71,7 @@ interface OrgBranding {
 }
 
 export function ExportStep() {
+  const router = useRouter();
   const {
     currentCutlist,
     goToPreviousStep,
@@ -459,17 +462,36 @@ export function ExportStep() {
         </section>
       )}
 
-      {/* Start New Option */}
-      <div className="text-center pt-4 border-t border-[var(--border)]">
-        <Button
-          variant="ghost"
-          onClick={handleStartNew}
-          className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-        >
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Start New Cutlist
-        </Button>
-      </div>
+      {/* Complete Section */}
+      <section className="pt-6 border-t border-[var(--border)] space-y-4">
+        <div className="text-center">
+          <CheckCircle2 className="h-12 w-12 mx-auto text-[var(--cai-teal)] mb-3" />
+          <h3 className="text-lg font-semibold text-[var(--foreground)]">
+            All Done!
+          </h3>
+          <p className="text-sm text-[var(--muted-foreground)] mt-1">
+            Your cutlist is ready. Save it, export it, or start a new one.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <Button
+            variant="ghost"
+            onClick={handleStartNew}
+            className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Start New Cutlist
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => router.push("/cutlists")}
+          >
+            <Check className="h-4 w-4 mr-2" />
+            Done - View All Cutlists
+          </Button>
+        </div>
+      </section>
 
       {/* Navigation */}
       <StepNavigation
