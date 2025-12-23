@@ -82,6 +82,7 @@ interface SelectContextType {
   onValueChange: (value: string) => void;
   open: boolean;
   setOpen: (open: boolean) => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
 }
 
 const SelectContext = React.createContext<SelectContextType | null>(null);
@@ -104,6 +105,7 @@ interface SelectProps {
 function Select({ value: controlledValue, defaultValue = "", onValueChange, children }: SelectProps) {
   const [internalValue, setInternalValue] = React.useState(defaultValue);
   const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
 
   const value = controlledValue !== undefined ? controlledValue : internalValue;
 
@@ -119,7 +121,7 @@ function Select({ value: controlledValue, defaultValue = "", onValueChange, chil
   );
 
   return (
-    <SelectContext.Provider value={{ value, onValueChange: handleValueChange, open, setOpen }}>
+    <SelectContext.Provider value={{ value, onValueChange: handleValueChange, open, setOpen, triggerRef }}>
       <div className="relative">
         {children}
       </div>
@@ -133,10 +135,11 @@ interface SelectTriggerProps {
 }
 
 function SelectTrigger({ children, className }: SelectTriggerProps) {
-  const { open, setOpen } = useSelectContext();
+  const { open, setOpen, triggerRef } = useSelectContext();
 
   return (
     <button
+      ref={triggerRef}
       type="button"
       onClick={() => setOpen(!open)}
       className={cn(
@@ -147,7 +150,7 @@ function SelectTrigger({ children, className }: SelectTriggerProps) {
       )}
     >
       {children}
-      <ChevronDown className={cn("h-4 w-4 text-[var(--muted-foreground)] transition-transform", open && "rotate-180")} />
+      <ChevronDown className={cn("h-4 w-4 text-[var(--muted-foreground)] transition-transform shrink-0 ml-2", open && "rotate-180")} />
     </button>
   );
 }
@@ -159,9 +162,8 @@ interface SelectValueProps {
 function SelectValue({ placeholder }: SelectValueProps) {
   const { value } = useSelectContext();
   
-  // We'll let SelectContent children populate the display value
   return (
-    <span className={cn(!value && "text-[var(--muted-foreground)]")}>
+    <span className={cn("truncate", !value && "text-[var(--muted-foreground)]")}>
       {value || placeholder || "Select..."}
     </span>
   );
@@ -175,19 +177,34 @@ interface SelectContentProps {
 }
 
 function SelectContent({ children, className, position = "item-aligned", sideOffset = 4 }: SelectContentProps) {
-  const { open, setOpen } = useSelectContext();
+  const { open, setOpen, triggerRef } = useSelectContext();
   const [triggerRect, setTriggerRect] = React.useState<DOMRect | null>(null);
-  const contentRef = React.useRef<HTMLDivElement>(null);
 
+  // Get trigger rect when opening
   React.useEffect(() => {
-    if (open) {
-      // Find the trigger button (sibling of content's parent)
-      const trigger = contentRef.current?.parentElement?.querySelector("button");
-      if (trigger) {
-        setTriggerRect(trigger.getBoundingClientRect());
-      }
+    if (open && triggerRef.current) {
+      setTriggerRect(triggerRef.current.getBoundingClientRect());
     }
-  }, [open]);
+  }, [open, triggerRef]);
+
+  // Update position on scroll/resize
+  React.useEffect(() => {
+    if (!open || position !== "popper") return;
+
+    const updatePosition = () => {
+      if (triggerRef.current) {
+        setTriggerRect(triggerRef.current.getBoundingClientRect());
+      }
+    };
+
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [open, position, triggerRef]);
 
   if (!open) return null;
 
@@ -202,17 +219,22 @@ function SelectContent({ children, className, position = "item-aligned", sideOff
         />
         {/* Dropdown content */}
         <div
-          ref={contentRef}
           style={triggerRect ? {
             position: "fixed",
             top: triggerRect.bottom + sideOffset,
             left: triggerRect.left,
             width: triggerRect.width,
-            maxHeight: `calc(100vh - ${triggerRect.bottom + sideOffset + 16}px)`,
-          } : undefined}
+            minWidth: 200,
+            maxHeight: Math.min(300, window.innerHeight - triggerRect.bottom - sideOffset - 16),
+          } : {
+            position: "fixed",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            minWidth: 200,
+          }}
           className={cn(
             "z-[200] overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-lg",
-            !triggerRect && "absolute top-full left-0 right-0 mt-1",
             className
           )}
         >
@@ -234,7 +256,6 @@ function SelectContent({ children, className, position = "item-aligned", sideOff
         onClick={() => setOpen(false)}
       />
       <div
-        ref={contentRef}
         className={cn(
           "absolute z-50 top-full left-0 right-0 mt-1 max-h-60 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-lg",
           className
@@ -270,7 +291,7 @@ function SelectItem({ value: itemValue, children, className }: SelectItemProps) 
       )}
     >
       <span className="flex-1 text-left">{children}</span>
-      {isSelected && <Check className="h-4 w-4 ml-2" />}
+      {isSelected && <Check className="h-4 w-4 ml-2 shrink-0" />}
     </button>
   );
 }
