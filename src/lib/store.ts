@@ -1066,6 +1066,8 @@ export const useIntakeStore = create<IntakeState>()(
         } catch (error) {
           console.error("Load cutlist error:", error);
           return { success: false, error: "Network error" };
+        }
+      },
 
       /**
        * Load cutlist for editing (synchronous, used when data is already fetched)
@@ -1088,8 +1090,6 @@ export const useIntakeStore = create<IntakeState>()(
           undoStack: [],
           redoStack: [],
         }));
-      },
-        }
       },
       
       // AI settings

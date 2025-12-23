@@ -183,7 +183,16 @@ export async function GET(
 
       if (sourceFiles && sourceFiles.length > 0) {
         sourceFilesWithUrls = await Promise.all(
-          sourceFiles.map(async (file) => {
+          sourceFiles.map(async (file: {
+            id: string;
+            file_name: string;
+            original_name: string;
+            mime_type: string;
+            size_bytes: number;
+            storage_path: string;
+            kind: string;
+            created_at: string;
+          }) => {
             const { data: urlData } = await supabase.storage
               .from("cutlist-files")
               .createSignedUrl(file.storage_path, 3600); // 1 hour expiry
