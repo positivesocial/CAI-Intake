@@ -45,6 +45,7 @@ import { useIntakeStore } from "@/lib/store";
 import type { CutPart } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import { UnifiedOpsPanel } from "./UnifiedOpsPanel";
+import { BulkOpsPanel } from "./BulkOpsPanel";
 import type { OperationsData } from "@/components/operations";
 import {
   Tooltip,
@@ -363,6 +364,7 @@ export function StreamlinedPartsTable() {
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc");
   const [lastSelectedId, setLastSelectedId] = React.useState<string | null>(null);
   const [opsEditingPart, setOpsEditingPart] = React.useState<CutPart | null>(null);
+  const [showBulkOpsPanel, setShowBulkOpsPanel] = React.useState(false);
 
   const parts = currentCutlist.parts;
   const defaultEdgeband = currentCutlist.edgebands?.[0]?.edgeband_id || "EB-WHITE-0.8";
@@ -478,6 +480,68 @@ export function StreamlinedPartsTable() {
     });
   };
 
+  // Apply bulk operations to all selected parts
+  const handleBulkOpsApply = (ops: OperationsData, mode: "add" | "replace") => {
+    const newOps = opsDataToPartOps(ops, defaultEdgeband);
+    const hasNewOps = Object.keys(newOps).length > 0;
+
+    selectedPartIds.forEach(partId => {
+      const part = parts.find(p => p.part_id === partId);
+      if (!part) return;
+
+      if (mode === "replace") {
+        // Replace all operations
+        updatePart(partId, {
+          ...part,
+          ops: hasNewOps ? newOps : undefined,
+        });
+      } else {
+        // Add/merge operations
+        const mergedOps = mergePartOps(part.ops, newOps);
+        const mergedOpsKeys = mergedOps ? Object.keys(mergedOps) : [];
+        updatePart(partId, {
+          ...part,
+          ops: mergedOpsKeys.length > 0 ? mergedOps : undefined,
+        });
+      }
+    });
+  };
+
+  // Helper to merge operations (for "add" mode)
+  const mergePartOps = (
+    existing: CutPart["ops"] | undefined,
+    newOps: ReturnType<typeof opsDataToPartOps>
+  ): CutPart["ops"] => {
+    const merged: CutPart["ops"] = { ...existing };
+
+    // Merge edging
+    if (newOps.edging) {
+      merged.edging = {
+        edges: {
+          ...existing?.edging?.edges,
+          ...newOps.edging.edges,
+        },
+      };
+    }
+
+    // Merge grooves (add new ones)
+    if (newOps.grooves && newOps.grooves.length > 0) {
+      merged.grooves = [...(existing?.grooves || []), ...newOps.grooves];
+    }
+
+    // Merge holes (add new ones)
+    if (newOps.holes && newOps.holes.length > 0) {
+      merged.holes = [...(existing?.holes || []), ...newOps.holes];
+    }
+
+    // Merge custom CNC ops (add new ones)
+    if (newOps.custom_cnc_ops && newOps.custom_cnc_ops.length > 0) {
+      merged.custom_cnc_ops = [...(existing?.custom_cnc_ops || []), ...newOps.custom_cnc_ops];
+    }
+
+    return merged;
+  };
+
   // Calculate totals
   const totalPieces = parts.reduce((sum, p) => sum + p.qty, 0);
   const totalArea = parts.reduce((sum, p) => sum + p.qty * p.size.L * p.size.W, 0);
@@ -539,6 +603,21 @@ export function StreamlinedPartsTable() {
                         <Button 
                           variant="ghost" 
                           size="sm" 
+                          onClick={() => setShowBulkOpsPanel(true)} 
+                          className="h-8 px-2 text-[var(--cai-teal)]"
+                        >
+                          <Settings2 className="h-4 w-4 mr-1" /> Bulk Ops
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Apply operations to all selected parts</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
                           onClick={handleSwapSelectedDimensions} 
                           className="h-8 px-2"
                         >
@@ -548,16 +627,6 @@ export function StreamlinedPartsTable() {
                       <TooltipContent>Swap Length and Width for selected parts</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={handleEditSelectedOps} 
-                    className="h-8 px-2"
-                    disabled={selectedPartIds.length !== 1}
-                    title={selectedPartIds.length !== 1 ? "Select exactly 1 part to edit ops" : "Edit operations"}
-                  >
-                    <Settings2 className="h-4 w-4 mr-1" /> Ops
-                  </Button>
                   <div className="w-px h-6 bg-[var(--border)] mx-1" />
                   <Button variant="ghost" size="sm" onClick={copySelectedParts} className="h-8 px-2">
                     <Copy className="h-4 w-4 mr-1" /> Copy
@@ -703,13 +772,21 @@ export function StreamlinedPartsTable() {
         </CardContent>
       </Card>
 
-      {/* Unified Operations Panel */}
+      {/* Unified Operations Panel (single part) */}
       <UnifiedOpsPanel
         open={!!opsEditingPart}
         onOpenChange={(open) => !open && setOpsEditingPart(null)}
         value={opsEditingPart ? partToOpsData(opsEditingPart) : { edgebanding: { sides: {} }, grooves: [], holes: [], cnc: [] }}
         onChange={handleOpsChange}
         partLabel={opsEditingPart?.label || opsEditingPart?.part_id}
+      />
+
+      {/* Bulk Operations Panel (multiple parts) */}
+      <BulkOpsPanel
+        open={showBulkOpsPanel}
+        onOpenChange={setShowBulkOpsPanel}
+        selectedCount={selectedPartIds.length}
+        onApply={handleBulkOpsApply}
       />
     </>
   );

@@ -15,13 +15,14 @@
  */
 
 import * as React from "react";
-import { Plus, Trash2, ArrowDown, Keyboard, LayoutGrid, LayoutList, Copy, Check } from "lucide-react";
+import { Plus, Trash2, ArrowDown, Keyboard, LayoutGrid, LayoutList, Copy, Check, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIntakeStore } from "@/lib/store";
 import { generateId } from "@/lib/utils";
 import { PartCard, type PartCardData } from "@/components/parts/PartCard";
+import { BulkOpsPanel } from "@/components/parts/BulkOpsPanel";
 import type { CutPart, CutlistCapabilities } from "@/lib/schema";
 import { generateAutoNotesFromPartOps, mergeAutoNotes } from "@/lib/schema";
 import { cn } from "@/lib/utils";
@@ -137,6 +138,9 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
     // Selection state
     const [selectedRowIds, setSelectedRowIds] = React.useState<Set<string>>(new Set());
 
+    // Bulk ops panel
+    const [showBulkOpsPanel, setShowBulkOpsPanel] = React.useState(false);
+
     // Validation errors
     const [errors, setErrors] = React.useState<Record<string, Record<string, boolean>>>({});
 
@@ -248,6 +252,34 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
       });
       setRows(newRows);
       setSelectedRowIds(new Set());
+    };
+
+    // Apply bulk operations to selected rows
+    const applyBulkOps = (ops: OperationsData, mode: "add" | "replace") => {
+      setRows(prev => prev.map(row => {
+        if (!selectedRowIds.has(row.id)) return row;
+
+        if (mode === "replace") {
+          return { ...row, operations: ops };
+        } else {
+          // Merge operations
+          const merged: OperationsData = {
+            edgebanding: {
+              edgeband_id: ops.edgebanding.edgeband_id || row.operations.edgebanding.edgeband_id,
+              sides: {
+                L1: ops.edgebanding.sides.L1 || row.operations.edgebanding.sides.L1,
+                L2: ops.edgebanding.sides.L2 || row.operations.edgebanding.sides.L2,
+                W1: ops.edgebanding.sides.W1 || row.operations.edgebanding.sides.W1,
+                W2: ops.edgebanding.sides.W2 || row.operations.edgebanding.sides.W2,
+              },
+            },
+            grooves: [...row.operations.grooves, ...ops.grooves],
+            holes: [...row.operations.holes, ...ops.holes],
+            cnc: [...row.operations.cnc, ...ops.cnc],
+          };
+          return { ...row, operations: merged };
+        }
+      }));
     };
 
     const addSelectedRowsToParts = () => {
@@ -397,6 +429,7 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
     const hasOpsEnabled = capabilities.edging || capabilities.grooves || capabilities.cnc_holes || capabilities.cnc_routing || capabilities.custom_cnc;
 
     return (
+      <>
       <Card className="w-full">
         <CardHeader className="pb-2 px-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -446,6 +479,9 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
                 {selectedRowIds.size} selected
               </Badge>
               <div className="flex-1" />
+              <Button variant="ghost" size="sm" onClick={() => setShowBulkOpsPanel(true)} className="h-8 px-2 text-[var(--cai-teal)]">
+                <Settings2 className="h-4 w-4 mr-1" /> Bulk Ops
+              </Button>
               <Button variant="ghost" size="sm" onClick={addSelectedRowsToParts} className="h-8 px-2 text-[var(--cai-teal)]">
                 <Check className="h-4 w-4 mr-1" /> Add to Parts
               </Button>
@@ -548,6 +584,15 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
           </div>
         </CardContent>
       </Card>
+
+      {/* Bulk Operations Panel */}
+      <BulkOpsPanel
+        open={showBulkOpsPanel}
+        onOpenChange={setShowBulkOpsPanel}
+        selectedCount={selectedRowIds.size}
+        onApply={applyBulkOps}
+      />
+    </>
     );
   }
 );
