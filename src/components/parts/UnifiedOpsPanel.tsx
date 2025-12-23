@@ -293,7 +293,7 @@ export function UnifiedOpsPanel({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
+      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col overflow-visible">
         <SheetHeader className="px-4 py-3 border-b bg-[var(--muted)]">
           <SheetTitle className="flex items-center gap-2">
             Part Operations
@@ -308,8 +308,8 @@ export function UnifiedOpsPanel({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto">
-          <Accordion type="multiple" defaultValue={["edging"]} className="w-full">
+        <div className="flex-1 overflow-y-auto overflow-x-visible">
+          <Accordion type="multiple" defaultValue={["edging"]} className="w-full pb-20">
             {/* ====== EDGEBANDING ====== */}
             <AccordionItem value="edging" className="border-b">
               <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-[var(--muted)]/50">
@@ -334,7 +334,7 @@ export function UnifiedOpsPanel({
                     <SelectTrigger className="h-11">
                       <SelectValue placeholder="Select edgeband material..." />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
                       {edgebandMaterials.map((eb) => (
                         <SelectItem key={eb.edgeband_id} value={eb.edgeband_id}>
                           <div className="flex items-center gap-2">
@@ -486,7 +486,7 @@ export function UnifiedOpsPanel({
                           <SelectTrigger className="h-10">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent position="popper" sideOffset={4} className="z-[200]">
                             {["L1", "L2", "W1", "W2"].map((s) => (
                               <SelectItem key={s} value={s}>
                                 {s}
@@ -505,7 +505,7 @@ export function UnifiedOpsPanel({
                     <Plus className="h-4 w-4 mr-2" />
                     Add Groove
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
                     {grooveTypes.map((t) => (
                       <SelectItem key={t.id} value={t.code}>
                         <span className="font-mono text-amber-600">{t.code}</span>
@@ -564,7 +564,7 @@ export function UnifiedOpsPanel({
                     <Plus className="h-4 w-4 mr-2" />
                     Add Hole Pattern
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
                     {holeTypes.map((t) => (
                       <SelectItem key={t.id} value={t.code}>
                         <span className="font-mono text-purple-600">{t.code}</span>
@@ -617,7 +617,7 @@ export function UnifiedOpsPanel({
                     <Plus className="h-4 w-4 mr-2" />
                     Add CNC Operation
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
                     {cncTypes.map((t) => (
                       <SelectItem key={t.id} value={t.code}>
                         <span className="font-mono text-emerald-600">{t.code}</span>

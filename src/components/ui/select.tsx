@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import * as ReactDOM from "react-dom";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Check } from "lucide-react";
 
@@ -135,27 +136,19 @@ function SelectTrigger({ children, className }: SelectTriggerProps) {
   const { open, setOpen } = useSelectContext();
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className={cn(
-          "flex h-10 w-full items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm",
-          "hover:bg-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--cai-teal)] focus:border-transparent",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-          className
-        )}
-      >
-        {children}
-        <ChevronDown className={cn("h-4 w-4 text-[var(--muted-foreground)] transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setOpen(false)}
-        />
+    <button
+      type="button"
+      onClick={() => setOpen(!open)}
+      className={cn(
+        "flex h-10 w-full items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm",
+        "hover:bg-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--cai-teal)] focus:border-transparent",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        className
       )}
-    </>
+    >
+      {children}
+      <ChevronDown className={cn("h-4 w-4 text-[var(--muted-foreground)] transition-transform", open && "rotate-180")} />
+    </button>
   );
 }
 
@@ -177,24 +170,81 @@ function SelectValue({ placeholder }: SelectValueProps) {
 interface SelectContentProps {
   children: React.ReactNode;
   className?: string;
+  position?: "popper" | "item-aligned";
+  sideOffset?: number;
 }
 
-function SelectContent({ children, className }: SelectContentProps) {
-  const { open } = useSelectContext();
+function SelectContent({ children, className, position = "item-aligned", sideOffset = 4 }: SelectContentProps) {
+  const { open, setOpen } = useSelectContext();
+  const [triggerRect, setTriggerRect] = React.useState<DOMRect | null>(null);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (open) {
+      // Find the trigger button (sibling of content's parent)
+      const trigger = contentRef.current?.parentElement?.querySelector("button");
+      if (trigger) {
+        setTriggerRect(trigger.getBoundingClientRect());
+      }
+    }
+  }, [open]);
 
   if (!open) return null;
 
+  // Use portal for "popper" position to avoid clipping by parent overflow
+  if (position === "popper" && typeof window !== "undefined") {
+    const portalContent = (
+      <>
+        {/* Backdrop to close dropdown */}
+        <div
+          className="fixed inset-0 z-[199]"
+          onClick={() => setOpen(false)}
+        />
+        {/* Dropdown content */}
+        <div
+          ref={contentRef}
+          style={triggerRect ? {
+            position: "fixed",
+            top: triggerRect.bottom + sideOffset,
+            left: triggerRect.left,
+            width: triggerRect.width,
+            maxHeight: `calc(100vh - ${triggerRect.bottom + sideOffset + 16}px)`,
+          } : undefined}
+          className={cn(
+            "z-[200] overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-lg",
+            !triggerRect && "absolute top-full left-0 right-0 mt-1",
+            className
+          )}
+        >
+          <div className="p-1">
+            {children}
+          </div>
+        </div>
+      </>
+    );
+    return ReactDOM.createPortal(portalContent, document.body);
+  }
+
+  // Default: absolute positioning within parent
   return (
-    <div
-      className={cn(
-        "absolute z-50 top-full left-0 right-0 mt-1 max-h-60 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-lg",
-        className
-      )}
-    >
-      <div className="p-1">
-        {children}
+    <>
+      {/* Backdrop to close dropdown */}
+      <div
+        className="fixed inset-0 z-40"
+        onClick={() => setOpen(false)}
+      />
+      <div
+        ref={contentRef}
+        className={cn(
+          "absolute z-50 top-full left-0 right-0 mt-1 max-h-60 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-lg",
+          className
+        )}
+      >
+        <div className="p-1">
+          {children}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
