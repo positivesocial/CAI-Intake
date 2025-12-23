@@ -18,9 +18,12 @@ import { getOrCreateProvider } from "@/lib/ai/provider";
 import { logger } from "@/lib/logger";
 import { applyRateLimit } from "@/lib/api-middleware";
 import { getPythonOCRClient } from "@/lib/services/python-ocr-client";
+import sharp from "sharp";
 
 // Size limits
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+const MAX_IMAGE_DIMENSION = 2048; // Max width or height in pixels
+const TARGET_IMAGE_KB = 500; // Target size after optimization (500KB)
 
 export async function POST(request: NextRequest) {
   try {
@@ -102,21 +105,91 @@ export async function POST(request: NextRequest) {
 
     if (fileType === "image") {
       // Process image - use AI vision directly
-      const imageBuffer = await file.arrayBuffer();
+      const originalBuffer = await file.arrayBuffer();
+      const originalSizeKB = originalBuffer.byteLength / 1024;
       
-      // Validate image size (OpenAI has a ~20MB limit for vision)
-      const imageSizeKB = imageBuffer.byteLength / 1024;
       logger.info("Processing image", { 
         fileName: file.name, 
-        size: `${imageSizeKB.toFixed(1)}KB`,
+        originalSize: `${originalSizeKB.toFixed(1)}KB`,
         type: file.type 
       });
       
-      if (imageSizeKB > 15000) { // 15MB warning threshold
-        logger.warn("Image is very large, may fail", { sizeKB: imageSizeKB });
+      // Optimize large images before sending to AI
+      let imageBuffer: Buffer;
+      let mimeType = "image/jpeg"; // Default to JPEG for optimization
+      
+      try {
+        const sharpInstance = sharp(Buffer.from(originalBuffer));
+        const metadata = await sharpInstance.metadata();
+        
+        const needsResize = 
+          (metadata.width && metadata.width > MAX_IMAGE_DIMENSION) ||
+          (metadata.height && metadata.height > MAX_IMAGE_DIMENSION) ||
+          originalSizeKB > TARGET_IMAGE_KB;
+        
+        if (needsResize) {
+          logger.info("Optimizing large image", {
+            originalWidth: metadata.width,
+            originalHeight: metadata.height,
+            originalSizeKB: originalSizeKB.toFixed(1),
+          });
+          
+          // Calculate quality based on original size
+          // Larger files get more aggressive compression
+          let quality = 85;
+          if (originalSizeKB > 5000) quality = 60; // >5MB: 60% quality
+          else if (originalSizeKB > 2000) quality = 70; // >2MB: 70% quality
+          else if (originalSizeKB > 1000) quality = 80; // >1MB: 80% quality
+          
+          imageBuffer = await sharpInstance
+            .resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, {
+              fit: "inside",
+              withoutEnlargement: true,
+            })
+            .jpeg({ quality, mozjpeg: true })
+            .toBuffer();
+          
+          mimeType = "image/jpeg";
+          
+          const newSizeKB = imageBuffer.byteLength / 1024;
+          logger.info("Image optimized", {
+            originalSizeKB: originalSizeKB.toFixed(1),
+            newSizeKB: newSizeKB.toFixed(1),
+            reduction: `${((1 - newSizeKB / originalSizeKB) * 100).toFixed(0)}%`,
+            quality,
+          });
+        } else {
+          // Image is already small enough, use original
+          imageBuffer = Buffer.from(originalBuffer);
+          
+          // Detect proper MIME type
+          const ext = file.name.split(".").pop()?.toLowerCase();
+          const mimeMap: Record<string, string> = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "gif": "image/gif",
+            "webp": "image/webp",
+          };
+          mimeType = file.type || mimeMap[ext || ""] || "image/jpeg";
+        }
+      } catch (sharpError) {
+        logger.warn("Image optimization failed, using original", { error: sharpError });
+        imageBuffer = Buffer.from(originalBuffer);
+        
+        // Fallback MIME type detection
+        const ext = file.name.split(".").pop()?.toLowerCase();
+        const mimeMap: Record<string, string> = {
+          "jpg": "image/jpeg",
+          "jpeg": "image/jpeg",
+          "png": "image/png",
+          "gif": "image/gif",
+          "webp": "image/webp",
+        };
+        mimeType = file.type || mimeMap[ext || ""] || "image/jpeg";
       }
       
-      const base64 = Buffer.from(imageBuffer).toString("base64");
+      const base64 = imageBuffer.toString("base64");
       
       // Validate base64 encoding
       if (!base64 || base64.length < 100) {
@@ -127,22 +200,6 @@ export async function POST(request: NextRequest) {
           },
           { status: 400 }
         );
-      }
-      
-      // Detect proper MIME type - ensure it's a supported format
-      let mimeType = file.type || "image/jpeg";
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      
-      // Normalize MIME type based on extension
-      if (!mimeType || mimeType === "application/octet-stream") {
-        const mimeMap: Record<string, string> = {
-          "jpg": "image/jpeg",
-          "jpeg": "image/jpeg",
-          "png": "image/png",
-          "gif": "image/gif",
-          "webp": "image/webp",
-        };
-        mimeType = mimeMap[ext || ""] || "image/jpeg";
       }
       
       const dataUrl = `data:${mimeType};base64,${base64}`;
