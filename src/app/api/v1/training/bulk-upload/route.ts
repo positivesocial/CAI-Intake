@@ -208,11 +208,12 @@ async function extractTextFromPDF(file: File): Promise<string> {
     
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+    const base64Data = buffer.toString("base64");
     
     const isHealthy = await client.checkHealth();
     if (isHealthy) {
-      const result = await client.extractFromPDF(buffer);
-      if (result.success && result.text) {
+      const result = await client.extractFromPDF(base64Data, file.name);
+      if (result?.success && result.text) {
         return result.text;
       }
     }
