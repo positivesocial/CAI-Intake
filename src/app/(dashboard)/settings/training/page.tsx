@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,9 +26,11 @@ import {
   Upload,
   Plus,
   RefreshCw,
+  ShieldX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import BulkTrainingUpload from "@/components/training/BulkTrainingUpload";
+import { useAuthStore } from "@/lib/auth/store";
 
 // ============================================================
 // TYPES
@@ -85,16 +88,33 @@ interface WeakArea {
 // ============================================================
 
 export default function TrainingDashboard() {
+  const router = useRouter();
+  const { isSuperAdmin, isAuthenticated, isLoading: authLoading } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [accuracy, setAccuracy] = useState<AccuracySummary | null>(null);
   const [examples, setExamples] = useState<TrainingExample[]>([]);
   const [weakAreas, setWeakAreas] = useState<WeakArea[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  // Handle hydration
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Redirect non-super-admins
+  useEffect(() => {
+    if (mounted && !authLoading && isAuthenticated && !isSuperAdmin()) {
+      router.push("/settings");
+    }
+  }, [mounted, authLoading, isAuthenticated, isSuperAdmin, router]);
 
   // Fetch data on mount
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (mounted && isSuperAdmin()) {
+      fetchData();
+    }
+  }, [mounted]);
 
   async function fetchData() {
     setLoading(true);
@@ -127,6 +147,39 @@ export default function TrainingDashboard() {
     }
   }
 
+  // Show loading while checking auth
+  if (!mounted || authLoading) {
+    return (
+      <div className="p-6">
+        <div className="animate-pulse space-y-6">
+          <div className="h-8 bg-gray-200 dark:bg-gray-800 rounded w-1/4"></div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-32 bg-gray-200 dark:bg-gray-800 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show access denied for non-super-admins
+  if (!isSuperAdmin()) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[400px] text-center">
+        <ShieldX className="h-16 w-16 text-red-500 mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+        <p className="text-muted-foreground mb-4">
+          AI Training is a platform-wide feature available only to super administrators.
+        </p>
+        <Button onClick={() => router.push("/settings")}>
+          Back to Settings
+        </Button>
+      </div>
+    );
+  }
+
+  // Show loading for data
   if (loading) {
     return (
       <div className="p-6">
