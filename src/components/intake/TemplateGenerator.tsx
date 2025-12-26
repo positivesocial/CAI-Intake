@@ -25,7 +25,9 @@ import { generateId } from "@/lib/utils";
 import {
   generateOrgTemplate,
   generateOrgExcelTemplate,
+  generateShortcodesHash,
   type OrgTemplateConfig,
+  type OpsShortcode,
   type GeneratedTemplate,
 } from "@/lib/templates/org-template-generator";
 
@@ -36,7 +38,7 @@ interface TemplateConfig {
   type: TemplateType;
   includeEdging: boolean;
   includeGrooves: boolean;
-  includeHoles: boolean;
+  includeDrilling: boolean;
   includeCNC: boolean;
   includeNotes: boolean;
   rows: number;
@@ -47,67 +49,108 @@ export function TemplateGenerator() {
   const { currentCutlist } = useIntakeStore();
 
   const [config, setConfig] = React.useState<TemplateConfig>({
-    name: "Cutlist Template",
+    name: "Smart Cutlist Template",
     type: "pdf",
     includeEdging: true,
     includeGrooves: false,
-    includeHoles: false,
+    includeDrilling: false,
     includeCNC: false,
     includeNotes: true,
     rows: 25,
     version: "1.0",
   });
 
-  const [templateId] = React.useState(() => generateId("TPL"));
   const [copied, setCopied] = React.useState(false);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [generatedTemplate, setGeneratedTemplate] = React.useState<GeneratedTemplate | null>(null);
+
+  // TODO: Load org shortcodes from API/database
+  const orgShortcodes: OpsShortcode[] = React.useMemo(() => {
+    // These would come from the org's ops/shortcodes tables
+    const shortcodes: OpsShortcode[] = [];
+    
+    // Default shortcodes - in production, load from org settings
+    if (config.includeEdging) {
+      shortcodes.push(
+        { id: "eb1", code: "L", name: "Length only", category: "edgebanding" },
+        { id: "eb2", code: "W", name: "Width only", category: "edgebanding" },
+        { id: "eb3", code: "2L", name: "Both lengths", category: "edgebanding" },
+        { id: "eb4", code: "2W", name: "Both widths", category: "edgebanding" },
+        { id: "eb5", code: "LW", name: "Length + Width", category: "edgebanding" },
+        { id: "eb6", code: "2L2W", name: "All 4 sides", category: "edgebanding" },
+        { id: "eb7", code: "None", name: "no banding", category: "edgebanding" },
+      );
+    }
+    
+    if (config.includeGrooves) {
+      shortcodes.push(
+        { id: "grv1", code: "L", name: "Along length", category: "grooving" },
+        { id: "grv2", code: "W", name: "Along width", category: "grooving" },
+        { id: "grv3", code: "2L", name: "Both length sides", category: "grooving" },
+        { id: "grv4", code: "2W", name: "Both width sides", category: "grooving" },
+        { id: "grv5", code: "blank", name: "no groove", category: "grooving" },
+      );
+    }
+    
+    if (config.includeDrilling) {
+      shortcodes.push(
+        { id: "dr1", code: "H2", name: "2 hinge holes", category: "drilling" },
+        { id: "dr2", code: "SP4", name: "4 shelf pins", category: "drilling" },
+        { id: "dr3", code: "HD", name: "Handle drill", category: "drilling" },
+      );
+    }
+    
+    if (config.includeCNC) {
+      shortcodes.push(
+        { id: "cnc1", code: "RADIUS", name: "Radius corners", category: "cnc" },
+        { id: "cnc2", code: "PROFILE", name: "Profile edge", category: "cnc" },
+        { id: "cnc3", code: "CUTOUT", name: "Sink/hob cutout", category: "cnc" },
+      );
+    }
+    
+    return shortcodes;
+  }, [config.includeEdging, config.includeGrooves, config.includeDrilling, config.includeCNC]);
+
+  // Generate shortcodes hash for versioning
+  const shortcodesHash = React.useMemo(() => 
+    generateShortcodesHash(orgShortcodes), 
+    [orgShortcodes]
+  );
+
+  // Template ID is now deterministic based on version and shortcodes
+  const templateId = `CAI-${config.version}-${shortcodesHash}`;
 
   // Build org template config from current cutlist
   const orgTemplateConfig: OrgTemplateConfig = React.useMemo(() => ({
     branding: {
       org_id: "org-demo", // TODO: Get from auth context
       name: "Your Organization", // TODO: Get from org settings
-      primary_color: "#00838F",
-      secondary_color: "#004D40",
+      primary_color: "#6B21A8", // Purple (Cabinet AI style)
+      secondary_color: "#4C1D95",
     },
     title: config.name,
     version: config.version,
     rows: config.rows,
     includeEdgebanding: config.includeEdging,
     includeGrooves: config.includeGrooves,
-    includeHoles: config.includeHoles,
+    includeDrilling: config.includeDrilling,
     includeCNC: config.includeCNC,
     includeNotes: config.includeNotes,
     materials: currentCutlist.materials.map(m => ({
       material_id: m.material_id,
       name: m.name,
       thickness_mm: m.thickness_mm,
-      // Generate a short code from material_id or SKU if available
-      code: (m as { sku?: string }).sku || m.material_id.slice(0, 8).toUpperCase(),
+      code: (m as { sku?: string }).sku || m.material_id.slice(0, 6).toUpperCase(),
     })),
     edgebands: currentCutlist.edgebands?.map(e => ({
       edgeband_id: e.edgeband_id,
       name: e.name,
       thickness_mm: e.thickness_mm,
-      // Generate a short code from edgeband_id
-      code: e.edgeband_id.slice(0, 8).toUpperCase(),
+      code: e.edgeband_id.slice(0, 6).toUpperCase(),
     })),
-    // TODO: Load from org's libraries
-    grooveProfiles: config.includeGrooves ? [
-      { profile_id: "GRV-BP4", name: "Back Panel 4mm", width_mm: 4, depth_mm: 10, code: "BP4" },
-      { profile_id: "GRV-LP18", name: "Light Profile 18mm", width_mm: 18, depth_mm: 8, code: "LP18" },
-    ] : undefined,
-    holePatterns: config.includeHoles ? [
-      { pattern_id: "HP-S32", name: "System 32", code: "S32", description: "32mm spacing" },
-      { pattern_id: "HP-SP", name: "Shelf Pins", code: "SP", description: "Shelf pin holes" },
-      { pattern_id: "HP-H110", name: "110° Hinge Bore", code: "H110", description: "35mm cup bore" },
-    ] : undefined,
-    routingProfiles: config.includeCNC ? [
-      { profile_id: "RT-SINK", name: "Sink Cutout", code: "CUTOUT-SINK" },
-      { profile_id: "RT-POCKET", name: "Pocket Route", code: "POCKET" },
-    ] : undefined,
-  }), [config, currentCutlist.materials, currentCutlist.edgebands]);
+    shortcodes: orgShortcodes,
+    shortcodesHash,
+  }), [config, currentCutlist.materials, currentCutlist.edgebands, orgShortcodes, shortcodesHash]);
 
   const handleCopyTemplateId = () => {
     navigator.clipboard.writeText(templateId);
@@ -170,7 +213,7 @@ export function TemplateGenerator() {
       ...c,
       includeEdging: caps.edging ?? true,
       includeGrooves: caps.grooves ?? false,
-      includeHoles: caps.cnc_holes ?? false,
+      includeDrilling: caps.cnc_holes ?? false,
       includeCNC: caps.cnc_routing || caps.custom_cnc || false,
     }));
   }, [currentCutlist.capabilities]);
@@ -262,14 +305,14 @@ export function TemplateGenerator() {
                   <input
                     type="checkbox"
                     className="rounded border-[var(--border)] accent-[var(--cai-teal)] h-4 w-4"
-                    checked={config.includeHoles}
+                    checked={config.includeDrilling}
                     onChange={(e) =>
-                      setConfig((c) => ({ ...c, includeHoles: e.target.checked }))
+                      setConfig((c) => ({ ...c, includeDrilling: e.target.checked }))
                     }
                   />
                   <span className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-purple-500" />
-                    Holes/Drilling
+                    Drilling
                   </span>
                 </label>
                 <label className="flex items-center gap-2 text-sm cursor-pointer p-2 rounded-lg hover:bg-[var(--muted)] transition-colors">
@@ -324,50 +367,66 @@ export function TemplateGenerator() {
               </div>
             </div>
 
-            {/* Materials Summary */}
+            {/* Materials & Shortcodes Summary */}
             <div className="p-3 border border-[var(--border)] rounded-lg">
               <p className="text-sm font-medium mb-2 flex items-center gap-2">
                 <BookOpen className="h-4 w-4 text-[var(--cai-teal)]" />
-                Materials Reference
+                Template Contents
               </p>
               <div className="text-xs text-[var(--muted-foreground)] space-y-1">
-                <p>{currentCutlist.materials.length} sheet materials available</p>
-                <p>{currentCutlist.edgebands?.length || 0} edgebands available</p>
-                {config.includeGrooves && <p>2 groove profiles included</p>}
-                {config.includeHoles && <p>3 hole patterns included</p>}
+                <p><strong>{currentCutlist.materials.length}</strong> sheet materials</p>
+                <p><strong>{currentCutlist.edgebands?.length || 0}</strong> edgebands</p>
+                <p><strong>{orgShortcodes.length}</strong> operation shortcodes</p>
               </div>
-              <p className="text-xs text-[var(--muted-foreground)] mt-2 italic">
-                Materials addendum will be included in PDF template
-              </p>
+              <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950 rounded text-xs">
+                <p className="font-medium text-amber-800 dark:text-amber-200">Best OCR Tips:</p>
+                <p className="text-amber-700 dark:text-amber-300">• Use BLOCK LETTERS</p>
+                <p className="text-amber-700 dark:text-amber-300">• Take clear photos</p>
+              </div>
             </div>
           </div>
 
           {/* Preview & Actions */}
           <div className="space-y-4">
             {/* Live Preview Card */}
-            <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-white">
-              <div className="bg-[var(--cai-teal)] text-white px-4 py-2 flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-sm">{config.name || "Cutlist Template"}</p>
-                  <p className="text-xs opacity-80">v{config.version}</p>
+            <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-white dark:bg-gray-900">
+              {/* Header with QR and branding */}
+              <div className="bg-purple-800 text-white px-4 py-2 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white rounded flex items-center justify-center">
+                    <QrCode className="h-7 w-7 text-gray-800" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm uppercase tracking-wide">Your Organization</p>
+                    <p className="text-xs opacity-80">{config.name} v{config.version}</p>
+                  </div>
                 </div>
-                <div className="w-12 h-12 bg-white rounded flex items-center justify-center">
-                  <QrCode className="h-8 w-8 text-gray-800" />
+                <div className="text-right text-xs">
+                  <p className="font-mono text-purple-200">{templateId}</p>
                 </div>
               </div>
               
               <div className="p-3">
-                {/* Project Fields Preview */}
-                <div className="grid grid-cols-2 gap-2 text-xs mb-3 pb-3 border-b border-gray-200">
-                  <div className="flex items-center gap-1">
-                    <span className="font-medium">Project:</span>
-                    <span className="flex-1 border-b border-dashed border-gray-400"></span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-medium">Page:</span>
-                    <span className="w-8 border-b border-dashed border-gray-400"></span>
-                    <span>of</span>
-                    <span className="w-8 border-b border-dashed border-gray-400"></span>
+                {/* Project Info Box */}
+                <div className="border border-gray-300 dark:border-gray-600 p-2 mb-3 text-xs">
+                  <p className="font-bold text-[10px] mb-2">PROJECT INFORMATION (Must fill for multi-page)</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-600 dark:text-gray-400">Project Name:</span>
+                      <span className="flex-1 border-b border-gray-400 dark:border-gray-500"></span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-600 dark:text-gray-400">Project Code:</span>
+                      <span className="flex-1 border-b border-gray-400 dark:border-gray-500"></span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-600 dark:text-gray-400">Customer:</span>
+                      <span className="flex-1 border-b border-gray-400 dark:border-gray-500"></span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-600 dark:text-gray-400">Section/Area:</span>
+                      <span className="flex-1 border-b border-gray-400 dark:border-gray-500"></span>
+                    </div>
                   </div>
                 </div>
 
@@ -376,44 +435,46 @@ export function TemplateGenerator() {
                   <table className="w-full text-[10px] border-collapse">
                     <thead>
                       <tr>
-                        <th className="border border-gray-300 px-1 py-0.5 bg-[var(--cai-teal)] text-white">#</th>
-                        <th className="border border-gray-300 px-1 py-0.5 bg-[var(--cai-teal)] text-white">Label</th>
-                        <th className="border border-gray-300 px-1 py-0.5 bg-[var(--cai-teal)] text-white">L</th>
-                        <th className="border border-gray-300 px-1 py-0.5 bg-[var(--cai-teal)] text-white">W</th>
-                        <th className="border border-gray-300 px-1 py-0.5 bg-[var(--cai-teal)] text-white">Qty</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">#</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">Part Name</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">L</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">W</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">Qty</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">Mat</th>
                         {config.includeEdging && (
-                          <>
-                            <th className="border border-gray-300 px-1 py-0.5 bg-blue-600 text-white">L1</th>
-                            <th className="border border-gray-300 px-1 py-0.5 bg-blue-600 text-white">L2</th>
-                          </>
+                          <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-200 text-purple-800">Edge</th>
                         )}
                         {config.includeGrooves && (
-                          <th className="border border-gray-300 px-1 py-0.5 bg-amber-600 text-white">Grv</th>
+                          <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-200 text-purple-800">Grv</th>
                         )}
-                        {config.includeHoles && (
-                          <th className="border border-gray-300 px-1 py-0.5 bg-purple-600 text-white">H</th>
+                        {config.includeDrilling && (
+                          <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-200 text-purple-800">Drill</th>
+                        )}
+                        {config.includeCNC && (
+                          <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-200 text-purple-800">CNC</th>
                         )}
                       </tr>
                     </thead>
                     <tbody>
                       {[1, 2, 3].map(i => (
                         <tr key={i}>
-                          <td className="border border-gray-300 px-1 py-0.5 text-center text-gray-400">{i}</td>
-                          <td className="border border-gray-300 px-1 py-0.5">&nbsp;</td>
-                          <td className="border border-gray-300 px-1 py-0.5">&nbsp;</td>
-                          <td className="border border-gray-300 px-1 py-0.5">&nbsp;</td>
-                          <td className="border border-gray-300 px-1 py-0.5">&nbsp;</td>
+                          <td className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 text-center text-gray-400 bg-gray-50 dark:bg-gray-800">{i}</td>
+                          <td className="border border-gray-300 dark:border-gray-600 px-1 py-0.5">&nbsp;</td>
+                          <td className="border border-gray-300 dark:border-gray-600 px-1 py-0.5">&nbsp;</td>
+                          <td className="border border-gray-300 dark:border-gray-600 px-1 py-0.5">&nbsp;</td>
+                          <td className="border border-gray-300 dark:border-gray-600 px-1 py-0.5">&nbsp;</td>
+                          <td className="border border-gray-300 dark:border-gray-600 px-1 py-0.5">&nbsp;</td>
                           {config.includeEdging && (
-                            <>
-                              <td className="border border-gray-300 px-1 py-0.5 bg-blue-50">□</td>
-                              <td className="border border-gray-300 px-1 py-0.5 bg-blue-50">□</td>
-                            </>
+                            <td className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-50 dark:bg-purple-950">&nbsp;</td>
                           )}
                           {config.includeGrooves && (
-                            <td className="border border-gray-300 px-1 py-0.5 bg-amber-50">&nbsp;</td>
+                            <td className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-50 dark:bg-purple-950">&nbsp;</td>
                           )}
-                          {config.includeHoles && (
-                            <td className="border border-gray-300 px-1 py-0.5 bg-purple-50">&nbsp;</td>
+                          {config.includeDrilling && (
+                            <td className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-50 dark:bg-purple-950">&nbsp;</td>
+                          )}
+                          {config.includeCNC && (
+                            <td className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-50 dark:bg-purple-950">&nbsp;</td>
                           )}
                         </tr>
                       ))}
@@ -421,9 +482,17 @@ export function TemplateGenerator() {
                   </table>
                 </div>
 
-                <p className="text-[9px] text-gray-400 text-center mt-2">
-                  ... {config.rows - 3} more rows | Shortcode guide included
+                <p className="text-[9px] text-gray-400 dark:text-gray-500 text-center mt-2">
+                  ... {config.rows - 3} more rows | Fill-in guide + materials ref included
                 </p>
+                
+                {/* Page indicator */}
+                <div className="flex items-center justify-end gap-1 mt-2 text-xs">
+                  <span className="text-gray-500">Page:</span>
+                  <span className="w-6 h-5 border border-gray-400 inline-block"></span>
+                  <span className="text-gray-500">of</span>
+                  <span className="w-6 h-5 border border-gray-400 inline-block"></span>
+                </div>
               </div>
             </div>
 
@@ -464,25 +533,28 @@ export function TemplateGenerator() {
 
         {/* How It Works */}
         <div className="text-xs text-[var(--muted-foreground)] bg-[var(--muted)] rounded-lg p-4">
-          <p className="font-medium mb-2 text-[var(--foreground)]">📋 How Templates Work</p>
+          <p className="font-medium mb-2 text-[var(--foreground)]">📋 How Smart Templates Work</p>
           <div className="grid md:grid-cols-4 gap-4">
             <div className="space-y-1">
               <div className="font-medium text-[var(--foreground)]">1. Download</div>
-              <p>Get your org-branded PDF or CSV template with QR code and materials list</p>
+              <p>Get org-branded PDF with QR code, template ID, and your shortcodes</p>
             </div>
             <div className="space-y-1">
               <div className="font-medium text-[var(--foreground)]">2. Fill In</div>
-              <p>Write project code, page numbers, and parts. Use shortcodes from the guide</p>
+              <p>Write project code + page number. Use BLOCK LETTERS and org shortcodes</p>
             </div>
             <div className="space-y-1">
               <div className="font-medium text-[var(--foreground)]">3. Upload</div>
-              <p>Scan/upload filled template - QR tells AI exactly how to parse it</p>
+              <p>QR + corner markers enable 100% accurate OCR with deterministic columns</p>
             </div>
             <div className="space-y-1">
-              <div className="font-medium text-[var(--foreground)]">4. Review</div>
-              <p>Multi-page uploads with same project code are merged automatically</p>
+              <div className="font-medium text-[var(--foreground)]">4. Auto-Merge</div>
+              <p>Pages with same project code are merged by page number automatically</p>
             </div>
           </div>
+          <p className="mt-3 text-[10px] text-[var(--muted-foreground)]">
+            💡 When org shortcodes change, templates are auto-versioned. Older templates remain compatible.
+          </p>
         </div>
       </CardContent>
     </Card>

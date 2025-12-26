@@ -1,13 +1,17 @@
 /**
- * CAI Intake - Organization-Branded Template Generator
+ * CAI Intake - Organization-Branded Template Generator (v2.0)
  * 
  * Generates professional PDF and Excel templates for cutlist intake with:
  * - Organization branding (logo, colors, name)
- * - QR codes for AI-assisted parsing
- * - Template version tracking
- * - Project code and page number fields
- * - Materials addendum
- * - Shortcode reference guide
+ * - QR codes with visible template ID for AI-assisted parsing
+ * - Corner alignment markers for OCR accuracy
+ * - Template version tracking (auto-versioned when shortcodes change)
+ * - Project code, page numbering, and section/area fields
+ * - Org-specific shortcodes from ops tables (Edge, Groove, Drill, CNC)
+ * - Fill-in guide with "Best OCR" tips
+ * - Materials and edgebands reference
+ * 
+ * Templates are deterministic - OCR should be 100% accurate
  */
 
 import { generateId } from "@/lib/utils";
@@ -29,6 +33,8 @@ export interface OrganizationBranding {
   secondary_color?: string;
   /** Contact info to show on template */
   contact_info?: string;
+  /** Template title override */
+  template_title?: string;
 }
 
 export interface MaterialDef {
@@ -45,26 +51,13 @@ export interface EdgebandDef {
   code?: string; // Short code
 }
 
-export interface GrooveProfileDef {
-  profile_id: string;
-  name: string;
-  width_mm: number;
-  depth_mm: number;
-  code?: string;
-}
-
-export interface HolePatternDef {
-  pattern_id: string;
-  name: string;
-  code?: string; // e.g., "S32", "SP", "H110"
-  description?: string;
-}
-
-export interface RoutingProfileDef {
-  profile_id: string;
-  name: string;
-  code?: string;
-  description?: string;
+/** Org-defined shortcode for operations */
+export interface OpsShortcode {
+  id: string;
+  code: string;           // e.g., "L", "2L", "BP", "H2"
+  name: string;           // Human-readable name
+  description?: string;   // Full description
+  category: "edgebanding" | "grooving" | "drilling" | "cnc" | "general";
 }
 
 export interface OrgTemplateConfig {
@@ -74,7 +67,7 @@ export interface OrgTemplateConfig {
   /** Template title */
   title?: string;
   
-  /** Template version (increments with changes) */
+  /** Template version (increments with shortcode changes) */
   version?: string;
   
   /** Number of rows for parts */
@@ -83,7 +76,7 @@ export interface OrgTemplateConfig {
   /** Include operations columns */
   includeEdgebanding?: boolean;
   includeGrooves?: boolean;
-  includeHoles?: boolean;
+  includeDrilling?: boolean;
   includeCNC?: boolean;
   includeNotes?: boolean;
   
@@ -93,17 +86,11 @@ export interface OrgTemplateConfig {
   /** Organization's edgebanding library */
   edgebands?: EdgebandDef[];
   
-  /** Organization's groove profiles */
-  grooveProfiles?: GrooveProfileDef[];
+  /** Organization's operation shortcodes (from ops tables) */
+  shortcodes?: OpsShortcode[];
   
-  /** Organization's hole patterns */
-  holePatterns?: HolePatternDef[];
-  
-  /** Organization's routing profiles */
-  routingProfiles?: RoutingProfileDef[];
-  
-  /** Custom shortcode guide content */
-  customShortcodeGuide?: string;
+  /** Hash of shortcodes for version tracking */
+  shortcodesHash?: string;
 }
 
 export interface GeneratedTemplate {
@@ -117,6 +104,8 @@ export interface GeneratedTemplate {
   html: string;
   /** QR code data (JSON string) */
   qr_data: string;
+  /** Shortcodes hash (for versioning) */
+  shortcodes_hash: string;
   /** Generated timestamp */
   generated_at: string;
 }
@@ -126,277 +115,271 @@ export interface GeneratedTemplate {
 // ============================================================
 
 export interface TemplateQRData {
-  type: "cai-org-template";
-  template_id: string;
-  org_id: string;
-  version: string;
+  type: "cai-template";
+  id: string;              // Template ID (displayed under QR)
+  org: string;             // Organization ID
+  v: string;               // Version
   schema: "cutlist/v2";
-  capabilities: {
-    edgebanding: boolean;
-    grooves: boolean;
-    holes: boolean;
-    cnc: boolean;
-    notes: boolean;
+  cols: string[];          // Column order for deterministic parsing
+  caps: {
+    eb: boolean;           // Edgebanding
+    grv: boolean;          // Grooving
+    drill: boolean;        // Drilling
+    cnc: boolean;          // CNC operations
+    notes: boolean;        // Notes
   };
-  /** Field order for AI parsing */
-  field_order: string[];
-  /** Short codes mapping hint */
-  has_shortcodes: boolean;
+  sc_hash?: string;        // Shortcodes hash for validation
 }
 
-function generateQRData(config: OrgTemplateConfig, templateId: string, version: string): TemplateQRData {
-  const fieldOrder = ["#", "label", "L", "W", "qty", "material", "thk", "grain"];
+function generateQRData(config: OrgTemplateConfig, templateId: string, version: string, shortcodesHash: string): TemplateQRData {
+  const cols = ["#", "label", "L", "W", "thk", "qty", "material"];
   
   if (config.includeEdgebanding !== false) {
-    fieldOrder.push("eb_L1", "eb_L2", "eb_W1", "eb_W2");
+    cols.push("edge");
   }
   if (config.includeGrooves) {
-    fieldOrder.push("grv_side", "grv_d", "grv_w");
+    cols.push("groove");
   }
-  if (config.includeHoles) {
-    fieldOrder.push("hole_pattern", "hole_dia", "hole_depth");
+  if (config.includeDrilling) {
+    cols.push("drill");
   }
   if (config.includeCNC) {
-    fieldOrder.push("cnc_prog", "cnc_notes");
+    cols.push("cnc");
   }
   if (config.includeNotes !== false) {
-    fieldOrder.push("notes");
+    cols.push("notes");
   }
   
   return {
-    type: "cai-org-template",
-    template_id: templateId,
-    org_id: config.branding.org_id,
-    version,
+    type: "cai-template",
+    id: templateId,
+    org: config.branding.org_id,
+    v: version,
     schema: "cutlist/v2",
-    capabilities: {
-      edgebanding: config.includeEdgebanding !== false,
-      grooves: !!config.includeGrooves,
-      holes: !!config.includeHoles,
+    cols,
+    caps: {
+      eb: config.includeEdgebanding !== false,
+      grv: !!config.includeGrooves,
+      drill: !!config.includeDrilling,
       cnc: !!config.includeCNC,
       notes: config.includeNotes !== false,
     },
-    field_order: fieldOrder,
-    has_shortcodes: !!(config.materials?.some(m => m.code) || config.edgebands?.some(e => e.code)),
+    sc_hash: shortcodesHash || undefined,
   };
 }
 
 // ============================================================
-// SHORTCODE GUIDE GENERATION
+// SHORTCODES HASH GENERATION
 // ============================================================
 
-function generateShortcodeGuide(config: OrgTemplateConfig): string {
+function generateShortcodesHash(shortcodes?: OpsShortcode[]): string {
+  if (!shortcodes || shortcodes.length === 0) {
+    return "default";
+  }
+  // Create deterministic hash from shortcodes
+  const str = shortcodes
+    .map(s => `${s.category}:${s.code}`)
+    .sort()
+    .join("|");
+  
+  // Simple hash function
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36).slice(0, 8);
+}
+
+// ============================================================
+// FILL-IN GUIDE GENERATION (From Org Shortcodes)
+// ============================================================
+
+function generateFillInGuide(config: OrgTemplateConfig, primaryColor: string): string {
+  const shortcodes = config.shortcodes || [];
+  
+  // Group shortcodes by category
+  const byCategory: Record<string, OpsShortcode[]> = {
+    edgebanding: [],
+    grooving: [],
+    drilling: [],
+    cnc: [],
+    general: [],
+  };
+  
+  shortcodes.forEach(sc => {
+    if (byCategory[sc.category]) {
+      byCategory[sc.category].push(sc);
+    }
+  });
+  
+  // Build sections
   const sections: string[] = [];
   
-  // Standard shortcodes
-  sections.push(`
-    <div class="shortcode-section">
-      <h4>📐 Dimensions & Quantity</h4>
-      <div class="shortcode-grid">
-        <div class="shortcode"><code>L</code> Length in mm</div>
-        <div class="shortcode"><code>W</code> Width in mm</div>
-        <div class="shortcode"><code>x2</code> or <code>qty:2</code> Quantity</div>
-        <div class="shortcode"><code>T:18</code> Thickness (mm)</div>
-      </div>
-    </div>
-  `);
-  
-  sections.push(`
-    <div class="shortcode-section">
-      <h4>🌾 Grain Direction</h4>
-      <div class="shortcode-grid">
-        <div class="shortcode"><code>GL</code> Grain along Length</div>
-        <div class="shortcode"><code>GW</code> Grain along Width</div>
-        <div class="shortcode"><code>—</code> or blank = can rotate</div>
-      </div>
-    </div>
-  `);
-  
-  // Edgebanding
+  // Edgebanding section
   if (config.includeEdgebanding !== false) {
-    let ebSection = `
-      <div class="shortcode-section">
-        <h4>📏 Edgebanding</h4>
-        <div class="shortcode-grid">
-          <div class="shortcode"><code>L1</code> Long edge 1</div>
-          <div class="shortcode"><code>L2</code> Long edge 2</div>
-          <div class="shortcode"><code>W1</code> Short edge 1</div>
-          <div class="shortcode"><code>W2</code> Short edge 2</div>
-          <div class="shortcode"><code>2L</code> Both long edges</div>
-          <div class="shortcode"><code>2W</code> Both short edges</div>
-          <div class="shortcode"><code>2L2W</code> All edges</div>
-          <div class="shortcode"><code>✓</code> or <code>X</code> per cell</div>
-        </div>
-    `;
+    const ebCodes = byCategory.edgebanding.length > 0 
+      ? byCategory.edgebanding 
+      : getDefaultEdgebandingCodes();
     
-    if (config.edgebands && config.edgebands.length > 0) {
-      ebSection += `
-        <div class="materials-list">
-          <strong>Available Edgebands:</strong>
-          ${config.edgebands.map(e => 
-            `<span class="material-item">${e.code ? `<code>${e.code}</code>` : ""} ${e.name} (${e.thickness_mm}mm)</span>`
-          ).join("")}
-        </div>
-      `;
-    }
-    
-    ebSection += `</div>`;
-    sections.push(ebSection);
-  }
-  
-  // Grooves
-  if (config.includeGrooves) {
-    let grvSection = `
-      <div class="shortcode-section">
-        <h4>📐 Grooves</h4>
-        <div class="shortcode-grid">
-          <div class="shortcode"><code>GR:L1</code> Groove on long edge 1</div>
-          <div class="shortcode"><code>GR:W2</code> Groove on short edge 2</div>
-          <div class="shortcode"><code>GR:F</code> Groove on face</div>
-          <div class="shortcode"><code>GR:B</code> Groove on back</div>
-          <div class="shortcode"><code>D:4</code> Depth 4mm</div>
-          <div class="shortcode"><code>W:8</code> Width 8mm</div>
-        </div>
-    `;
-    
-    if (config.grooveProfiles && config.grooveProfiles.length > 0) {
-      grvSection += `
-        <div class="materials-list">
-          <strong>Groove Profiles:</strong>
-          ${config.grooveProfiles.map(g => 
-            `<span class="material-item">${g.code ? `<code>${g.code}</code>` : ""} ${g.name} (${g.width_mm}×${g.depth_mm}mm)</span>`
-          ).join("")}
-        </div>
-      `;
-    }
-    
-    grvSection += `</div>`;
-    sections.push(grvSection);
-  }
-  
-  // Holes
-  if (config.includeHoles) {
-    let holeSection = `
-      <div class="shortcode-section">
-        <h4>🔘 Hole Patterns</h4>
-        <div class="shortcode-grid">
-          <div class="shortcode"><code>H:S32</code> System 32 holes</div>
-          <div class="shortcode"><code>H:SP</code> Shelf pin holes</div>
-          <div class="shortcode"><code>H:H110</code> 110° hinge bore</div>
-          <div class="shortcode"><code>Ø5</code> Diameter 5mm</div>
-          <div class="shortcode"><code>Dp:12</code> Depth 12mm</div>
-        </div>
-    `;
-    
-    if (config.holePatterns && config.holePatterns.length > 0) {
-      holeSection += `
-        <div class="materials-list">
-          <strong>Hole Patterns:</strong>
-          ${config.holePatterns.map(h => 
-            `<span class="material-item"><code>${h.code}</code> ${h.name}</span>`
-          ).join("")}
-        </div>
-      `;
-    }
-    
-    holeSection += `</div>`;
-    sections.push(holeSection);
-  }
-  
-  // CNC
-  if (config.includeCNC) {
-    let cncSection = `
-      <div class="shortcode-section">
-        <h4>🔧 CNC Operations</h4>
-        <div class="shortcode-grid">
-          <div class="shortcode"><code>CNC:PROG_ID</code> Program reference</div>
-          <div class="shortcode"><code>CUTOUT</code> Cutout operation</div>
-          <div class="shortcode"><code>POCKET</code> Pocket routing</div>
-          <div class="shortcode"><code>PROFILE</code> Profile edge routing</div>
-        </div>
-    `;
-    
-    if (config.routingProfiles && config.routingProfiles.length > 0) {
-      cncSection += `
-        <div class="materials-list">
-          <strong>Routing Profiles:</strong>
-          ${config.routingProfiles.map(r => 
-            `<span class="material-item">${r.code ? `<code>${r.code}</code>` : ""} ${r.name}</span>`
-          ).join("")}
-        </div>
-      `;
-    }
-    
-    cncSection += `</div>`;
-    sections.push(cncSection);
-  }
-  
-  // Custom guide content
-  if (config.customShortcodeGuide) {
     sections.push(`
-      <div class="shortcode-section custom-guide">
-        ${config.customShortcodeGuide}
+      <div class="guide-section">
+        <div class="guide-title">Edgebanding:</div>
+        <div class="guide-codes">
+          ${ebCodes.map(sc => `<div class="guide-item">• <code>${sc.code}</code> = ${sc.name}</div>`).join("")}
+        </div>
       </div>
     `);
   }
   
-  return sections.join("");
+  // Grooving section
+  if (config.includeGrooves) {
+    const grvCodes = byCategory.grooving.length > 0 
+      ? byCategory.grooving 
+      : getDefaultGroovingCodes();
+    
+    sections.push(`
+      <div class="guide-section">
+        <div class="guide-title">Grooving:</div>
+        <div class="guide-codes">
+          ${grvCodes.map(sc => `<div class="guide-item">• <code>${sc.code}</code> = ${sc.name}</div>`).join("")}
+        </div>
+      </div>
+    `);
+  }
+  
+  // Drilling section
+  if (config.includeDrilling) {
+    const drillCodes = byCategory.drilling.length > 0 
+      ? byCategory.drilling 
+      : getDefaultDrillingCodes();
+    
+    sections.push(`
+      <div class="guide-section">
+        <div class="guide-title">Drilling:</div>
+        <div class="guide-codes">
+          ${drillCodes.map(sc => `<div class="guide-item">• <code>${sc.code}</code> = ${sc.name}</div>`).join("")}
+        </div>
+      </div>
+    `);
+  }
+  
+  // CNC section
+  if (config.includeCNC) {
+    const cncCodes = byCategory.cnc.length > 0 
+      ? byCategory.cnc 
+      : getDefaultCNCCodes();
+    
+    sections.push(`
+      <div class="guide-section">
+        <div class="guide-title">CNC:</div>
+        <div class="guide-codes">
+          ${cncCodes.map(sc => `<div class="guide-item">• <code>${sc.code}</code> = ${sc.name}</div>`).join("")}
+        </div>
+      </div>
+    `);
+  }
+  
+  // OCR Tips section (always show)
+  sections.push(`
+    <div class="guide-section ocr-tips">
+      <div class="guide-title">Best OCR:</div>
+      <div class="guide-codes">
+        <div class="guide-item">BLOCK LETTERS</div>
+        <div class="guide-item">Clear photo</div>
+      </div>
+    </div>
+  `);
+  
+  return `
+    <div class="fill-in-guide" style="border-color: ${primaryColor}20;">
+      <div class="guide-header" style="background: ${primaryColor};">FILL-IN GUIDE</div>
+      <div class="guide-content">
+        ${sections.join("")}
+      </div>
+    </div>
+  `;
+}
+
+// Default shortcodes when org hasn't defined custom ones
+function getDefaultEdgebandingCodes(): OpsShortcode[] {
+  return [
+    { id: "eb1", code: "L", name: "Length only", category: "edgebanding" },
+    { id: "eb2", code: "W", name: "Width only", category: "edgebanding" },
+    { id: "eb3", code: "2L", name: "Both lengths", category: "edgebanding" },
+    { id: "eb4", code: "2W", name: "Both widths", category: "edgebanding" },
+    { id: "eb5", code: "LW", name: "Length + Width", category: "edgebanding" },
+    { id: "eb6", code: "2L2W", name: "All 4 sides", category: "edgebanding" },
+    { id: "eb7", code: "None", name: "no banding", category: "edgebanding" },
+  ];
+}
+
+function getDefaultGroovingCodes(): OpsShortcode[] {
+  return [
+    { id: "grv1", code: "L", name: "Along length", category: "grooving" },
+    { id: "grv2", code: "W", name: "Along width", category: "grooving" },
+    { id: "grv3", code: "2L", name: "Both length sides", category: "grooving" },
+    { id: "grv4", code: "2W", name: "Both width sides", category: "grooving" },
+    { id: "grv5", code: "blank", name: "no groove", category: "grooving" },
+  ];
+}
+
+function getDefaultDrillingCodes(): OpsShortcode[] {
+  return [
+    { id: "dr1", code: "H2", name: "2 hinge holes", category: "drilling" },
+    { id: "dr2", code: "SP4", name: "4 shelf pins", category: "drilling" },
+    { id: "dr3", code: "HD", name: "Handle drill", category: "drilling" },
+  ];
+}
+
+function getDefaultCNCCodes(): OpsShortcode[] {
+  return [
+    { id: "cnc1", code: "RADIUS", name: "Radius corners", category: "cnc" },
+    { id: "cnc2", code: "PROFILE", name: "Profile edge", category: "cnc" },
+    { id: "cnc3", code: "CUTOUT", name: "Sink/hob cutout", category: "cnc" },
+  ];
 }
 
 // ============================================================
-// MATERIALS ADDENDUM GENERATION
+// MATERIALS REFERENCE GENERATION
 // ============================================================
 
-function generateMaterialsAddendum(config: OrgTemplateConfig): string {
-  if (!config.materials || config.materials.length === 0) {
+function generateMaterialsReference(config: OrgTemplateConfig): string {
+  if ((!config.materials || config.materials.length === 0) && 
+      (!config.edgebands || config.edgebands.length === 0)) {
     return "";
   }
   
-  return `
-    <div class="materials-addendum page-break-before">
-      <h3>📋 Materials Reference</h3>
-      <table class="materials-table">
-        <thead>
-          <tr>
-            <th>Code</th>
-            <th>Material Name</th>
-            <th>Thickness</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${config.materials.map(m => `
-            <tr>
-              <td class="code-cell"><code>${m.code || m.material_id.slice(0, 8)}</code></td>
-              <td>${m.name}</td>
-              <td>${m.thickness_mm}mm</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-      
-      ${config.edgebands && config.edgebands.length > 0 ? `
-        <h4 style="margin-top: 16px;">Edgebands</h4>
-        <table class="materials-table">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Edgeband Name</th>
-              <th>Thickness</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${config.edgebands.map(e => `
-              <tr>
-                <td class="code-cell"><code>${e.code || e.edgeband_id.slice(0, 8)}</code></td>
-                <td>${e.name}</td>
-                <td>${e.thickness_mm}mm</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      ` : ""}
-    </div>
-  `;
+  let html = "";
+  
+  if (config.materials && config.materials.length > 0) {
+    html += `
+      <div class="materials-ref">
+        <div class="ref-title">Materials:</div>
+        <div class="ref-items">
+          ${config.materials.map(m => 
+            `<span class="ref-item"><code>${m.code || m.material_id.slice(0, 6)}</code> ${m.name} (${m.thickness_mm}mm)</span>`
+          ).join("")}
+        </div>
+      </div>
+    `;
+  }
+  
+  if (config.edgebands && config.edgebands.length > 0) {
+    html += `
+      <div class="materials-ref">
+        <div class="ref-title">Edgebands:</div>
+        <div class="ref-items">
+          ${config.edgebands.map(e => 
+            `<span class="ref-item"><code>${e.code || e.edgeband_id.slice(0, 6)}</code> ${e.name}</span>`
+          ).join("")}
+        </div>
+      </div>
+    `;
+  }
+  
+  return html;
 }
 
 // ============================================================
@@ -404,41 +387,59 @@ function generateMaterialsAddendum(config: OrgTemplateConfig): string {
 // ============================================================
 
 export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplate {
-  const templateId = generateId("TPL");
+  // Generate deterministic template ID from org + hash
+  const shortcodesHash = config.shortcodesHash || generateShortcodesHash(config.shortcodes);
+  const templateId = `CAI-${config.version || "1.0"}-${shortcodesHash}`;
   const version = config.version || "1.0";
-  const primaryColor = config.branding.primary_color || "#00838F";
-  const secondaryColor = config.branding.secondary_color || "#004D40";
-  const title = config.title || "Cutlist Entry Form";
+  const primaryColor = config.branding.primary_color || "#6B21A8"; // Purple default (like Cabinet AI)
+  const secondaryColor = config.branding.secondary_color || "#4C1D95";
+  const title = config.title || config.branding.template_title || "Smart Cutlist Template";
   const rows = config.rows || 25;
   
-  // Build column headers
-  const columns: string[] = ["#", "Part Name / Label", "L (mm)", "W (mm)", "Qty", "Material", "Thk", "Grain"];
+  // Build column headers based on enabled operations
+  interface ColumnDef {
+    key: string;
+    label: string;
+    width: string;
+    isOps?: boolean;
+    subLabel?: string;
+  }
+  
+  const columns: ColumnDef[] = [
+    { key: "#", label: "#", width: "24px" },
+    { key: "label", label: "Part Name", width: "auto" },
+    { key: "L", label: "L(mm)", width: "50px" },
+    { key: "W", label: "W(mm)", width: "50px" },
+    { key: "Thk", label: "Thk", width: "36px" },
+    { key: "qty", label: "Qty", width: "36px" },
+    { key: "material", label: "Material", width: "80px" },
+  ];
   
   if (config.includeEdgebanding !== false) {
-    columns.push("L1", "L2", "W1", "W2");
+    columns.push({ key: "edge", label: "Edge", subLabel: "(code)", width: "50px", isOps: true });
   }
   if (config.includeGrooves) {
-    columns.push("Grv", "D", "W");
+    columns.push({ key: "groove", label: "Groove", subLabel: "(GL/GW)", width: "55px", isOps: true });
   }
-  if (config.includeHoles) {
-    columns.push("Holes", "Ø", "Dp");
+  if (config.includeDrilling) {
+    columns.push({ key: "drill", label: "Drill", subLabel: "(code)", width: "50px", isOps: true });
   }
   if (config.includeCNC) {
-    columns.push("CNC Prog", "CNC Notes");
+    columns.push({ key: "cnc", label: "CNC", subLabel: "(code)", width: "55px", isOps: true });
   }
   if (config.includeNotes !== false) {
-    columns.push("Notes");
+    columns.push({ key: "notes", label: "Notes", width: "auto" });
   }
   
   // Generate QR data
-  const qrDataObj = generateQRData(config, templateId, version);
+  const qrDataObj = generateQRData(config, templateId, version, shortcodesHash);
   const qrDataStr = JSON.stringify(qrDataObj);
   
-  // Generate shortcode guide
-  const shortcodeGuide = generateShortcodeGuide(config);
+  // Generate fill-in guide
+  const fillInGuide = generateFillInGuide(config, primaryColor);
   
-  // Generate materials addendum
-  const materialsAddendum = generateMaterialsAddendum(config);
+  // Generate materials reference
+  const materialsRef = generateMaterialsReference(config);
   
   const html = `
 <!DOCTYPE html>
@@ -449,81 +450,121 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   <style>
     @page { 
       size: A4 landscape; 
-      margin: 12mm; 
+      margin: 10mm; 
     }
     @media print {
-      .page-break-before { page-break-before: always; }
-      .no-print { display: none; }
+      .no-print { display: none !important; }
     }
     
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
     body { 
-      font-family: 'Segoe UI', Arial, sans-serif; 
-      font-size: 10px; 
+      font-family: 'Segoe UI', -apple-system, Arial, sans-serif; 
+      font-size: 9px; 
       color: #1a1a1a;
-      line-height: 1.4;
+      line-height: 1.3;
+      padding: 0;
+      position: relative;
     }
     
-    /* Header */
-    .header { 
-      display: flex; 
-      justify-content: space-between; 
-      align-items: flex-start; 
-      margin-bottom: 12px;
-      padding-bottom: 12px;
+    /* Corner Alignment Markers */
+    .corner-marker {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border: 2px solid #000;
+    }
+    .corner-tl { top: 5mm; left: 5mm; border-right: none; border-bottom: none; }
+    .corner-tr { top: 5mm; right: 5mm; border-left: none; border-bottom: none; }
+    .corner-bl { bottom: 5mm; left: 5mm; border-right: none; border-top: none; }
+    .corner-br { bottom: 5mm; right: 5mm; border-left: none; border-top: none; }
+    
+    /* Header Area */
+    .header-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
       border-bottom: 2px solid ${primaryColor};
+      padding-bottom: 8px;
     }
     
-    .header-left { flex: 1; }
-    
-    .branding {
+    /* Left: Logo & Branding */
+    .header-left {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
     
-    .logo {
-      max-height: 40px;
-      max-width: 120px;
+    .qr-section {
+      text-align: center;
+    }
+    
+    .qr-code-container {
+      width: 60px;
+      height: 60px;
+      border: 1px solid #ccc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: white;
+    }
+    
+    .template-id {
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 7px;
+      color: #666;
+      margin-top: 2px;
+      letter-spacing: 0.5px;
+    }
+    
+    .branding-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
     }
     
     .org-name {
-      font-size: 14px;
+      font-size: 16px;
       font-weight: 700;
-      color: ${primaryColor};
+      color: #000;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
     
-    .title { 
-      font-size: 16px; 
-      font-weight: 700;
-      color: #333;
-      margin-top: 6px;
-    }
-    
-    .template-info {
-      display: flex;
-      gap: 12px;
-      margin-top: 4px;
-      font-size: 9px;
+    .template-title {
+      font-size: 11px;
       color: #666;
     }
     
-    .template-info code {
-      background: #f0f0f0;
-      padding: 1px 4px;
-      border-radius: 2px;
+    .logo {
+      max-height: 50px;
+      max-width: 100px;
     }
     
+    /* Center: Project Information */
     .header-center {
-      flex: 1.5;
-      padding: 0 16px;
+      flex: 1;
+      max-width: 400px;
+      margin: 0 16px;
+    }
+    
+    .project-info-box {
+      border: 1.5px solid #333;
+      padding: 6px 10px;
+    }
+    
+    .project-info-title {
+      font-size: 9px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #333;
     }
     
     .project-fields {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 6px;
+      gap: 4px 12px;
     }
     
     .field-row {
@@ -533,234 +574,236 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     }
     
     .field-label {
+      font-size: 8px;
       font-weight: 600;
-      font-size: 9px;
       white-space: nowrap;
+      min-width: 70px;
     }
     
     .field-input {
       flex: 1;
-      border-bottom: 1px solid #999;
-      min-width: 80px;
-      height: 16px;
+      border-bottom: 1px solid #333;
+      min-width: 60px;
+      height: 14px;
     }
     
-    .field-input.large {
-      min-width: 120px;
+    .field-input.small {
+      width: 30px;
+      min-width: 30px;
+      flex: none;
     }
     
-    .header-right { 
-      display: flex; 
-      gap: 12px; 
-      align-items: flex-start; 
-    }
-    
-    .qr-section { 
-      text-align: center; 
-    }
-    
-    .qr-code { 
-      width: 70px; 
-      height: 70px; 
-      border: 1px solid #ccc;
+    .page-fields {
       display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    
+    /* Right: Page indicator box */
+    .header-right {
+      text-align: right;
+    }
+    
+    .page-box {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 9px;
+      font-weight: 600;
+    }
+    
+    .page-num-box {
+      width: 24px;
+      height: 20px;
+      border: 1.5px solid #333;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
     }
     
-    .qr-label { 
-      font-size: 7px; 
-      color: #666; 
-      margin-top: 2px; 
-    }
-    
     /* Main Table */
-    .main-table { 
-      width: 100%; 
-      border-collapse: collapse; 
-      margin-top: 8px;
+    .main-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0;
+      table-layout: fixed;
     }
     
-    .main-table th, 
-    .main-table td { 
-      border: 1px solid #333; 
-      padding: 4px 3px; 
-      text-align: left;
+    .main-table th,
+    .main-table td {
+      border: 1px solid #333;
+      padding: 2px 3px;
+      text-align: center;
       vertical-align: middle;
     }
     
-    .main-table th { 
-      background: ${primaryColor}; 
+    .main-table th {
+      background: ${primaryColor};
       color: white;
-      font-weight: 600; 
+      font-weight: 600;
       font-size: 8px;
-      text-align: center;
+      padding: 4px 2px;
     }
     
-    .main-table th.ops-col {
-      background: ${secondaryColor};
+    .main-table th.ops-header {
+      background: #E9D5FF; /* Light purple for ops columns */
+      color: ${primaryColor};
     }
     
-    .main-table td { 
-      height: 18px; 
+    .main-table th .sub-label {
+      font-weight: 400;
+      font-size: 7px;
+      opacity: 0.9;
+      display: block;
+    }
+    
+    .main-table td {
+      height: 18px;
+      font-size: 9px;
     }
     
     .main-table td:first-child {
-      text-align: center;
-      width: 20px;
       color: #666;
-      font-size: 9px;
+      font-size: 8px;
+      background: #fafafa;
     }
     
-    /* Checkbox cells */
-    .main-table td.checkbox-cell {
-      width: 24px;
-      text-align: center;
+    .main-table td.part-name {
+      text-align: left;
+      padding-left: 6px;
+    }
+    
+    /* Fill-in Guide */
+    .fill-in-guide {
+      margin-top: 10px;
+      border: 1px solid #ddd;
+      font-size: 8px;
+    }
+    
+    .guide-header {
+      color: white;
+      font-weight: 700;
+      font-size: 9px;
+      padding: 4px 10px;
+      letter-spacing: 1px;
+    }
+    
+    .guide-content {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0;
+      padding: 6px 10px;
+      background: #fafafa;
+    }
+    
+    .guide-section {
+      flex: 1;
+      min-width: 120px;
+      padding: 4px 8px;
+      border-right: 1px solid #e0e0e0;
+    }
+    
+    .guide-section:last-child {
+      border-right: none;
+    }
+    
+    .guide-section.ocr-tips {
+      background: #FEF3C7;
+      border-radius: 4px;
+      margin-left: 8px;
+      border-right: none;
+    }
+    
+    .guide-title {
+      font-weight: 700;
+      font-size: 8px;
+      margin-bottom: 3px;
+      color: #333;
+    }
+    
+    .guide-codes {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    
+    .guide-item {
+      font-size: 7px;
+      color: #555;
+    }
+    
+    .guide-item code {
+      background: ${primaryColor}15;
+      color: ${primaryColor};
+      padding: 0 3px;
+      border-radius: 2px;
+      font-family: 'Consolas', monospace;
+      font-weight: 600;
+      font-size: 7px;
+    }
+    
+    .ocr-tips .guide-item {
+      font-weight: 700;
+      color: #92400E;
+    }
+    
+    /* Materials Reference */
+    .materials-ref {
+      display: inline-flex;
+      align-items: flex-start;
+      gap: 6px;
+      margin-right: 16px;
+      margin-top: 4px;
+    }
+    
+    .ref-title {
+      font-weight: 600;
+      font-size: 7px;
+      color: #666;
+    }
+    
+    .ref-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    
+    .ref-item {
+      font-size: 7px;
+      background: #f0f0f0;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+    
+    .ref-item code {
+      color: ${primaryColor};
+      font-weight: 600;
+      margin-right: 2px;
     }
     
     /* Footer */
-    .footer { 
-      margin-top: 10px; 
-      display: flex; 
-      justify-content: space-between; 
-      align-items: center;
-      font-size: 8px;
-      color: #666;
-      padding-top: 8px;
-      border-top: 1px solid #ddd;
-    }
-    
-    .footer-left {
+    .footer {
+      margin-top: 8px;
       display: flex;
-      gap: 16px;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7px;
+      color: #888;
+      padding-top: 4px;
+      border-top: 1px solid #e0e0e0;
     }
     
-    .page-indicator {
-      font-weight: 600;
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     
-    /* Shortcode Guide */
-    .shortcode-guide {
-      margin-top: 12px;
-      padding: 8px;
-      background: #fafafa;
-      border: 1px solid #e0e0e0;
-      border-radius: 4px;
+    .powered-by {
+      color: #aaa;
     }
     
-    .shortcode-guide h3 {
-      font-size: 10px;
-      color: ${primaryColor};
-      margin-bottom: 8px;
-    }
-    
-    .shortcode-section {
-      margin-bottom: 8px;
-    }
-    
-    .shortcode-section h4 {
-      font-size: 9px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-    
-    .shortcode-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-      gap: 4px;
-      font-size: 8px;
-    }
-    
-    .shortcode {
-      background: white;
-      padding: 2px 4px;
-      border-radius: 2px;
-    }
-    
-    .shortcode code {
-      background: #e8f4f8;
-      color: ${primaryColor};
-      padding: 1px 3px;
-      border-radius: 2px;
-      font-family: 'Consolas', monospace;
-      font-weight: 600;
-    }
-    
-    .materials-list {
-      margin-top: 6px;
-      padding: 4px;
-      background: #f8f8f8;
-      border-radius: 4px;
-      font-size: 8px;
-    }
-    
-    .materials-list strong {
-      display: block;
-      margin-bottom: 4px;
-    }
-    
-    .material-item {
-      display: inline-block;
-      margin: 2px 6px 2px 0;
-      padding: 1px 4px;
-      background: white;
-      border: 1px solid #e0e0e0;
-      border-radius: 2px;
-    }
-    
-    .material-item code {
-      background: ${primaryColor}15;
-      color: ${primaryColor};
-      padding: 0 2px;
-      border-radius: 2px;
-      margin-right: 3px;
-    }
-    
-    /* Materials Addendum */
-    .materials-addendum {
-      margin-top: 20px;
-    }
-    
-    .materials-addendum h3 {
-      font-size: 12px;
-      color: ${primaryColor};
-      margin-bottom: 10px;
-    }
-    
-    .materials-addendum h4 {
-      font-size: 10px;
-      color: #333;
-      margin-bottom: 6px;
-    }
-    
-    .materials-table {
-      width: 100%;
-      max-width: 500px;
-      border-collapse: collapse;
-      font-size: 9px;
-    }
-    
-    .materials-table th,
-    .materials-table td {
-      border: 1px solid #ddd;
-      padding: 4px 8px;
-      text-align: left;
-    }
-    
-    .materials-table th {
-      background: #f0f0f0;
-      font-weight: 600;
-    }
-    
-    .materials-table .code-cell code {
-      background: ${primaryColor}15;
-      color: ${primaryColor};
-      padding: 2px 4px;
-      border-radius: 2px;
-      font-family: 'Consolas', monospace;
-    }
-    
-    /* Print button */
+    /* Print Button */
     .print-btn {
       position: fixed;
       bottom: 20px;
@@ -774,6 +817,7 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       font-weight: 600;
       cursor: pointer;
       box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 1000;
     }
     
     .print-btn:hover {
@@ -782,61 +826,70 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   </style>
 </head>
 <body>
+  <!-- Corner Alignment Markers for OCR -->
+  <div class="corner-marker corner-tl"></div>
+  <div class="corner-marker corner-tr"></div>
+  <div class="corner-marker corner-bl"></div>
+  <div class="corner-marker corner-br"></div>
+  
   <!-- Header -->
-  <div class="header">
+  <div class="header-container">
+    <!-- Left: QR + Branding -->
     <div class="header-left">
-      <div class="branding">
-        ${config.branding.logo_url ? `<img src="${config.branding.logo_url}" alt="${config.branding.name}" class="logo">` : ""}
-        <span class="org-name">${config.branding.name}</span>
-      </div>
-      <div class="title">${title}</div>
-      <div class="template-info">
-        <span>Template: <code>${templateId}</code></span>
-        <span>Version: <code>v${version}</code></span>
-        <span>Generated: ${new Date().toLocaleDateString()}</span>
-      </div>
-    </div>
-    
-    <div class="header-center">
-      <div class="project-fields">
-        <div class="field-row">
-          <span class="field-label">Project Code:</span>
-          <span class="field-input large"></span>
-        </div>
-        <div class="field-row">
-          <span class="field-label">Page:</span>
-          <span class="field-input" style="width: 30px;"></span>
-          <span class="field-label">of</span>
-          <span class="field-input" style="width: 30px;"></span>
-        </div>
-        <div class="field-row">
-          <span class="field-label">Job Ref:</span>
-          <span class="field-input"></span>
-        </div>
-        <div class="field-row">
-          <span class="field-label">Date:</span>
-          <span class="field-input"></span>
-        </div>
-        <div class="field-row">
-          <span class="field-label">Client:</span>
-          <span class="field-input"></span>
-        </div>
-        <div class="field-row">
-          <span class="field-label">Prepared By:</span>
-          <span class="field-input"></span>
-        </div>
-      </div>
-    </div>
-    
-    <div class="header-right">
       <div class="qr-section">
-        <div class="qr-code" id="qr-placeholder" data-qr="${encodeURIComponent(qrDataStr)}">
-          <svg viewBox="0 0 70 70" style="width:100%;height:100%">
-            <rect fill="#f0f0f0" width="70" height="70"/>
-            <text x="35" y="35" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="#999">QR Code</text>
+        <div class="qr-code-container" id="qr-placeholder" data-qr="${encodeURIComponent(qrDataStr)}">
+          <svg viewBox="0 0 60 60" style="width:100%;height:100%">
+            <rect fill="#f5f5f5" width="60" height="60"/>
+            <text x="30" y="30" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="#999">QR</text>
           </svg>
         </div>
-        <div class="qr-label">Scan for AI parsing</div>
+        <div class="template-id">${templateId}</div>
+      </div>
+      
+      <div class="branding-info">
+        ${config.branding.logo_url ? `<img src="${config.branding.logo_url}" alt="" class="logo">` : ""}
+        <div class="org-name">${config.branding.name}</div>
+        <div class="template-title">${title} v${version}</div>
+      </div>
+    </div>
+    
+    <!-- Center: Project Information -->
+    <div class="header-center">
+      <div class="project-info-box">
+        <div class="project-info-title">PROJECT INFORMATION (Must fill for multi-page)</div>
+        <div class="project-fields">
+          <div class="field-row">
+            <span class="field-label">Project Name:</span>
+            <span class="field-input"></span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Project Code:</span>
+            <span class="field-input"></span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Customer Name:</span>
+            <span class="field-input"></span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Phone:</span>
+            <span class="field-input"></span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Customer Email:</span>
+            <span class="field-input"></span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Section/Area:</span>
+            <span class="field-input"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Right: Page indicator -->
+    <div class="header-right">
+      <div class="page-box">
+        Page: <span class="page-num-box"></span> of <span class="page-num-box"></span>
       </div>
     </div>
   </div>
@@ -845,10 +898,12 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   <table class="main-table">
     <thead>
       <tr>
-        ${columns.map((col, i) => {
-          const isOpsCol = i >= 8; // After grain column
-          return `<th class="${isOpsCol ? 'ops-col' : ''}">${col}</th>`;
-        }).join("")}
+        ${columns.map(col => `
+          <th ${col.isOps ? 'class="ops-header"' : ''} style="width: ${col.width};">
+            ${col.label}
+            ${col.subLabel ? `<span class="sub-label">${col.subLabel}</span>` : ""}
+          </th>
+        `).join("")}
       </tr>
     </thead>
     <tbody>
@@ -856,10 +911,7 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
         <tr>
           ${columns.map((col, j) => {
             if (j === 0) return `<td>${i + 1}</td>`;
-            // Checkbox columns for edgebanding
-            if (config.includeEdgebanding !== false && ["L1", "L2", "W1", "W2"].includes(col)) {
-              return `<td class="checkbox-cell"></td>`;
-            }
+            if (col.key === "label") return `<td class="part-name"></td>`;
             return `<td></td>`;
           }).join("")}
         </tr>
@@ -867,33 +919,30 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     </tbody>
   </table>
   
+  <!-- Fill-in Guide -->
+  ${fillInGuide}
+  
+  <!-- Materials Reference (inline below guide) -->
+  <div style="margin-top: 6px;">
+    ${materialsRef}
+  </div>
+  
   <!-- Footer -->
   <div class="footer">
-    <div class="footer-left">
-      <span>Template ID: ${templateId}</span>
+    <div class="footer-brand">
+      <span>${config.branding.name} | ${config.branding.contact_info || ""}</span>
       <span>•</span>
-      <span>Version: v${version}</span>
-      <span>•</span>
-      <span>${config.branding.contact_info || ""}</span>
+      <span>CabinetAI™ Smart Template v${version} | Page</span>
     </div>
-    <div class="footer-right">
-      <span class="page-indicator">Page ___ of ___</span>
-      <span style="margin-left: 16px;">Powered by CAI Intake</span>
+    <div class="powered-by">
+      Powered by CAI Intake
     </div>
   </div>
-  
-  <!-- Shortcode Guide -->
-  <div class="shortcode-guide">
-    <h3>📖 Quick Reference Guide</h3>
-    ${shortcodeGuide}
-  </div>
-  
-  ${materialsAddendum}
   
   <!-- Print Button (hidden when printing) -->
   <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
   
-  <!-- QR Code Library -->
+  <!-- QR Code Generation -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -903,8 +952,8 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
         qrPlaceholder.innerHTML = '';
         new QRCode(qrPlaceholder, {
           text: qrData,
-          width: 70,
-          height: 70,
+          width: 60,
+          height: 60,
           colorDark: '#000000',
           colorLight: '#ffffff',
           correctLevel: QRCode.CorrectLevel.M
@@ -922,6 +971,7 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     org_id: config.branding.org_id,
     html,
     qr_data: qrDataStr,
+    shortcodes_hash: shortcodesHash,
     generated_at: new Date().toISOString(),
   };
 }
@@ -931,58 +981,53 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
 // ============================================================
 
 export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
+  const shortcodesHash = config.shortcodesHash || generateShortcodesHash(config.shortcodes);
+  const templateId = `CAI-${config.version || "1.0"}-${shortcodesHash}`;
   const version = config.version || "1.0";
   const rows = config.rows || 50;
   
   // Build headers
   const headers: string[] = [
     "#",
-    "Part Name / Label",
-    "Length (mm)",
-    "Width (mm)",
+    "Part Name",
+    "L(mm)",
+    "W(mm)",
+    "Thk",
     "Qty",
-    "Material Code",
-    "Thickness (mm)",
-    "Grain (GL/GW/-)",
+    "Material",
   ];
   
   if (config.includeEdgebanding !== false) {
-    headers.push("EB L1", "EB L2", "EB W1", "EB W2", "Edgeband Code");
+    headers.push("Edge (code)");
   }
   if (config.includeGrooves) {
-    headers.push("Groove Side", "Groove Depth", "Groove Width");
+    headers.push("Groove (GL/GW)");
   }
-  if (config.includeHoles) {
-    headers.push("Hole Pattern", "Hole Ø", "Hole Depth");
+  if (config.includeDrilling) {
+    headers.push("Drill (code)");
   }
   if (config.includeCNC) {
-    headers.push("CNC Program", "CNC Notes");
+    headers.push("CNC (code)");
   }
   if (config.includeNotes !== false) {
     headers.push("Notes");
   }
   
-  // Add metadata row
-  const metaRow = [
-    `Template: ${config.branding.name}`,
-    `Version: v${version}`,
-    `Generated: ${new Date().toLocaleDateString()}`,
-    "",
-    "Project Code:",
-    "",
-    "Page:",
-    "of",
-  ];
-  
   // Build CSV
   const csvRows: string[] = [];
   
-  // Meta info as comment-like row
-  csvRows.push(metaRow.join(","));
-  csvRows.push(""); // Empty row
+  // Template metadata row
+  csvRows.push(`"${config.branding.name}","${templateId}","Smart Cutlist Template v${version}"`);
+  csvRows.push("");
+  
+  // Project info rows
+  csvRows.push(`"PROJECT INFORMATION (Must fill for multi-page)"`);
+  csvRows.push(`"Project Name:","","Project Code:","","Page:","of"`);
+  csvRows.push(`"Customer Name:","","Phone:","","Section/Area:",""`);
+  csvRows.push("");
   
   // Headers
-  csvRows.push(headers.join(","));
+  csvRows.push(headers.map(h => `"${h}"`).join(","));
   
   // Data rows (numbered)
   for (let i = 1; i <= rows; i++) {
@@ -990,22 +1035,52 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
     csvRows.push(row.join(","));
   }
   
-  // Add materials reference at the bottom
+  // Fill-in guide
+  csvRows.push("");
+  csvRows.push(`"FILL-IN GUIDE"`);
+  
+  if (config.includeEdgebanding !== false) {
+    const ebCodes = (config.shortcodes?.filter(s => s.category === "edgebanding") || getDefaultEdgebandingCodes())
+      .map(s => `${s.code}=${s.name}`).join("; ");
+    csvRows.push(`"Edgebanding:","${ebCodes}"`);
+  }
+  
+  if (config.includeGrooves) {
+    const grvCodes = (config.shortcodes?.filter(s => s.category === "grooving") || getDefaultGroovingCodes())
+      .map(s => `${s.code}=${s.name}`).join("; ");
+    csvRows.push(`"Grooving:","${grvCodes}"`);
+  }
+  
+  if (config.includeDrilling) {
+    const drillCodes = (config.shortcodes?.filter(s => s.category === "drilling") || getDefaultDrillingCodes())
+      .map(s => `${s.code}=${s.name}`).join("; ");
+    csvRows.push(`"Drilling:","${drillCodes}"`);
+  }
+  
+  if (config.includeCNC) {
+    const cncCodes = (config.shortcodes?.filter(s => s.category === "cnc") || getDefaultCNCCodes())
+      .map(s => `${s.code}=${s.name}`).join("; ");
+    csvRows.push(`"CNC:","${cncCodes}"`);
+  }
+  
+  csvRows.push(`"Best OCR:","BLOCK LETTERS, Clear photo"`);
+  
+  // Materials reference
   if (config.materials && config.materials.length > 0) {
     csvRows.push("");
-    csvRows.push("--- MATERIALS REFERENCE ---");
-    csvRows.push("Code,Name,Thickness (mm)");
+    csvRows.push(`"MATERIALS REFERENCE"`);
+    csvRows.push(`"Code","Name","Thickness (mm)"`);
     config.materials.forEach(m => {
-      csvRows.push(`${m.code || m.material_id},${m.name},${m.thickness_mm}`);
+      csvRows.push(`"${m.code || m.material_id.slice(0, 6)}","${m.name}","${m.thickness_mm}"`);
     });
   }
   
   if (config.edgebands && config.edgebands.length > 0) {
     csvRows.push("");
-    csvRows.push("--- EDGEBANDS REFERENCE ---");
-    csvRows.push("Code,Name,Thickness (mm)");
+    csvRows.push(`"EDGEBANDS REFERENCE"`);
+    csvRows.push(`"Code","Name","Thickness (mm)"`);
     config.edgebands.forEach(e => {
-      csvRows.push(`${e.code || e.edgeband_id},${e.name},${e.thickness_mm}`);
+      csvRows.push(`"${e.code || e.edgeband_id.slice(0, 6)}","${e.name}","${e.thickness_mm}"`);
     });
   }
   
@@ -1054,7 +1129,28 @@ export function downloadTemplate(
   }
 }
 
+/**
+ * Calculate new version when shortcodes change
+ */
+export function calculateTemplateVersion(
+  currentVersion: string,
+  oldShortcodesHash: string,
+  newShortcodesHash: string
+): string {
+  if (oldShortcodesHash === newShortcodesHash) {
+    return currentVersion;
+  }
+  
+  // Increment minor version
+  const parts = currentVersion.split(".");
+  const major = parseInt(parts[0] || "1", 10);
+  const minor = parseInt(parts[1] || "0", 10);
+  
+  return `${major}.${minor + 1}`;
+}
 
-
-
+/**
+ * Re-export utility for external use
+ */
+export { generateShortcodesHash };
 
