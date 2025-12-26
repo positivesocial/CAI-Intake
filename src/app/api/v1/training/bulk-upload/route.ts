@@ -209,8 +209,8 @@ async function extractTextFromPDF(file: File): Promise<string> {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     
-    const health = await client.checkHealth();
-    if (health.status === "ok") {
+    const isHealthy = await client.checkHealth();
+    if (isHealthy) {
       const result = await client.extractFromPDF(buffer);
       if (result.success && result.text) {
         return result.text;
