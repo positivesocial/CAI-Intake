@@ -117,13 +117,16 @@ export function TemplateGenerator() {
     [orgShortcodes]
   );
 
-  // Template ID is now deterministic based on version and shortcodes
-  const templateId = `CAI-${config.version}-${shortcodesHash}`;
+  // Template ID format: CAI-{ORG_CODE}-v{VERSION}-{HASH}
+  // This allows identification of: 1) CAI template, 2) Which org, 3) Version, 4) Config
+  const orgCode = "DEMO"; // TODO: Get from org settings
+  const templateId = `CAI-${orgCode}-v${config.version}-${shortcodesHash}`;
 
   // Build org template config from current cutlist
   const orgTemplateConfig: OrgTemplateConfig = React.useMemo(() => ({
     branding: {
       org_id: "org-demo", // TODO: Get from auth context
+      org_code: "DEMO",   // Short code for template ID (e.g., "RADIANT", "ACME")
       name: "Your Organization", // TODO: Get from org settings
       primary_color: "#6B21A8", // Purple (Cabinet AI style)
       secondary_color: "#4C1D95",

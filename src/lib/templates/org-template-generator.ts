@@ -21,8 +21,10 @@ import { generateId } from "@/lib/utils";
 // ============================================================
 
 export interface OrganizationBranding {
-  /** Organization ID */
+  /** Organization ID (database UUID) */
   org_id: string;
+  /** Organization short code (e.g., "RADIANT", "ACME") - used in template ID */
+  org_code: string;
   /** Organization name */
   name: string;
   /** Logo URL (optional) */
@@ -407,10 +409,12 @@ function generateMaterialsReference(config: OrgTemplateConfig): string {
 // ============================================================
 
 export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplate {
-  // Generate deterministic template ID from org + hash
+  // Generate deterministic template ID: CAI-{ORG_CODE}-v{VERSION}-{HASH}
+  // This format allows identification of: 1) CAI template, 2) Which org, 3) Version, 4) Shortcodes config
   const shortcodesHash = config.shortcodesHash || generateShortcodesHash(config.shortcodes);
-  const templateId = `CAI-${config.version || "1.0"}-${shortcodesHash}`;
+  const orgCode = (config.branding.org_code || config.branding.org_id.slice(0, 6)).toUpperCase();
   const version = config.version || "1.0";
+  const templateId = `CAI-${orgCode}-v${version}-${shortcodesHash}`;
   const primaryColor = config.branding.primary_color || "#6B21A8"; // Purple default (like Cabinet AI)
   const secondaryColor = config.branding.secondary_color || "#4C1D95";
   const title = config.title || config.branding.template_title || "Smart Cutlist Template";
@@ -1052,8 +1056,9 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
 
 export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
   const shortcodesHash = config.shortcodesHash || generateShortcodesHash(config.shortcodes);
-  const templateId = `CAI-${config.version || "1.0"}-${shortcodesHash}`;
+  const orgCode = (config.branding.org_code || config.branding.org_id.slice(0, 6)).toUpperCase();
   const version = config.version || "1.0";
+  const templateId = `CAI-${orgCode}-v${version}-${shortcodesHash}`;
   const rows = config.rows || 50;
   
   // Build headers
@@ -1217,6 +1222,64 @@ export function calculateTemplateVersion(
   const minor = parseInt(parts[1] || "0", 10);
   
   return `${major}.${minor + 1}`;
+}
+
+/**
+ * Parse a template ID into its components
+ * Format: CAI-{ORG_CODE}-v{VERSION}-{HASH}
+ * Example: CAI-RADIANT-v1.0-a7f3b2c1
+ */
+export interface ParsedTemplateId {
+  isCAI: boolean;           // Whether it's a CAI Intake template
+  orgCode: string | null;   // Organization code (e.g., "RADIANT")
+  version: string | null;   // Template version (e.g., "1.0")
+  hash: string | null;      // Shortcodes hash
+  raw: string;              // Original ID string
+}
+
+export function parseTemplateId(templateId: string): ParsedTemplateId {
+  const raw = templateId.trim();
+  
+  // Pattern: CAI-{ORG}-v{VERSION}-{HASH}
+  const match = raw.match(/^CAI-([A-Z0-9]+)-v(\d+\.\d+)-([a-z0-9]+)$/i);
+  
+  if (!match) {
+    // Try legacy format: CAI-{VERSION}-{HASH} (no org)
+    const legacyMatch = raw.match(/^CAI-(\d+\.\d+)-([a-z0-9]+)$/i);
+    if (legacyMatch) {
+      return {
+        isCAI: true,
+        orgCode: null, // Unknown org (legacy)
+        version: legacyMatch[1],
+        hash: legacyMatch[2],
+        raw,
+      };
+    }
+    
+    return {
+      isCAI: raw.startsWith("CAI"),
+      orgCode: null,
+      version: null,
+      hash: null,
+      raw,
+    };
+  }
+  
+  return {
+    isCAI: true,
+    orgCode: match[1].toUpperCase(),
+    version: match[2],
+    hash: match[3].toLowerCase(),
+    raw,
+  };
+}
+
+/**
+ * Check if a string is a valid CAI template ID
+ */
+export function isValidCAITemplateId(templateId: string): boolean {
+  const parsed = parseTemplateId(templateId);
+  return parsed.isCAI && parsed.orgCode !== null && parsed.version !== null;
 }
 
 /**
