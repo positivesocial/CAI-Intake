@@ -12,6 +12,8 @@ export * from "./templates";
 export * from "./corrections";
 export * from "./context";
 export * from "./use-corrections";
+export * from "./few-shot";
+export * from "./accuracy";
 
 
 

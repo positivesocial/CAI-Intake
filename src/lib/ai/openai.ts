@@ -45,10 +45,17 @@ import {
 import {
   OPENAI_SYSTEM_PROMPT,
   buildParsePrompt,
+  buildEnhancedParsePrompt,
   type AIPartResponse,
   validateAIPartResponse,
 } from "./prompts";
 import { logger } from "@/lib/logger";
+import { 
+  selectFewShotExamples, 
+  formatExamplesForPrompt, 
+  recordBatchUsage,
+  type TrainingExample 
+} from "@/lib/learning/few-shot";
 
 // ============================================================
 // OPENAI PROVIDER
@@ -397,6 +404,7 @@ export class OpenAIProvider implements AIProvider {
 
   async parseText(text: string, options: ParseOptions): Promise<AIParseResult> {
     const startTime = Date.now();
+    let fewShotExamples: TrainingExample[] = [];
     
     try {
       const client = this.getClient();
@@ -426,7 +434,36 @@ export class OpenAIProvider implements AIProvider {
         textLength: text.length,
       });
       
-      const prompt = buildParsePrompt({
+      // Select few-shot examples for better accuracy
+      try {
+        fewShotExamples = await selectFewShotExamples(
+          text,
+          options.organizationId,
+          {
+            maxExamples: 3,
+            needsEdgeExamples: options.extractMetadata,
+            needsGrooveExamples: options.extractMetadata,
+          }
+        );
+        
+        if (fewShotExamples.length > 0) {
+          logger.info("🎯 [OpenAI] Selected few-shot examples", {
+            count: fewShotExamples.length,
+            exampleIds: fewShotExamples.map(e => e.id),
+          });
+        }
+      } catch (fewShotError) {
+        logger.warn("⚠️ [OpenAI] Failed to load few-shot examples, continuing without", {
+          error: fewShotError instanceof Error ? fewShotError.message : "Unknown error",
+        });
+      }
+      
+      // Build enhanced prompt with few-shot examples
+      const fewShotPromptText = fewShotExamples.length > 0 
+        ? formatExamplesForPrompt(fewShotExamples) 
+        : undefined;
+      
+      const prompt = buildEnhancedParsePrompt({
         extractMetadata: options.extractMetadata,
         isMessyData: options.isMessyData ?? this.looksMessy(text),
         isPastedText: options.isPastedText ?? true,
@@ -434,6 +471,8 @@ export class OpenAIProvider implements AIProvider {
         templateConfig: options.templateConfig ? {
           fieldLayout: options.templateConfig.fieldLayout,
         } : undefined,
+        fewShotExamples: fewShotPromptText,
+        includeDetailedEdgeGuide: options.extractMetadata,
       });
 
       const response = await client.chat.completions.create({
@@ -452,6 +491,7 @@ export class OpenAIProvider implements AIProvider {
       logger.debug("📥 [OpenAI] AI response received", {
         responseLength: rawResponse.length,
         preview: rawResponse.substring(0, 200),
+        fewShotExamplesUsed: fewShotExamples.length,
       });
       
       const parsed = parseAIResponseJSON<{ parts: AIPartResponse[] }>(rawResponse);
@@ -460,8 +500,19 @@ export class OpenAIProvider implements AIProvider {
         // Try parsing as direct array
         const directArray = parseAIResponseJSON<AIPartResponse[]>(rawResponse);
         if (directArray && Array.isArray(directArray)) {
-          logger.info("✅ [OpenAI] Parsed as direct array", { partsCount: directArray.length });
-          return this.processResults(directArray, rawResponse, startTime, options);
+          logger.info("✅ [OpenAI] Parsed as direct array", { 
+            partsCount: directArray.length,
+            fewShotExamplesUsed: fewShotExamples.length,
+          });
+          
+          // Record usage as successful
+          if (fewShotExamples.length > 0) {
+            recordBatchUsage(fewShotExamples.map(e => e.id), true).catch(() => {});
+          }
+          
+          const result = this.processResults(directArray, rawResponse, startTime, options);
+          (result as any).fewShotExamplesUsed = fewShotExamples.length;
+          return result;
         }
         
         logger.error("❌ [OpenAI] Failed to parse AI response", {
@@ -469,6 +520,11 @@ export class OpenAIProvider implements AIProvider {
           hasParts: !!(parsed as any)?.parts,
           rawResponsePreview: rawResponse.substring(0, 500),
         });
+        
+        // Record usage as unsuccessful
+        if (fewShotExamples.length > 0) {
+          recordBatchUsage(fewShotExamples.map(e => e.id), false).catch(() => {});
+        }
         
         return {
           success: false,
@@ -483,14 +539,28 @@ export class OpenAIProvider implements AIProvider {
       logger.info("✅ [OpenAI] Successfully parsed parts", {
         partsCount: parsed.parts.length,
         processingTimeMs: Date.now() - startTime,
+        fewShotExamplesUsed: fewShotExamples.length,
       });
+      
+      // Record usage as successful
+      if (fewShotExamples.length > 0) {
+        recordBatchUsage(fewShotExamples.map(e => e.id), true).catch(() => {});
+      }
 
-      return this.processResults(parsed.parts, rawResponse, startTime, options);
+      const result = this.processResults(parsed.parts, rawResponse, startTime, options);
+      (result as any).fewShotExamplesUsed = fewShotExamples.length;
+      return result;
       
     } catch (error) {
       logger.error("❌ [OpenAI] parseText error", {
         error: error instanceof Error ? error.message : "Unknown error",
       });
+      
+      // Record usage as unsuccessful on error
+      if (fewShotExamples.length > 0) {
+        recordBatchUsage(fewShotExamples.map(e => e.id), false).catch(() => {});
+      }
+      
       return {
         success: false,
         parts: [],

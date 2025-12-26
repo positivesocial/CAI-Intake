@@ -825,6 +825,204 @@ export function validateAIPartResponse(part: AIPartResponse): string[] {
   return errors;
 }
 
+// ============================================================
+// COMPREHENSIVE EDGE/GROOVE NOTATION REFERENCE
+// ============================================================
+
+/**
+ * Detailed edge and groove notation patterns for accurate parsing.
+ * This covers the most common notation systems used across different clients.
+ */
+export const EDGE_GROOVE_DETAILED_PROMPT = `
+## COMPREHENSIVE EDGE BANDING NOTATION GUIDE
+
+### Column-Based Edge Detection (MOST RELIABLE)
+When you see columns labeled L1, L2, W1, W2, or variations:
+
+| Symbol in Cell | Meaning |
+|----------------|---------|
+| ✓ ✔ √ | Edge HAS banding |
+| X x | Edge HAS banding (X is a mark, not "no") |
+| Y y | Edge HAS banding |
+| / | Edge HAS banding |
+| 1 | Edge HAS banding |
+| (empty) | Edge does NOT have banding |
+| - | Edge does NOT have banding |
+| 0 | Edge does NOT have banding |
+
+### Text-Based Edge Notation Patterns
+
+| Pattern | Meaning | Output |
+|---------|---------|--------|
+| X | One long edge | L1 only |
+| XX | Both short edges | W1, W2 |
+| XXX | Three edges | L1, W1, W2 |
+| XXXX | All four edges | L1, L2, W1, W2 |
+| x (lowercase) | Often means groove, NOT edge | Check context |
+| 2L | Both long edges | L1, L2 |
+| 4L | All four edges | L1, L2, W1, W2 |
+| 2W | Both short edges | W1, W2 |
+| 1E, 2E, 3E, 4E | Number of edges | 1, 2, 3, or 4 edges |
+| EB | Has edgebanding | Usually L1 or context-dependent |
+| FB | Front banded | L1 (front/visible edge) |
+| AB | All banded | L1, L2, W1, W2 |
+| NB | No banding | No edges |
+| L1 L2 | Explicitly named | L1, L2 |
+| L+W | Long and width | L1, W1 (or L1, L2, W1, W2) |
+
+### Client-Specific Notation Examples
+
+**Simple Mark System (Common):**
+- Single mark (✓, X, /) in L1 column = L1 has edge
+- Mark in GL column = Has groove on length
+
+**Code System:**
+- "2L" in edge column = Both long edges (L1, L2)
+- "4" in edge column = All 4 edges
+
+**Description System:**
+- "edge both ends" = W1, W2
+- "edge all round" = L1, L2, W1, W2
+- "front edge only" = L1
+- "long edges" = L1, L2
+
+## COMPREHENSIVE GROOVE NOTATION GUIDE
+
+### Column-Based Groove Detection
+When you see columns labeled GL, GW, G, GROOVE:
+
+| Column | Symbol | Meaning |
+|--------|--------|---------|
+| GL | ✓ X Y / 1 | Has groove parallel to LENGTH |
+| GW | ✓ X Y / 1 | Has groove parallel to WIDTH |
+| G | ✓ X Y / 1 | Has groove (need context for direction) |
+| GROOVE | Text | Parse the text for direction/dimensions |
+
+### Text-Based Groove Notation
+
+| Pattern | Meaning |
+|---------|---------|
+| GL | Groove on Length (parallel to L dimension) |
+| GW | Groove on Width (parallel to W dimension) |
+| G or GRV | Has groove (check context) |
+| x (lowercase) | Groove (often back panel groove) |
+| BPG | Back Panel Groove |
+| "back groove" | Groove for back panel |
+| "dado" | Cross-grain groove |
+| "rebate" / "rabbet" | L-shaped groove on edge |
+| "4mm groove" | Groove with dimension |
+| "6x10" | Groove 6mm wide x 10mm deep |
+
+### Interpreting Lowercase x vs Uppercase X
+
+**CRITICAL DISTINCTION:**
+- Uppercase X, XX, XXX = Edge banding notation
+- Lowercase x = Often means GROOVE (back panel groove)
+
+Example:
+| Part | Edge | Groove |
+|------|------|--------|
+| Side | XX | x |
+
+This means: Edges on W1, W2 (XX) AND has groove (x)
+
+## EDGE TERMINOLOGY REFERENCE
+
+\`\`\`
+        W1 (Width side 1 - "top" short edge)
+    ┌─────────────────────────┐
+    │                         │
+L1  │                         │  L2
+    │                         │
+    │     PANEL (L x W)       │
+    │                         │
+    │                         │
+    └─────────────────────────┘
+        W2 (Width side 2 - "bottom" short edge)
+
+L1, L2 = Long edges (parallel to Length dimension)
+W1, W2 = Short edges (parallel to Width dimension)
+\`\`\`
+
+## OUTPUT FORMAT FOR EDGE/GROOVE
+
+Always output edge and groove data in this structure:
+\`\`\`json
+{
+  "edgeBanding": {
+    "detected": true,
+    "L1": true,
+    "L2": true,
+    "W1": false,
+    "W2": false,
+    "edges": ["L1", "L2"],
+    "description": "both long edges"
+  },
+  "grooving": {
+    "detected": true,
+    "GL": false,
+    "GW": true,
+    "description": "groove on width for back panel"
+  }
+}
+\`\`\`
+`;
+
+// ============================================================
+// FEW-SHOT PROMPT BUILDER
+// ============================================================
+
+/**
+ * Build a prompt with few-shot examples injected
+ */
+export function buildPromptWithExamples(
+  basePrompt: string,
+  examples: string
+): string {
+  if (!examples || examples.trim().length === 0) {
+    return basePrompt;
+  }
+  
+  // Insert examples before the validation rules
+  const validationIndex = basePrompt.indexOf("## MANDATORY VALIDATION RULES");
+  
+  if (validationIndex > 0) {
+    return (
+      basePrompt.slice(0, validationIndex) +
+      examples +
+      "\n\n" +
+      basePrompt.slice(validationIndex)
+    );
+  }
+  
+  // If no validation rules section, append examples at the end
+  return basePrompt + "\n\n" + examples;
+}
+
+/**
+ * Build the complete prompt for parsing with all enhancements
+ */
+export function buildEnhancedParsePrompt(
+  options: PromptOptions & {
+    fewShotExamples?: string;
+    includeDetailedEdgeGuide?: boolean;
+  }
+): string {
+  let prompt = buildParsePrompt(options);
+  
+  // Add detailed edge/groove guide if requested or if extracting metadata
+  if (options.includeDetailedEdgeGuide || options.extractMetadata) {
+    prompt += "\n\n" + EDGE_GROOVE_DETAILED_PROMPT;
+  }
+  
+  // Inject few-shot examples if provided
+  if (options.fewShotExamples) {
+    prompt = buildPromptWithExamples(prompt, options.fewShotExamples);
+  }
+  
+  return prompt;
+}
+
 
 
 

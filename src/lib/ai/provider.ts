@@ -33,6 +33,8 @@ export interface ParseOptions {
   isPastedText?: boolean;
   /** Text is messy/unstructured */
   isMessyData?: boolean;
+  /** Organization ID for context-specific learning */
+  organizationId?: string;
 }
 
 // ============================================================

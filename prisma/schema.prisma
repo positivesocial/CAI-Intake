@@ -24,76 +24,78 @@ model Organization {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Organization settings
-  settings Json @default("{}")
+  settings     Json @default("{}")
   // Capabilities configuration
   capabilities Json @default("{\"core_parts\": true}")
-  
+
   // Subscription/plan info
-  plan       String   @default("free") // free, starter, professional, enterprise
+  plan       String    @default("free") // free, starter, professional, enterprise
   planExpiry DateTime? @map("plan_expiry")
 
   // Relationships
-  users            User[]
-  invitations      Invitation[]
-  cutlists         Cutlist[]
-  materials        Material[]
-  edgebands        Edgeband[]
-  templates        Template[]
-  parseJobs        ParseJob[]
-  files            UploadedFile[]
-  auditLogs        AuditLog[]
-  
+  users       User[]
+  invitations Invitation[]
+  cutlists    Cutlist[]
+  materials   Material[]
+  edgebands   Edgeband[]
+  templates   Template[]
+  parseJobs   ParseJob[]
+  files       UploadedFile[]
+  auditLogs   AuditLog[]
+
   // Learning system
-  parserPatterns   ParserPattern[]
-  materialMappings MaterialMapping[]
-  clientTemplates  ClientTemplate[]
-  parseCorrections ParseCorrection[]
-  ocrJobs          OcrJob[]
-  
+  parserPatterns      ParserPattern[]
+  materialMappings    MaterialMapping[]
+  clientTemplates     ClientTemplate[]
+  parseCorrections    ParseCorrection[]
+  ocrJobs             OcrJob[]
+  trainingExamples    TrainingExample[]
+  parsingAccuracyLogs ParsingAccuracyLog[]
+
   // Operations libraries
-  holePatterns     HolePattern[]
-  grooveProfiles   GrooveProfile[]
-  routingProfiles  RoutingProfile[]
+  holePatterns    HolePattern[]
+  grooveProfiles  GrooveProfile[]
+  routingProfiles RoutingProfile[]
 
   @@map("organizations")
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  name          String?
-  avatar        String?
-  phone         String?
-  jobTitle      String?  @map("job_title")
-  
+  id       String  @id @default(cuid())
+  email    String  @unique
+  name     String?
+  avatar   String?
+  phone    String?
+  jobTitle String? @map("job_title")
+
   // Auth fields
-  passwordHash  String?  @map("password_hash")
+  passwordHash  String?   @map("password_hash")
   emailVerified DateTime? @map("email_verified")
   lastLoginAt   DateTime? @map("last_login_at")
-  isActive      Boolean  @default(true) @map("is_active")
-  
+  isActive      Boolean   @default(true) @map("is_active")
+
   // Super admin flag (platform-wide access)
-  isSuperAdmin  Boolean  @default(false) @map("is_super_admin")
-  
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  isSuperAdmin Boolean @default(false) @map("is_super_admin")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // User preferences
-  preferences   Json     @default("{}")
+  preferences   Json @default("{}")
   // Notification settings
-  notifications Json     @default("{\"email\": true, \"push\": true}")
+  notifications Json @default("{\"email\": true, \"push\": true}")
 
   // Relationships
-  organizationId String?      @map("organization_id")
+  organizationId String?       @map("organization_id")
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  roleId         String?      @map("role_id")
-  role           Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
-  
+  roleId         String?       @map("role_id")
+  role           Role?         @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
   cutlists         Cutlist[]
   parseJobs        ParseJob[]
   sessions         Session[]
   auditLogs        AuditLog[]
-  invitationsSent  Invitation[] @relation("InvitedBy")
+  invitationsSent  Invitation[]      @relation("InvitedBy")
   parseCorrections ParseCorrection[]
   ocrJobs          OcrJob[]
 
@@ -109,7 +111,7 @@ model User {
 
 model Role {
   id          String   @id @default(cuid())
-  name        String   // org_admin, manager, operator, viewer
+  name        String // org_admin, manager, operator, viewer
   displayName String   @map("display_name")
   description String?
   isSystem    Boolean  @default(false) @map("is_system") // System roles can't be deleted
@@ -127,13 +129,13 @@ model Role {
 }
 
 model Invitation {
-  id        String   @id @default(cuid())
-  email     String
-  token     String   @unique
-  roleId    String   @map("role_id")
-  expiresAt DateTime @map("expires_at")
+  id         String    @id @default(cuid())
+  email      String
+  token      String    @unique
+  roleId     String    @map("role_id")
+  expiresAt  DateTime  @map("expires_at")
   acceptedAt DateTime? @map("accepted_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   // Relationships
   organizationId String       @map("organization_id")
@@ -174,7 +176,7 @@ model Session {
 
 model AuditLog {
   id         String   @id @default(cuid())
-  action     String   // user.login, cutlist.create, settings.update, etc.
+  action     String // user.login, cutlist.create, settings.update, etc.
   entityType String?  @map("entity_type") // cutlist, user, organization, etc.
   entityId   String?  @map("entity_id")
   metadata   Json?
@@ -212,18 +214,18 @@ model PlatformSettings {
 // ============================================================
 
 model Material {
-  id            String   @id @default(cuid())
-  materialId    String   @map("material_id") // User-facing ID (e.g., "MAT-WHITE-18")
-  name          String
-  sku           String?
-  thicknessMm   Float    @map("thickness_mm")
-  coreType      String?  @map("core_type") // PB, MDF, PLY, HDF, OTHER
-  finish        String?
-  colorCode     String?  @map("color_code")
-  defaultSheet  Json?    @map("default_sheet") // { size: { L, W }, grained }
-  meta          Json?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(cuid())
+  materialId   String   @map("material_id") // User-facing ID (e.g., "MAT-WHITE-18")
+  name         String
+  sku          String?
+  thicknessMm  Float    @map("thickness_mm")
+  coreType     String?  @map("core_type") // PB, MDF, PLY, HDF, OTHER
+  finish       String?
+  colorCode    String?  @map("color_code")
+  defaultSheet Json?    @map("default_sheet") // { size: { L, W }, grained }
+  meta         Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   // Relationships
   organizationId String       @map("organization_id")
@@ -283,10 +285,10 @@ model Cutlist {
   cncLibrary Json? @map("cnc_library")
 
   // Relationships
-  organizationId   String       @map("organization_id")
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userId           String?      @map("user_id")
-  user             User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organizationId   String            @map("organization_id")
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId           String?           @map("user_id")
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   parts            CutPart[]
   parseJobs        ParseJob[]
   optimizeJobs     OptimizeJob[]
@@ -306,18 +308,18 @@ model Cutlist {
 }
 
 model CutPart {
-  id          String   @id @default(cuid())
-  partId      String   @map("part_id") // User-facing part ID
-  label       String?
-  family      String?  // panel, door, drawer_box, face_frame, filler, misc
-  qty         Int
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  partId    String   @map("part_id") // User-facing part ID
+  label     String?
+  family    String? // panel, door, drawer_box, face_frame, filler, misc
+  qty       Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Dimensions (stored as JSON for flexibility)
-  sizeL       Float    @map("size_l") // Length in mm
-  sizeW       Float    @map("size_w") // Width in mm
-  thicknessMm Float    @map("thickness_mm")
+  sizeL       Float @map("size_l") // Length in mm
+  sizeW       Float @map("size_w") // Width in mm
+  thicknessMm Float @map("thickness_mm")
 
   // Material & orientation
   materialRef   String  @map("material_ref") // Reference to material_id
@@ -325,8 +327,8 @@ model CutPart {
   allowRotation Boolean @default(true) @map("allow_rotation")
 
   // Grouping
-  groupId  String? @map("group_id")
-  subGroup String? @map("sub_group")
+  groupId  String?  @map("group_id")
+  subGroup String?  @map("sub_group")
   priority Int?
   tags     String[] @default([])
 
@@ -340,9 +342,9 @@ model CutPart {
   audit Json? // { source_method, confidence, warnings, errors, human_verified }
 
   // Relationships
-  cutlistId  String   @map("cutlist_id")
-  cutlist    Cutlist  @relation(fields: [cutlistId], references: [id], onDelete: Cascade)
-  materialId String?  @map("material_id")
+  cutlistId  String    @map("cutlist_id")
+  cutlist    Cutlist   @relation(fields: [cutlistId], references: [id], onDelete: Cascade)
+  materialId String?   @map("material_id")
   material   Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
 
   @@unique([cutlistId, partId])
@@ -356,10 +358,10 @@ model CutPart {
 // ============================================================
 
 model ParseJob {
-  id          String   @id @default(cuid())
-  status      String   @default("queued") // queued, processing, completed, failed, cancelled
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id          String    @id @default(cuid())
+  status      String    @default("queued") // queued, processing, completed, failed, cancelled
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
   completedAt DateTime? @map("completed_at")
 
   // Source information
@@ -375,14 +377,14 @@ model ParseJob {
   summary      Json? // { parsed_parts, confidence_avg, warnings, errors }
 
   // Relationships
-  organizationId   String       @map("organization_id")
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userId           String?      @map("user_id")
-  user             User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  cutlistId        String?      @map("cutlist_id")
-  cutlist          Cutlist?     @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
-  fileId           String?      @map("file_id")
-  file             UploadedFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  organizationId   String            @map("organization_id")
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId           String?           @map("user_id")
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  cutlistId        String?           @map("cutlist_id")
+  cutlist          Cutlist?          @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
+  fileId           String?           @map("file_id")
+  file             UploadedFile?     @relation(fields: [fileId], references: [id], onDelete: SetNull)
   parseCorrections ParseCorrection[]
 
   @@index([organizationId])
@@ -409,13 +411,13 @@ model UploadedFile {
   // Relationships
   organizationId String       @map("organization_id")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  
+
   // Link to cutlist (for source files)
-  cutlistId      String?      @map("cutlist_id")
-  cutlist        Cutlist?     @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
-  
-  parseJobs      ParseJob[]
-  ocrJobs        OcrJob[]
+  cutlistId String?  @map("cutlist_id")
+  cutlist   Cutlist? @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
+
+  parseJobs ParseJob[]
+  ocrJobs   OcrJob[]
 
   @@index([organizationId])
   @@index([cutlistId])
@@ -461,7 +463,7 @@ model OptimizeJob {
 
 model Export {
   id          String    @id @default(cuid())
-  format      String    // json:cai_cutlist_v1, csv:maxcut, csv:cutlist_plus, xlsx
+  format      String // json:cai_cutlist_v1, csv:maxcut, csv:cutlist_plus, xlsx
   status      String    @default("completed") // queued, processing, completed, failed
   downloadUrl String?   @map("download_url")
   expiresAt   DateTime? @map("expires_at")
@@ -483,16 +485,16 @@ model Export {
 // ============================================================
 
 model Template {
-  id           String   @id @default(cuid())
-  templateId   String   @map("template_id") // User-facing ID with QR code
-  name         String
-  kind         String   // pdf_cutlist_form, xlsx_cutlist_form
-  version      Int      @default(1)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(cuid())
+  templateId String   @map("template_id") // User-facing ID with QR code
+  name       String
+  kind       String // pdf_cutlist_form, xlsx_cutlist_form
+  version    Int      @default(1)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   // Template configuration
-  capabilities Json @default("{\"core_parts\": true}")
+  capabilities Json  @default("{\"core_parts\": true}")
   layoutConfig Json? @map("layout_config") // Field positions, etc.
 
   // Generated file
@@ -511,22 +513,22 @@ model Template {
 // ============================================================
 
 model ParserPattern {
-  id              String    @id @default(cuid())
-  patternType     String    @map("pattern_type") // dimension_format, edge_notation, column_order, quantity_format
-  inputPattern    String    @map("input_pattern") // Regex or example pattern
-  outputMapping   Json      @map("output_mapping") // How to interpret the pattern
-  description     String?
-  confidence      Float     @default(0.5)
-  usageCount      Int       @default(0) @map("usage_count")
-  successCount    Int       @default(0) @map("success_count")
-  lastUsedAt      DateTime? @map("last_used_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id            String    @id @default(cuid())
+  patternType   String    @map("pattern_type") // dimension_format, edge_notation, column_order, quantity_format
+  inputPattern  String    @map("input_pattern") // Regex or example pattern
+  outputMapping Json      @map("output_mapping") // How to interpret the pattern
+  description   String?
+  confidence    Float     @default(0.5)
+  usageCount    Int       @default(0) @map("usage_count")
+  successCount  Int       @default(0) @map("success_count")
+  lastUsedAt    DateTime? @map("last_used_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   // Relationships
-  organizationId  String?      @map("organization_id") // null = global pattern
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  corrections     ParseCorrection[]
+  organizationId String?           @map("organization_id") // null = global pattern
+  organization   Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  corrections    ParseCorrection[]
 
   @@index([organizationId])
   @@index([patternType])
@@ -535,19 +537,19 @@ model ParserPattern {
 }
 
 model MaterialMapping {
-  id              String    @id @default(cuid())
-  rawName         String    @map("raw_name") // What user typed: "PB BLACK CHERRY"
-  normalizedName  String    @map("normalized_name") // Cleaned version for matching
-  materialId      String    @map("material_id") // Canonical material ID
-  thicknessMm     Float?    @map("thickness_mm")
-  confidence      Float     @default(0.5)
-  usageCount      Int       @default(0) @map("usage_count")
-  lastUsedAt      DateTime? @map("last_used_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id             String    @id @default(cuid())
+  rawName        String    @map("raw_name") // What user typed: "PB BLACK CHERRY"
+  normalizedName String    @map("normalized_name") // Cleaned version for matching
+  materialId     String    @map("material_id") // Canonical material ID
+  thicknessMm    Float?    @map("thickness_mm")
+  confidence     Float     @default(0.5)
+  usageCount     Int       @default(0) @map("usage_count")
+  lastUsedAt     DateTime? @map("last_used_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   // Relationships
-  organizationId  String?      @map("organization_id")
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, normalizedName])
   @@index([organizationId])
@@ -575,9 +577,9 @@ model ClientTemplate {
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
   // Relationships
-  organizationId  String?      @map("organization_id")
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  ocrJobs         OcrJob[]
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ocrJobs        OcrJob[]
 
   @@index([organizationId])
   @@index([clientName])
@@ -585,30 +587,30 @@ model ClientTemplate {
 }
 
 model ParseCorrection {
-  id              String   @id @default(cuid())
-  correctionType  String   @map("correction_type") // dimension, quantity, material, label, edge_banding, groove, cnc, rotation, grain, complete_reject
-  fieldPath       String?  @map("field_path") // JSON path to the field
-  originalValue   Json?    @map("original_value")
-  correctedValue  Json?    @map("corrected_value")
-  originalPart    Json?    @map("original_part")
-  correctedPart   Json?    @map("corrected_part")
-  sourceText      String?  @map("source_text")
-  sourceLineNumber Int?    @map("source_line_number")
-  sourceFileName  String?  @map("source_file_name")
-  patternExtracted Boolean @default(false) @map("pattern_extracted")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id               String   @id @default(cuid())
+  correctionType   String   @map("correction_type") // dimension, quantity, material, label, edge_banding, groove, cnc, rotation, grain, complete_reject
+  fieldPath        String?  @map("field_path") // JSON path to the field
+  originalValue    Json?    @map("original_value")
+  correctedValue   Json?    @map("corrected_value")
+  originalPart     Json?    @map("original_part")
+  correctedPart    Json?    @map("corrected_part")
+  sourceText       String?  @map("source_text")
+  sourceLineNumber Int?     @map("source_line_number")
+  sourceFileName   String?  @map("source_file_name")
+  patternExtracted Boolean  @default(false) @map("pattern_extracted")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   // Relationships
-  organizationId  String?       @map("organization_id")
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userId          String?       @map("user_id")
-  user            User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  parseJobId      String?       @map("parse_job_id")
-  parseJob        ParseJob?     @relation(fields: [parseJobId], references: [id], onDelete: SetNull)
-  cutlistId       String?       @map("cutlist_id")
-  cutlist         Cutlist?      @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
-  patternId       String?       @map("pattern_id")
-  pattern         ParserPattern? @relation(fields: [patternId], references: [id], onDelete: SetNull)
+  organizationId String?        @map("organization_id")
+  organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?        @map("user_id")
+  user           User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  parseJobId     String?        @map("parse_job_id")
+  parseJob       ParseJob?      @relation(fields: [parseJobId], references: [id], onDelete: SetNull)
+  cutlistId      String?        @map("cutlist_id")
+  cutlist        Cutlist?       @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
+  patternId      String?        @map("pattern_id")
+  pattern        ParserPattern? @relation(fields: [patternId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([userId])
@@ -622,43 +624,43 @@ model ParseCorrection {
 // ============================================================
 
 model OcrJob {
-  id              String    @id @default(cuid())
-  filename        String
-  fileType        String?   @map("file_type") // pdf, image
-  fileSizeBytes   BigInt?   @map("file_size_bytes")
-  storagePath     String?   @map("storage_path")
-  provider        String    @default("openai") // openai, anthropic
-  status          String    @default("queued") // queued, uploading, processing, parsing, complete, error
-  totalPages      Int       @default(1) @map("total_pages")
-  currentPage     Int       @default(0) @map("current_page")
-  pagesProcessed  Int       @default(0) @map("pages_processed")
-  progressPercent Int       @default(0) @map("progress_percent")
-  stage           String?
-  extractedText   String?   @map("extracted_text")
-  detectedFormat  String?   @map("detected_format") // tabular, handwritten, mixed
-  partsCount      Int       @default(0) @map("parts_count")
-  confidence      Float?
-  learningApplied Boolean   @default(false) @map("learning_applied")
-  startedAt       DateTime? @map("started_at")
-  completedAt     DateTime? @map("completed_at")
-  processingTimeMs Int?     @map("processing_time_ms")
-  errorMessage    String?   @map("error_message")
-  retryCount      Int       @default(0) @map("retry_count")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id               String    @id @default(cuid())
+  filename         String
+  fileType         String?   @map("file_type") // pdf, image
+  fileSizeBytes    BigInt?   @map("file_size_bytes")
+  storagePath      String?   @map("storage_path")
+  provider         String    @default("openai") // openai, anthropic
+  status           String    @default("queued") // queued, uploading, processing, parsing, complete, error
+  totalPages       Int       @default(1) @map("total_pages")
+  currentPage      Int       @default(0) @map("current_page")
+  pagesProcessed   Int       @default(0) @map("pages_processed")
+  progressPercent  Int       @default(0) @map("progress_percent")
+  stage            String?
+  extractedText    String?   @map("extracted_text")
+  detectedFormat   String?   @map("detected_format") // tabular, handwritten, mixed
+  partsCount       Int       @default(0) @map("parts_count")
+  confidence       Float?
+  learningApplied  Boolean   @default(false) @map("learning_applied")
+  startedAt        DateTime? @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+  processingTimeMs Int?      @map("processing_time_ms")
+  errorMessage     String?   @map("error_message")
+  retryCount       Int       @default(0) @map("retry_count")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   // Relationships
-  organizationId     String?        @map("organization_id")
-  organization       Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userId             String?        @map("user_id")
-  user               User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  fileId             String?        @map("file_id")
-  file               UploadedFile?  @relation(fields: [fileId], references: [id], onDelete: SetNull)
-  cutlistId          String?        @map("cutlist_id")
-  cutlist            Cutlist?       @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
-  clientTemplateId   String?        @map("client_template_id")
-  clientTemplate     ClientTemplate? @relation(fields: [clientTemplateId], references: [id], onDelete: SetNull)
-  pageResults        OcrPageResult[]
+  organizationId   String?         @map("organization_id")
+  organization     Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId           String?         @map("user_id")
+  user             User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fileId           String?         @map("file_id")
+  file             UploadedFile?   @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  cutlistId        String?         @map("cutlist_id")
+  cutlist          Cutlist?        @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
+  clientTemplateId String?         @map("client_template_id")
+  clientTemplate   ClientTemplate? @relation(fields: [clientTemplateId], references: [id], onDelete: SetNull)
+  pageResults      OcrPageResult[]
 
   @@index([organizationId])
   @@index([userId])
@@ -668,14 +670,14 @@ model OcrJob {
 }
 
 model OcrPageResult {
-  id              String   @id @default(cuid())
-  pageNumber      Int      @map("page_number")
-  extractedText   String?  @map("extracted_text")
-  confidence      Float?
-  partsCount      Int      @default(0) @map("parts_count")
-  partsData       Json?    @map("parts_data")
-  processingTimeMs Int?    @map("processing_time_ms")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id               String   @id @default(cuid())
+  pageNumber       Int      @map("page_number")
+  extractedText    String?  @map("extracted_text")
+  confidence       Float?
+  partsCount       Int      @default(0) @map("parts_count")
+  partsData        Json?    @map("parts_data")
+  processingTimeMs Int?     @map("processing_time_ms")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   // Relationships
   ocrJobId String @map("ocr_job_id")
@@ -691,42 +693,42 @@ model OcrPageResult {
 // ============================================================
 
 model HolePattern {
-  id               String   @id @default(cuid())
-  patternId        String   @map("pattern_id")
-  name             String
-  description      String?
-  
+  id          String  @id @default(cuid())
+  patternId   String  @map("pattern_id")
+  name        String
+  description String?
+
   // Pattern type
-  kind             String   // hinge, shelf_pins, handle, knob, drawer_slide, cam_lock, dowel, system32, custom
-  
+  kind String // hinge, shelf_pins, handle, knob, drawer_slide, cam_lock, dowel, system32, custom
+
   // Hole specifications (JSONB array)
   // Each hole: { x: number, y: number, dia_mm: number, depth_mm?: number, through?: boolean }
-  holes            Json     @default("[]")
-  
+  holes Json @default("[]")
+
   // Reference positioning
-  refEdge          String?  @map("ref_edge") // L1, L2, W1, W2
-  refCorner        String?  @map("ref_corner") // top_left, top_right, bottom_left, bottom_right
-  
+  refEdge   String? @map("ref_edge") // L1, L2, W1, W2
+  refCorner String? @map("ref_corner") // top_left, top_right, bottom_left, bottom_right
+
   // Parametric settings for System 32
-  parametricConfig Json?    @map("parametric_config")
-  
+  parametricConfig Json? @map("parametric_config")
+
   // Hardware reference
-  hardwareId       String?  @map("hardware_id")
-  hardwareBrand    String?  @map("hardware_brand")
-  hardwareModel    String?  @map("hardware_model")
-  
+  hardwareId    String? @map("hardware_id")
+  hardwareBrand String? @map("hardware_brand")
+  hardwareModel String? @map("hardware_model")
+
   // Metadata
-  isSystem         Boolean  @default(false) @map("is_system")
-  isActive         Boolean  @default(true) @map("is_active")
-  usageCount       Int      @default(0) @map("usage_count")
-  metadata         Json?
-  
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  isSystem   Boolean @default(false) @map("is_system")
+  isActive   Boolean @default(true) @map("is_active")
+  usageCount Int     @default(0) @map("usage_count")
+  metadata   Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  organizationId   String       @map("organization_id")
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, patternId])
   @@index([organizationId])
@@ -736,44 +738,44 @@ model HolePattern {
 }
 
 model GrooveProfile {
-  id                     String   @id @default(cuid())
-  profileId              String   @map("profile_id")
-  name                   String
-  description            String?
-  
+  id          String  @id @default(cuid())
+  profileId   String  @map("profile_id")
+  name        String
+  description String?
+
   // Groove specifications
-  widthMm                Float    @map("width_mm")
-  depthMm                Float    @map("depth_mm")
-  
+  widthMm Float @map("width_mm")
+  depthMm Float @map("depth_mm")
+
   // Purpose/type
-  purpose                String?  // back_panel, drawer_bottom, light_profile, glass_panel, divider, custom
-  
+  purpose String? // back_panel, drawer_bottom, light_profile, glass_panel, divider, custom
+
   // Default positioning
-  defaultOffsetMm        Float?   @default(10) @map("default_offset_mm")
-  defaultFace            String?  @default("back") @map("default_face") // front, back
-  
+  defaultOffsetMm Float?  @default(10) @map("default_offset_mm")
+  defaultFace     String? @default("back") @map("default_face") // front, back
+
   // Stopped groove settings
-  allowStopped           Boolean  @default(true) @map("allow_stopped")
-  defaultStartOffsetMm   Float?   @default(0) @map("default_start_offset_mm")
-  defaultEndOffsetMm     Float?   @default(0) @map("default_end_offset_mm")
-  
+  allowStopped         Boolean @default(true) @map("allow_stopped")
+  defaultStartOffsetMm Float?  @default(0) @map("default_start_offset_mm")
+  defaultEndOffsetMm   Float?  @default(0) @map("default_end_offset_mm")
+
   // Tooling
-  toolDiaMm              Float?   @map("tool_dia_mm")
-  toolId                 String?  @map("tool_id")
-  feedRate               Int?     @map("feed_rate")
-  
+  toolDiaMm Float?  @map("tool_dia_mm")
+  toolId    String? @map("tool_id")
+  feedRate  Int?    @map("feed_rate")
+
   // Metadata
-  isSystem               Boolean  @default(false) @map("is_system")
-  isActive               Boolean  @default(true) @map("is_active")
-  usageCount             Int      @default(0) @map("usage_count")
-  metadata               Json?
-  
-  createdAt              DateTime @default(now()) @map("created_at")
-  updatedAt              DateTime @updatedAt @map("updated_at")
+  isSystem   Boolean @default(false) @map("is_system")
+  isActive   Boolean @default(true) @map("is_active")
+  usageCount Int     @default(0) @map("usage_count")
+  metadata   Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  organizationId         String       @map("organization_id")
-  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, profileId])
   @@index([organizationId])
@@ -783,42 +785,42 @@ model GrooveProfile {
 }
 
 model RoutingProfile {
-  id               String   @id @default(cuid())
-  profileId        String   @map("profile_id")
-  name             String
-  description      String?
-  
+  id          String  @id @default(cuid())
+  profileId   String  @map("profile_id")
+  name        String
+  description String?
+
   // Profile type
-  profileType      String   @map("profile_type") // edge_profile, pocket, cutout, rebate, chamfer, radius, contour, drill_array, text, custom
-  
+  profileType String @map("profile_type") // edge_profile, pocket, cutout, rebate, chamfer, radius, contour, drill_array, text, custom
+
   // Profile specifications (JSONB for flexibility)
-  specifications   Json     @default("{}")
-  
+  specifications Json @default("{}")
+
   // Tooling
-  toolDiaMm        Float?   @map("tool_dia_mm")
-  toolId           String?  @map("tool_id")
-  toolType         String?  @map("tool_type") // straight, spiral_up, spiral_down, compression, vbit, ballnose, ogee
-  feedRate         Int?     @map("feed_rate")
-  plungeRate       Int?     @map("plunge_rate")
-  spindleSpeed     Int?     @map("spindle_speed")
-  stepDownMm       Float?   @map("step_down_mm")
-  
+  toolDiaMm    Float?  @map("tool_dia_mm")
+  toolId       String? @map("tool_id")
+  toolType     String? @map("tool_type") // straight, spiral_up, spiral_down, compression, vbit, ballnose, ogee
+  feedRate     Int?    @map("feed_rate")
+  plungeRate   Int?    @map("plunge_rate")
+  spindleSpeed Int?    @map("spindle_speed")
+  stepDownMm   Float?  @map("step_down_mm")
+
   // Output/export
-  dxfLayer         String?  @map("dxf_layer")
-  gcodeTemplate    String?  @map("gcode_template")
-  
+  dxfLayer      String? @map("dxf_layer")
+  gcodeTemplate String? @map("gcode_template")
+
   // Metadata
-  isSystem         Boolean  @default(false) @map("is_system")
-  isActive         Boolean  @default(true) @map("is_active")
-  usageCount       Int      @default(0) @map("usage_count")
-  metadata         Json?
-  
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  isSystem   Boolean @default(false) @map("is_system")
+  isActive   Boolean @default(true) @map("is_active")
+  usageCount Int     @default(0) @map("usage_count")
+  metadata   Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  organizationId   String       @map("organization_id")
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, profileId])
   @@index([organizationId])
@@ -832,186 +834,284 @@ model RoutingProfile {
 // ============================================================
 
 model Plan {
-  id                    String   @id // free, starter, professional, enterprise
-  name                  String
-  description           String?
-  priceMonthly          Int      @default(0) @map("price_monthly_cents")
-  priceYearly           Int      @default(0) @map("price_yearly_cents")
-  currency              String   @default("USD")
-  
+  id           String  @id // free, starter, professional, enterprise
+  name         String
+  description  String?
+  priceMonthly Int     @default(0) @map("price_monthly_cents")
+  priceYearly  Int     @default(0) @map("price_yearly_cents")
+  currency     String  @default("USD")
+
   // Stripe integration
-  stripeProductId       String?  @map("stripe_product_id")
-  stripePriceIdMonthly  String?  @map("stripe_price_id_monthly")
-  stripePriceIdYearly   String?  @map("stripe_price_id_yearly")
-  
+  stripeProductId      String? @map("stripe_product_id")
+  stripePriceIdMonthly String? @map("stripe_price_id_monthly")
+  stripePriceIdYearly  String? @map("stripe_price_id_yearly")
+
   // Limits stored as JSON for flexibility
-  limits                Json     @default("{}")
-  
+  limits Json @default("{}")
+
   // Display
-  badge                 String?
-  highlighted           Boolean  @default(false)
-  displayOrder          Int      @default(0) @map("display_order")
-  isActive              Boolean  @default(true) @map("is_active")
-  
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-  
+  badge        String?
+  highlighted  Boolean @default(false)
+  displayOrder Int     @default(0) @map("display_order")
+  isActive     Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // Relationships
-  subscriptions         Subscription[]
-  
+  subscriptions Subscription[]
+
   @@map("plans")
 }
 
 model Subscription {
-  id                    String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Status
-  status                String   @default("active") // active, trialing, past_due, canceled, unpaid, incomplete, paused
-  
+  status String @default("active") // active, trialing, past_due, canceled, unpaid, incomplete, paused
+
   // Billing
-  billingInterval       String   @default("monthly") @map("billing_interval") // monthly, yearly
-  currentPeriodStart    DateTime? @map("current_period_start")
-  currentPeriodEnd      DateTime? @map("current_period_end")
-  
+  billingInterval    String    @default("monthly") @map("billing_interval") // monthly, yearly
+  currentPeriodStart DateTime? @map("current_period_start")
+  currentPeriodEnd   DateTime? @map("current_period_end")
+
   // Trial
-  trialStart            DateTime? @map("trial_start")
-  trialEnd              DateTime? @map("trial_end")
-  
+  trialStart DateTime? @map("trial_start")
+  trialEnd   DateTime? @map("trial_end")
+
   // Cancellation
-  cancelAtPeriodEnd     Boolean  @default(false) @map("cancel_at_period_end")
-  canceledAt            DateTime? @map("canceled_at")
-  endedAt               DateTime? @map("ended_at")
-  
+  cancelAtPeriodEnd Boolean   @default(false) @map("cancel_at_period_end")
+  canceledAt        DateTime? @map("canceled_at")
+  endedAt           DateTime? @map("ended_at")
+
   // Stripe integration
-  stripeCustomerId      String?  @unique @map("stripe_customer_id")
-  stripeSubscriptionId  String?  @unique @map("stripe_subscription_id")
-  
+  stripeCustomerId     String? @unique @map("stripe_customer_id")
+  stripeSubscriptionId String? @unique @map("stripe_subscription_id")
+
   // Metadata
-  metadata              Json     @default("{}")
-  
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-  
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // Relationships
-  organizationId        String   @unique @map("organization_id")
-  planId                String   @map("plan_id")
-  plan                  Plan     @relation(fields: [planId], references: [id])
-  
-  invoices              Invoice[]
-  
+  organizationId String @unique @map("organization_id")
+  planId         String @map("plan_id")
+  plan           Plan   @relation(fields: [planId], references: [id])
+
+  invoices Invoice[]
+
   @@index([status])
   @@map("subscriptions")
 }
 
 model SubscriptionUsage {
-  id                    String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Period
-  periodStart           DateTime @map("period_start")
-  periodEnd             DateTime @map("period_end")
-  
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+
   // Usage counters
-  cutlistsCreated       Int      @default(0) @map("cutlists_created")
-  partsProcessed        Int      @default(0) @map("parts_processed")
-  aiParsesUsed          Int      @default(0) @map("ai_parses_used")
-  ocrPagesUsed          Int      @default(0) @map("ocr_pages_used")
-  optimizationsRun      Int      @default(0) @map("optimizations_run")
-  storageUsedMb         Float    @default(0) @map("storage_used_mb")
-  
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-  
+  cutlistsCreated  Int   @default(0) @map("cutlists_created")
+  partsProcessed   Int   @default(0) @map("parts_processed")
+  aiParsesUsed     Int   @default(0) @map("ai_parses_used")
+  ocrPagesUsed     Int   @default(0) @map("ocr_pages_used")
+  optimizationsRun Int   @default(0) @map("optimizations_run")
+  storageUsedMb    Float @default(0) @map("storage_used_mb")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // Relationships
-  organizationId        String   @map("organization_id")
-  
+  organizationId String @map("organization_id")
+
   @@unique([organizationId, periodStart])
   @@index([organizationId])
   @@map("subscription_usage")
 }
 
 model PaymentMethod {
-  id                    String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Stripe payment method
-  stripePaymentMethodId String   @unique @map("stripe_payment_method_id")
-  type                  String   // card, bank_account, etc.
-  
+  stripePaymentMethodId String @unique @map("stripe_payment_method_id")
+  type                  String // card, bank_account, etc.
+
   // Card details
-  cardBrand             String?  @map("card_brand")
-  cardLast4             String?  @map("card_last4")
-  cardExpMonth          Int?     @map("card_exp_month")
-  cardExpYear           Int?     @map("card_exp_year")
-  
-  isDefault             Boolean  @default(false) @map("is_default")
-  
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-  
+  cardBrand    String? @map("card_brand")
+  cardLast4    String? @map("card_last4")
+  cardExpMonth Int?    @map("card_exp_month")
+  cardExpYear  Int?    @map("card_exp_year")
+
+  isDefault Boolean @default(false) @map("is_default")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // Relationships
-  organizationId        String   @map("organization_id")
-  
+  organizationId String @map("organization_id")
+
   @@index([organizationId])
   @@map("payment_methods")
 }
 
 model Invoice {
-  id                    String   @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Stripe invoice
-  stripeInvoiceId       String?  @unique @map("stripe_invoice_id")
-  invoiceNumber         String?  @map("invoice_number")
-  
+  stripeInvoiceId String? @unique @map("stripe_invoice_id")
+  invoiceNumber   String? @map("invoice_number")
+
   // Amounts (in cents)
-  subtotalCents         Int      @default(0) @map("subtotal_cents")
-  taxCents              Int      @default(0) @map("tax_cents")
-  totalCents            Int      @default(0) @map("total_cents")
-  amountPaidCents       Int      @default(0) @map("amount_paid_cents")
-  amountDueCents        Int      @default(0) @map("amount_due_cents")
-  currency              String   @default("USD")
-  
+  subtotalCents   Int    @default(0) @map("subtotal_cents")
+  taxCents        Int    @default(0) @map("tax_cents")
+  totalCents      Int    @default(0) @map("total_cents")
+  amountPaidCents Int    @default(0) @map("amount_paid_cents")
+  amountDueCents  Int    @default(0) @map("amount_due_cents")
+  currency        String @default("USD")
+
   // Status
-  status                String   // draft, open, paid, void, uncollectible
-  
+  status String // draft, open, paid, void, uncollectible
+
   // URLs
-  hostedInvoiceUrl      String?  @map("hosted_invoice_url")
-  invoicePdfUrl         String?  @map("invoice_pdf_url")
-  
+  hostedInvoiceUrl String? @map("hosted_invoice_url")
+  invoicePdfUrl    String? @map("invoice_pdf_url")
+
   // Dates
-  periodStart           DateTime? @map("period_start")
-  periodEnd             DateTime? @map("period_end")
-  dueDate               DateTime? @map("due_date")
-  paidAt                DateTime? @map("paid_at")
-  
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-  
+  periodStart DateTime? @map("period_start")
+  periodEnd   DateTime? @map("period_end")
+  dueDate     DateTime? @map("due_date")
+  paidAt      DateTime? @map("paid_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // Relationships
-  organizationId        String   @map("organization_id")
-  subscriptionId        String?  @map("subscription_id")
-  subscription          Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  
+  organizationId String        @map("organization_id")
+  subscriptionId String?       @map("subscription_id")
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
   @@index([organizationId])
   @@index([status])
   @@map("invoices")
 }
 
 model FeatureOverride {
-  id                    String   @id @default(cuid())
-  
-  featureKey            String   @map("feature_key")
-  overrideValue         Json     @map("override_value")
-  
-  reason                String?
-  expiresAt             DateTime? @map("expires_at")
-  
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-  
+  id String @id @default(cuid())
+
+  featureKey    String @map("feature_key")
+  overrideValue Json   @map("override_value")
+
+  reason    String?
+  expiresAt DateTime? @map("expires_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // Relationships
-  organizationId        String   @map("organization_id")
-  createdById           String?  @map("created_by")
-  
+  organizationId String  @map("organization_id")
+  createdById    String? @map("created_by")
+
   @@unique([organizationId, featureKey])
   @@index([organizationId])
   @@map("feature_overrides")
+}
+
+// ============================================================
+// TRAINING & ACCURACY TRACKING
+// ============================================================
+
+/// Training examples with verified correct output for few-shot learning
+model TrainingExample {
+  id String @id @default(cuid())
+
+  // Source data
+  sourceType     String  @map("source_type") // "pdf", "image", "text", "csv"
+  sourceText     String  @map("source_text") @db.Text // Raw extracted text
+  sourceFileName String? @map("source_file_name")
+  sourceFileHash String? @map("source_file_hash") // For deduplication
+
+  // Ground truth output
+  correctParts    Json  @map("correct_parts") // Array of verified correct CutPart objects
+  correctMetadata Json? @map("correct_metadata") // Job name, client, material defaults
+
+  // Classification for matching
+  category   String? // "kitchen", "bedroom", "office", "commercial", etc.
+  difficulty String  @default("medium") // "easy", "medium", "hard"
+  clientName String? @map("client_name") // For client-specific learning
+
+  // Text features for similarity matching
+  hasHeaders        Boolean @default(true) @map("has_headers")
+  columnCount       Int?    @map("column_count")
+  rowCount          Int?    @map("row_count")
+  hasEdgeNotation   Boolean @default(false) @map("has_edge_notation")
+  hasGrooveNotation Boolean @default(false) @map("has_groove_notation")
+
+  // Quality metrics
+  usageCount   Int       @default(0) @map("usage_count")
+  successCount Int       @default(0) @map("success_count")
+  lastUsedAt   DateTime? @map("last_used_at")
+
+  // Audit
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdById String?  @map("created_by")
+
+  // Relationships
+  organizationId String?       @map("organization_id") // null = global example
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([category])
+  @@index([clientName])
+  @@index([difficulty])
+  @@index([sourceFileHash])
+  @@index([successCount(sort: Desc)])
+  @@map("training_examples")
+}
+
+/// Track parsing accuracy over time for analytics and improvement
+model ParsingAccuracyLog {
+  id String @id @default(cuid())
+
+  // What was parsed
+  parseJobId String? @map("parse_job_id")
+  provider   String // "claude", "gpt", "python_ocr", "pdf-parse"
+  sourceType String? @map("source_type") // "pdf", "image", "text"
+
+  // Overall metrics
+  totalParts   Int   @map("total_parts")
+  correctParts Int   @map("correct_parts")
+  accuracy     Float // Overall accuracy (0.0 - 1.0)
+
+  // Detailed breakdown per field
+  dimensionAccuracy Float? @map("dimension_accuracy")
+  materialAccuracy  Float? @map("material_accuracy")
+  edgingAccuracy    Float? @map("edging_accuracy")
+  groovingAccuracy  Float? @map("grooving_accuracy")
+  quantityAccuracy  Float? @map("quantity_accuracy")
+  labelAccuracy     Float? @map("label_accuracy")
+
+  // What helped (for correlation analysis)
+  fewShotExamplesUsed Int     @default(0) @map("few_shot_examples_used")
+  patternsApplied     Int     @default(0) @map("patterns_applied")
+  clientTemplateUsed  Boolean @default(false) @map("client_template_used")
+
+  // Context
+  documentDifficulty String? @map("document_difficulty") // "easy", "medium", "hard"
+  clientName         String? @map("client_name")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([provider])
+  @@index([accuracy])
+  @@index([createdAt(sort: Desc)])
+  @@map("parsing_accuracy_logs")
 }

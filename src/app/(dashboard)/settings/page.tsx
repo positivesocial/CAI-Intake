@@ -29,6 +29,7 @@ import {
   Wrench,
   Code2,
   CreditCard,
+  Brain,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,14 @@ const SETTINGS_SECTIONS = [
     description: "Company logo, colors, and PDF templates",
     adminOnly: true,
     href: "/settings/branding",
+  },
+  {
+    id: "training",
+    label: "AI Training",
+    icon: Brain,
+    description: "Training examples and accuracy metrics",
+    adminOnly: true,
+    href: "/settings/training",
   },
   {
     id: "organization",
@@ -920,6 +929,30 @@ export default function SettingsPage() {
                         </h3>
                         <p className="text-[var(--muted-foreground)]">
                           Customize your company logo, colors, and PDF export templates
+                        </p>
+                      </div>
+                      <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+
+            {/* AI Training Section (Admin Only) */}
+            {activeSection === "training" && isOrgAdmin() && (
+              <Link href="/settings/training">
+                <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-lg bg-[var(--cai-teal)]/20 flex items-center justify-center">
+                        <Brain className="h-8 w-8 text-[var(--cai-teal)]" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold">
+                          AI Training & Accuracy
+                        </h3>
+                        <p className="text-[var(--muted-foreground)]">
+                          Manage training examples, view accuracy metrics, and improve parsing quality
                         </p>
                       </div>
                       <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />

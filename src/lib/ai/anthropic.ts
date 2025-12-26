@@ -82,10 +82,17 @@ export interface StreamingParseOptions extends ParseOptions {
 import {
   ANTHROPIC_SYSTEM_PROMPT,
   buildParsePrompt,
+  buildEnhancedParsePrompt,
   type AIPartResponse,
   validateAIPartResponse,
 } from "./prompts";
 import { logger } from "@/lib/logger";
+import { 
+  selectFewShotExamples, 
+  formatExamplesForPrompt, 
+  recordBatchUsage,
+  type TrainingExample 
+} from "@/lib/learning/few-shot";
 
 // ============================================================
 // ANTHROPIC PROVIDER
@@ -427,6 +434,7 @@ export class AnthropicProvider implements AIProvider {
 
   async parseText(text: string, options: ParseOptions): Promise<AIParseResult> {
     const startTime = Date.now();
+    let fewShotExamples: TrainingExample[] = [];
     
     try {
       const client = this.getClient();
@@ -456,8 +464,36 @@ export class AnthropicProvider implements AIProvider {
         textLength: text.length,
       });
       
-      // Standard single-request parsing for smaller documents
-      const prompt = buildParsePrompt({
+      // Select few-shot examples for better accuracy
+      try {
+        fewShotExamples = await selectFewShotExamples(
+          text,
+          options.organizationId,
+          {
+            maxExamples: 3,
+            needsEdgeExamples: options.extractMetadata,
+            needsGrooveExamples: options.extractMetadata,
+          }
+        );
+        
+        if (fewShotExamples.length > 0) {
+          logger.info("🎯 [Anthropic] Selected few-shot examples", {
+            count: fewShotExamples.length,
+            exampleIds: fewShotExamples.map(e => e.id),
+          });
+        }
+      } catch (fewShotError) {
+        logger.warn("⚠️ [Anthropic] Failed to load few-shot examples, continuing without", {
+          error: fewShotError instanceof Error ? fewShotError.message : "Unknown error",
+        });
+      }
+      
+      // Build enhanced prompt with few-shot examples
+      const fewShotPromptText = fewShotExamples.length > 0 
+        ? formatExamplesForPrompt(fewShotExamples) 
+        : undefined;
+      
+      const prompt = buildEnhancedParsePrompt({
         extractMetadata: options.extractMetadata,
         isMessyData: options.isMessyData ?? this.looksMessy(text),
         isPastedText: options.isPastedText ?? true,
@@ -465,6 +501,8 @@ export class AnthropicProvider implements AIProvider {
         templateConfig: options.templateConfig ? {
           fieldLayout: options.templateConfig.fieldLayout,
         } : undefined,
+        fewShotExamples: fewShotPromptText,
+        includeDetailedEdgeGuide: options.extractMetadata,
       });
 
       const response = await client.messages.create({
@@ -485,6 +523,7 @@ export class AnthropicProvider implements AIProvider {
       logger.debug("📥 [Anthropic] AI response received", {
         responseLength: rawResponse.length,
         preview: rawResponse.substring(0, 200),
+        fewShotExamplesUsed: fewShotExamples.length,
       });
       
       const parsed = parseAIResponseJSON<{ parts: AIPartResponse[] } | AIPartResponse[]>(rawResponse);
@@ -497,6 +536,12 @@ export class AnthropicProvider implements AIProvider {
           hasParts: !!(parsed as any)?.parts,
           rawResponsePreview: rawResponse.substring(0, 500),
         });
+        
+        // Record usage as unsuccessful
+        if (fewShotExamples.length > 0) {
+          recordBatchUsage(fewShotExamples.map(e => e.id), false).catch(() => {});
+        }
+        
         return {
           success: false,
           parts: [],
@@ -510,11 +555,27 @@ export class AnthropicProvider implements AIProvider {
       logger.info("✅ [Anthropic] Successfully parsed parts", {
         partsCount: parts.length,
         processingTimeMs: Date.now() - startTime,
+        fewShotExamplesUsed: fewShotExamples.length,
       });
+      
+      // Record usage as successful
+      if (fewShotExamples.length > 0) {
+        recordBatchUsage(fewShotExamples.map(e => e.id), true).catch(() => {});
+      }
 
-      return this.processResults(parts, rawResponse, startTime, options);
+      const result = this.processResults(parts, rawResponse, startTime, options);
+      
+      // Add metadata about few-shot examples used
+      (result as any).fewShotExamplesUsed = fewShotExamples.length;
+      
+      return result;
       
     } catch (error) {
+      // Record usage as unsuccessful on error
+      if (fewShotExamples.length > 0) {
+        recordBatchUsage(fewShotExamples.map(e => e.id), false).catch(() => {});
+      }
+      
       return {
         success: false,
         parts: [],
