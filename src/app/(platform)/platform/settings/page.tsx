@@ -133,13 +133,19 @@ export default function PlatformSettingsPage() {
   const [isSaving, setIsSaving] = React.useState(false);
   const [settings, setSettings] = React.useState(DEFAULT_SETTINGS);
   const [activeTab, setActiveTab] = React.useState("general");
+  const [mounted, setMounted] = React.useState(false);
 
-  // Redirect if not super admin
+  // Handle client-side mounting to prevent hydration mismatch
   React.useEffect(() => {
-    if (!isSuperAdmin()) {
+    setMounted(true);
+  }, []);
+
+  // Redirect if not super admin (only after mounted)
+  React.useEffect(() => {
+    if (mounted && !isSuperAdmin()) {
       router.push("/platform/login");
     }
-  }, [isSuperAdmin, router]);
+  }, [isSuperAdmin, router, mounted]);
 
   const handleLogout = async () => {
     await logout();
@@ -162,7 +168,8 @@ export default function PlatformSettingsPage() {
     }));
   };
 
-  if (!isSuperAdmin()) {
+  // Show loading state until mounted (prevents hydration mismatch)
+  if (!mounted || !isSuperAdmin()) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-white text-center">
@@ -503,6 +510,31 @@ export default function PlatformSettingsPage() {
                     />
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* AI Training Link */}
+            <Card className="border-purple-200 bg-purple-50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-purple-600" />
+                  AI Training & Accuracy
+                </CardTitle>
+                <CardDescription>
+                  Train the AI with real cutlist examples to improve parsing accuracy
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-slate-600 mb-4">
+                  Upload verified cutlists, review parsing accuracy metrics, and manage training examples
+                  to achieve near 100% accuracy in OCR and AI parsing.
+                </p>
+                <Link href="/settings/training">
+                  <Button className="bg-purple-600 hover:bg-purple-700">
+                    <Brain className="h-4 w-4 mr-2" />
+                    Open AI Training Dashboard
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           </TabsContent>

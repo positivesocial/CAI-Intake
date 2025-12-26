@@ -197,6 +197,7 @@ export default function PlatformDashboardPage() {
   const router = useRouter();
   const { user, logout, isSuperAdmin } = useAuthStore();
   
+  const [mounted, setMounted] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [data, setData] = React.useState<{
     stats: PlatformStats;
@@ -205,9 +206,15 @@ export default function PlatformDashboardPage() {
     recentActivity: ActivityItem[];
   } | null>(null);
 
-  // Fetch data on mount
+  // Handle client-side mounting to prevent hydration mismatch
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Fetch data on mount (only after mounted)
   React.useEffect(() => {
     async function loadData() {
+      if (!mounted) return;
       if (!isSuperAdmin()) {
         router.push("/platform/login");
         return;
@@ -218,14 +225,15 @@ export default function PlatformDashboardPage() {
       setLoading(false);
     }
     loadData();
-  }, [isSuperAdmin, router]);
+  }, [mounted, isSuperAdmin, router]);
 
   const handleLogout = async () => {
     await logout();
     router.push("/platform/login");
   };
 
-  if (!isSuperAdmin()) {
+  // Show loading state until mounted (prevents hydration mismatch)
+  if (!mounted || !isSuperAdmin()) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-white text-center">
