@@ -71,7 +71,7 @@ export interface EdgeSpec {
 
 /** Groove/dado specification */
 export interface GrooveSpec {
-  kind: "dado" | "rabbet" | "groove";
+  kind: "backpanel" | "shelf_dado" | "custom";
   side: "L1" | "L2" | "W1" | "W2";
   depth_mm: number;
   width_mm: number;
@@ -118,6 +118,8 @@ export interface PanelSawSettings {
 
 /** Machine settings */
 export interface MachineSettings {
+  type?: "panel_saw" | "cnc_router" | "beam_saw";
+  profile_id?: string;
   kerf?: number;
   trim_margin?: TrimMargin;
   min_offcut_L?: number;
@@ -129,9 +131,9 @@ export interface MachineSettings {
 export interface ObjectiveSettings {
   primary?: "min_sheets" | "min_waste";
   secondary?: string[];
-  weights?: {
-    sheets?: number;
-    waste_area?: number;
+  weights: {
+    sheets: number;
+    waste_area: number;
   };
 }
 
@@ -139,15 +141,15 @@ export interface ObjectiveSettings {
 export interface Job {
   job_id: string;
   job_name?: string;
-  org_id?: string;
+  org_id: string;
   units?: "mm" | "in";
   customer?: CustomerInfo;
   materials: Material[];
   sheet_inventory: SheetInventory[];
   edgeband_inventory?: EdgebandInventory[];
   parts: Part[];
-  machine?: MachineSettings;
-  objective?: ObjectiveSettings;
+  machine: MachineSettings;
+  objective: ObjectiveSettings;
 }
 
 /** Run configuration */
@@ -390,11 +392,26 @@ export class CAI2DClient {
    */
   async ping(): Promise<boolean> {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
       const response = await fetch(`${this.baseUrl}/health`, {
-        method: "HEAD",
+        method: "GET",
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        logger.info("CAI 2D optimizer is available", { baseUrl: this.baseUrl });
+      }
+      
       return response.ok;
-    } catch {
+    } catch (error) {
+      logger.warn("CAI 2D optimizer ping failed", { 
+        baseUrl: this.baseUrl,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
       return false;
     }
   }
@@ -830,6 +847,7 @@ export class CAI2DClient {
 export function buildJobPayload(params: {
   jobId: string;
   jobName?: string;
+  orgId?: string;
   parts: CutPart[];
   materials?: MaterialDef[];
   customer?: CustomerInfo;
@@ -870,10 +888,10 @@ export function buildJobPayload(params: {
     grained: false,
   }));
   
-  // Convert parts
-  const parts: Part[] = params.parts.map(part => ({
+  // Convert parts - ensure label is always a string
+  const parts: Part[] = params.parts.map((part, idx) => ({
     part_id: part.part_id,
-    label: part.label,
+    label: part.label || `Part ${idx + 1}`, // Ensure label is never null/undefined
     material_id: part.material_id,
     size: part.size,
     qty: part.qty,
@@ -882,29 +900,55 @@ export function buildJobPayload(params: {
     ops: part.ops ? convertPartOps(part.ops) : undefined,
   }));
   
+  // Build machine settings with required fields
+  const machineSettings: MachineSettings = {
+    type: params.machineSettings?.type ?? "panel_saw",
+    profile_id: params.machineSettings?.profile_id ?? "default",
+    kerf: params.machineSettings?.kerf ?? 4,
+    trim_margin: params.machineSettings?.trim_margin ?? { L1: 5, L2: 5, W1: 5, W2: 5 },
+    min_offcut_L: params.machineSettings?.min_offcut_L ?? 200,
+    min_offcut_W: params.machineSettings?.min_offcut_W ?? 100,
+    panel_saw: params.machineSettings?.panel_saw ?? {
+      workflow: "auto",
+      guillotine_mode: "strip_shelf",
+    },
+  };
+  
   return {
     job_id: params.jobId,
     job_name: params.jobName,
+    org_id: params.orgId ?? "cai-intake-default",
     units: "mm",
     customer: params.customer,
     materials: Array.from(materialMap.values()),
     sheet_inventory: sheetInventory,
     parts,
-    machine: params.machineSettings ?? {
-      kerf: 4,
-      trim_margin: { L1: 5, L2: 5, W1: 5, W2: 5 },
-      min_offcut_L: 200,
-      min_offcut_W: 100,
-      panel_saw: {
-        workflow: "auto",
-        guillotine_mode: "strip_shelf",
-      },
-    },
+    machine: machineSettings,
     objective: {
       primary: "min_sheets",
       secondary: ["min_waste_area"],
+      weights: {
+        sheets: 1.0,
+        waste_area: 0.5,
+      },
     },
   };
+}
+
+/**
+ * Map internal groove kind to CAI 2D API valid values
+ */
+function mapGrooveKind(kind?: string): "backpanel" | "shelf_dado" | "custom" {
+  switch (kind?.toLowerCase()) {
+    case "dado":
+    case "shelf_dado":
+      return "shelf_dado";
+    case "backpanel":
+    case "rabbet":
+      return "backpanel";
+    default:
+      return "custom";
+  }
 }
 
 /**
@@ -918,28 +962,46 @@ function convertPartOps(ops: CutPart["ops"]): PartOperations | undefined {
   // Convert edging - internal format uses edges record with EdgebandEdge objects
   if (ops.edging?.edges) {
     const edges: EdgeSpec = {};
+    let hasAnyEdge = false;
+    let maxThickness = 0;
+    
     for (const [edge, config] of Object.entries(ops.edging.edges)) {
       if (edge === "L1" || edge === "L2" || edge === "W1" || edge === "W2") {
-        edges[edge] = config?.apply ?? false;
+        const shouldApply = config?.apply ?? false;
+        edges[edge] = shouldApply;
+        if (shouldApply) {
+          hasAnyEdge = true;
+          // Track max thickness from edge configs
+          if (config?.thickness_mm && config.thickness_mm > maxThickness) {
+            maxThickness = config.thickness_mm;
+          }
+        }
       }
     }
-    result.edging = { edges };
+    
+    // Only include edging if at least one edge is applied
+    if (hasAnyEdge) {
+      result.edging = { 
+        band_thickness_mm: maxThickness > 0 ? maxThickness : 0.5, // Use max found or default
+        edges 
+      };
+    }
   }
   
-  // Convert grooves - internal format doesn't have 'kind', default to 'dado'
+  // Convert grooves - map kind to valid API values
   if (ops.grooves && ops.grooves.length > 0) {
     result.grooves = ops.grooves.map(g => ({
-      kind: "dado" as const, // Internal schema doesn't have kind, default to dado
+      kind: mapGrooveKind((g as { kind?: string }).kind),
       side: g.side as "L1" | "L2" | "W1" | "W2",
       depth_mm: g.depth_mm ?? 8, // Default depth if not specified
       width_mm: g.width_mm ?? 18, // Default width if not specified
-      offset_mm: g.offset_mm,
+      offset_mm: g.offset_mm ?? 0,
     }));
   }
   
-  // Add notes if present
-  if (ops.grooves?.[0]?.notes) {
-    result.notes = ops.grooves[0].notes;
+  // Add notes if present  
+  if ((ops as { notes?: string }).notes) {
+    result.notes = (ops as { notes?: string }).notes;
   }
   
   return Object.keys(result).length > 0 ? result : undefined;
@@ -949,9 +1011,9 @@ function convertPartOps(ops: CutPart["ops"]): PartOperations | undefined {
  * Convert CutPart array to Part array (official schema)
  */
 export function cutPartsToApiParts(parts: CutPart[]): Part[] {
-  return parts.map(part => ({
+  return parts.map((part, idx) => ({
     part_id: part.part_id,
-    label: part.label,
+    label: part.label || `Part ${idx + 1}`, // Ensure label is never null
     material_id: part.material_id,
     size: part.size,
     qty: part.qty,
@@ -1053,3 +1115,4 @@ export async function submitOptimization(params: {
 
 // Export singleton client
 export const cai2dClient = new CAI2DClient();
+

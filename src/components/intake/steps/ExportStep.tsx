@@ -29,6 +29,7 @@ import { useIntakeStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { StepNavigation } from "@/components/ui/stepper";
 import { downloadCutlistPDF } from "@/lib/exports/pdf-export";
+import { OptimizerModal } from "@/components/optimizer/OptimizerModal";
 
 interface ExportOption {
   id: string;
@@ -87,6 +88,7 @@ export function ExportStep() {
   const [exportStatus, setExportStatus] = React.useState<string | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [branding, setBranding] = React.useState<OrgBranding | null>(null);
+  const [optimizerOpen, setOptimizerOpen] = React.useState(false);
 
   // Fetch org branding on mount
   React.useEffect(() => {
@@ -247,37 +249,10 @@ export function ExportStep() {
         }
         
         case "optimizer": {
-          // Send to CAI 2D Optimizer
-          setExportStatus("Optimizing cutting layouts...");
-          
-          const response = await fetch("/api/v1/optimize", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              cutlistId: currentCutlist.doc_id,
-              parts: currentCutlist.parts,
-              materials: currentCutlist.materials,
-              jobName: currentCutlist.name,
-            }),
-          });
-          
-          if (!response.ok) {
-            throw new Error("Optimization failed");
-          }
-          
-          const result = await response.json();
-          
-          if (result.ok && result.result) {
-            const sheetsUsed = result.result.summary?.sheets_used ?? 0;
-            const efficiency = result.result.summary?.utilization_pct?.toFixed(1) ?? "0";
-            setExportStatus(`Optimized! ${sheetsUsed} sheets at ${efficiency}% efficiency`);
-            
-            // Optionally navigate to results view
-            // router.push(`/cutlists/${currentCutlist.doc_id}/optimize`);
-          } else {
-            throw new Error(result.error || "Optimization failed");
-          }
-          break;
+          // Open the optimizer modal instead of directly calling the API
+          setOptimizerOpen(true);
+          setExportStatus(null);
+          return; // Don't mark as complete yet - that happens after optimization
         }
         
         case "maxcut":
@@ -586,6 +561,13 @@ export function ExportStep() {
       <StepNavigation
         onBack={goToPreviousStep}
         showNext={false}
+      />
+
+      {/* Optimizer Modal */}
+      <OptimizerModal
+        open={optimizerOpen}
+        onOpenChange={setOptimizerOpen}
+        cutlist={currentCutlist}
       />
     </div>
   );

@@ -16,6 +16,8 @@ import {
   Plus,
   Bell,
   Layers,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -100,12 +102,28 @@ export default function DashboardLayout({
   const { user, isAuthenticated, logout, isSuperAdmin } = useAuthStore();
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
+
+  // Load collapsed state from localStorage
+  React.useEffect(() => {
+    const saved = localStorage.getItem("sidebar-collapsed");
+    if (saved !== null) {
+      setIsCollapsed(saved === "true");
+    }
+  }, []);
 
   // Wait for client-side mount to avoid SSR/hydration issues
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Toggle sidebar collapsed state
+  const toggleCollapsed = () => {
+    const newState = !isCollapsed;
+    setIsCollapsed(newState);
+    localStorage.setItem("sidebar-collapsed", String(newState));
+  };
 
   // Redirect to login if not authenticated
   React.useEffect(() => {
@@ -274,13 +292,28 @@ export default function DashboardLayout({
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed left-0 top-16 bottom-0 w-64 bg-[var(--card)] border-r border-[var(--border)] z-40 transition-transform lg:translate-x-0",
+          "fixed left-0 top-16 bottom-0 bg-[var(--card)] border-r border-[var(--border)] z-40 transition-all duration-300 ease-in-out lg:translate-x-0",
+          isCollapsed ? "lg:w-16" : "lg:w-64",
+          "w-64", // Always full width on mobile
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         <div className="flex flex-col h-full">
+          {/* Collapse Toggle - Desktop Only */}
+          <button
+            onClick={toggleCollapsed}
+            className="hidden lg:flex absolute -right-3 top-6 w-6 h-6 items-center justify-center bg-[var(--card)] border border-[var(--border)] rounded-full shadow-sm hover:bg-[var(--muted)] transition-colors z-10"
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {isCollapsed ? (
+              <PanelLeft className="h-3.5 w-3.5" />
+            ) : (
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            )}
+          </button>
+
           {/* Nav Items */}
-          <nav className="flex-1 p-4 space-y-1">
+          <nav className={cn("flex-1 space-y-1", isCollapsed ? "p-2" : "p-4")}>
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
@@ -289,19 +322,36 @@ export default function DashboardLayout({
                   key={item.href}
                   href={item.href}
                   onClick={() => setIsSidebarOpen(false)}
+                  title={isCollapsed ? item.label : undefined}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+                    "flex items-center rounded-lg transition-colors relative group",
+                    isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
                     isActive
                       ? "bg-[var(--cai-teal)]/10 text-[var(--cai-teal)]"
                       : "hover:bg-[var(--muted)] text-[var(--foreground)]"
                   )}
                 >
-                  <Icon className="h-5 w-5" />
-                  <span className="font-medium">{item.label}</span>
-                  {item.badge && (
-                    <Badge variant="teal" className="ml-auto text-xs">
-                      {item.badge}
-                    </Badge>
+                  <Icon className="h-5 w-5 flex-shrink-0" />
+                  {!isCollapsed && (
+                    <>
+                      <span className="font-medium">{item.label}</span>
+                      {item.badge && (
+                        <Badge variant="teal" className="ml-auto text-xs">
+                          {item.badge}
+                        </Badge>
+                      )}
+                    </>
+                  )}
+                  {/* Tooltip for collapsed state */}
+                  {isCollapsed && (
+                    <div className="absolute left-full ml-2 px-2 py-1 bg-[var(--popover)] text-[var(--popover-foreground)] text-sm rounded-md shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+                      {item.label}
+                      {item.badge && (
+                        <Badge variant="teal" className="ml-2 text-xs">
+                          {item.badge}
+                        </Badge>
+                      )}
+                    </div>
                   )}
                 </Link>
               );
@@ -310,11 +360,14 @@ export default function DashboardLayout({
             {/* Platform Admin Section - Only visible to super admins */}
             {isSuperAdmin() && (
               <>
-                <div className="pt-4 pb-2">
-                  <p className="px-3 text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">
-                    Platform
-                  </p>
-                </div>
+                {!isCollapsed && (
+                  <div className="pt-4 pb-2">
+                    <p className="px-3 text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">
+                      Platform
+                    </p>
+                  </div>
+                )}
+                {isCollapsed && <div className="pt-2 border-t border-[var(--border)] mt-2" />}
                 {PLATFORM_NAV_ITEMS.map((item) => {
                   const Icon = item.icon;
                   return (
@@ -322,13 +375,30 @@ export default function DashboardLayout({
                       key={item.href}
                       href={item.href}
                       onClick={() => setIsSidebarOpen(false)}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200 dark:from-purple-900/30 dark:to-indigo-900/30 dark:text-purple-300 dark:border-purple-700"
+                      title={isCollapsed ? item.label : undefined}
+                      className={cn(
+                        "flex items-center rounded-lg transition-colors bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200 dark:from-purple-900/30 dark:to-indigo-900/30 dark:text-purple-300 dark:border-purple-700 relative group",
+                        isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
+                      )}
                     >
-                      <Icon className="h-5 w-5" />
-                      <span className="font-medium">{item.label}</span>
-                      <Badge className="ml-auto bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-xs">
-                        Admin
-                      </Badge>
+                      <Icon className="h-5 w-5 flex-shrink-0" />
+                      {!isCollapsed && (
+                        <>
+                          <span className="font-medium">{item.label}</span>
+                          <Badge className="ml-auto bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-xs">
+                            Admin
+                          </Badge>
+                        </>
+                      )}
+                      {/* Tooltip for collapsed state */}
+                      {isCollapsed && (
+                        <div className="absolute left-full ml-2 px-2 py-1 bg-[var(--popover)] text-[var(--popover-foreground)] text-sm rounded-md shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+                          {item.label}
+                          <Badge className="ml-2 bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-xs">
+                            Admin
+                          </Badge>
+                        </div>
+                      )}
                     </Link>
                   );
                 })}
@@ -336,25 +406,40 @@ export default function DashboardLayout({
             )}
           </nav>
 
-          {/* Subscription Info */}
-          <SubscriptionBadge />
+          {/* Subscription Info - Hidden when collapsed */}
+          {!isCollapsed && <SubscriptionBadge />}
 
           {/* Footer */}
-          <div className="p-4 border-t border-[var(--border)]">
-            {/* Theme Toggle in Sidebar */}
-            <ThemeToggleCompact className="w-full mb-2" />
+          <div className={cn(
+            "border-t border-[var(--border)]",
+            isCollapsed ? "p-2" : "p-4"
+          )}>
+            {/* Theme Toggle in Sidebar - Hidden when collapsed */}
+            {!isCollapsed && <ThemeToggleCompact className="w-full mb-2" />}
             
             <Link
               href="/help"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[var(--muted)] transition-colors"
+              title={isCollapsed ? "Help & Support" : undefined}
+              className={cn(
+                "flex items-center rounded-lg hover:bg-[var(--muted)] transition-colors relative group",
+                isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
+              )}
             >
-              <HelpCircle className="h-5 w-5" />
-              <span className="font-medium">Help & Support</span>
+              <HelpCircle className="h-5 w-5 flex-shrink-0" />
+              {!isCollapsed && <span className="font-medium">Help & Support</span>}
+              {/* Tooltip for collapsed state */}
+              {isCollapsed && (
+                <div className="absolute left-full ml-2 px-2 py-1 bg-[var(--popover)] text-[var(--popover-foreground)] text-sm rounded-md shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+                  Help & Support
+                </div>
+              )}
             </Link>
-            <div className="mt-2 px-3 py-2 text-xs text-[var(--muted-foreground)]">
-              <p>CAI Intake v1.0.0</p>
-              <p>© 2024 CabinetAI</p>
-            </div>
+            {!isCollapsed && (
+              <div className="mt-2 px-3 py-2 text-xs text-[var(--muted-foreground)]">
+                <p>CAI Intake v1.0.0</p>
+                <p>© 2024 CabinetAI</p>
+              </div>
+            )}
           </div>
         </div>
       </aside>
@@ -368,7 +453,10 @@ export default function DashboardLayout({
       )}
 
       {/* Main Content */}
-      <main className="lg:ml-64 pt-16 min-h-screen">
+      <main className={cn(
+        "pt-16 min-h-screen transition-all duration-300 ease-in-out",
+        isCollapsed ? "lg:ml-16" : "lg:ml-64"
+      )}>
         <SubscriptionProvider>
           {children}
         </SubscriptionProvider>
