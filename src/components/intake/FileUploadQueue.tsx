@@ -31,7 +31,7 @@ import { parseTextBatch } from "@/lib/parsers/text-parser";
 import { cn } from "@/lib/utils";
 import { getResilientProvider, type ResilientProgress } from "@/lib/ai/resilient-provider";
 import type { AIParseResult } from "@/lib/ai/provider";
-import { detectQRCode, type QRDetectionResult } from "@/lib/ai/template-ocr";
+import { detectTemplateQR, type QRDetectionResult } from "@/lib/ai/template-ocr";
 import { uploadFile, BUCKETS } from "@/lib/supabase/storage";
 import { getLearningContext, type LearningContext } from "@/lib/learning";
 
@@ -364,7 +364,7 @@ export function FileUploadQueue({
 
             try {
               const imageBuffer = await uploadedFile.file.arrayBuffer();
-              qrResult = await detectQRCode(imageBuffer);
+              qrResult = await detectTemplateQR(imageBuffer);
               updateFileProgress(uploadedFile.id, {
                 qrDetected: qrResult,
               });

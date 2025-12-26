@@ -38,7 +38,7 @@ import { useIntakeStore, type ParsedPartWithStatus } from "@/lib/store";
 import { parseTextBatch } from "@/lib/parsers/text-parser";
 import { cn } from "@/lib/utils";
 import { type ParsedPartResult } from "@/lib/ai";
-import { detectQRCode, type QRDetectionResult } from "@/lib/ai/template-ocr";
+import { detectTemplateQR, type QRDetectionResult } from "@/lib/ai/template-ocr";
 import { toast } from "sonner";
 import { fileUploadLogger, createFileContext } from "@/lib/logging/file-upload-logger";
 
@@ -357,7 +357,7 @@ export function FileUpload() {
             try {
               console.debug(`📤 [FileUpload] Checking for QR template`, { fileId: fileId.substring(0, 8) });
               const imageBuffer = await uploadedFile.file.arrayBuffer();
-              qrResult = await detectQRCode(imageBuffer);
+              qrResult = await detectTemplateQR(imageBuffer);
               
               // Log QR detection result
               fileUploadLogger.qrDetection(fileId, {

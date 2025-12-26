@@ -11,7 +11,7 @@
  */
 
 import * as XLSX from "xlsx";
-import { detectQRCode, type QRDetectionResult } from "@/lib/ai/template-ocr";
+import { detectTemplateQR, type QRDetectionResult } from "@/lib/ai/template-ocr";
 import { logger } from "@/lib/logger";
 
 // ============================================================
@@ -310,7 +310,7 @@ export async function detectTemplateQR(
   imageBuffer: ArrayBuffer
 ): Promise<TemplateDetectionResult> {
   try {
-    const qrResult = await detectQRCode(imageBuffer);
+    const qrResult = await detectTemplateQR(imageBuffer);
     
     if (qrResult && qrResult.templateId) {
       return {
