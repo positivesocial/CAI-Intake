@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
-import { getAIProvider } from "@/lib/ai";
+import { OpenAIProvider, AnthropicProvider, type AIProvider } from "@/lib/ai";
 import type { CutPart } from "@/lib/schema";
 
 export async function POST(request: NextRequest) {
@@ -161,7 +161,9 @@ async function processFile(file: File, options: ProcessOptions): Promise<Process
   const textFeatures = analyzeTextFeatures(extractedText);
 
   // Parse with AI
-  const aiProvider = getAIProvider(provider as "openai" | "anthropic");
+  const aiProvider: AIProvider = provider === "openai" 
+    ? new OpenAIProvider() 
+    : new AnthropicProvider();
   const parseResult = await aiProvider.parseText(extractedText, {
     extractMetadata,
     confidence: "balanced",
@@ -239,8 +241,7 @@ async function extractTextFromPDF(file: File): Promise<string> {
 async function extractTextFromImage(file: File): Promise<string> {
   // Use AI vision for image OCR
   try {
-    const { getAIProvider } = await import("@/lib/ai");
-    const provider = getAIProvider("anthropic");
+    const provider = new AnthropicProvider();
     
     const arrayBuffer = await file.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString("base64");

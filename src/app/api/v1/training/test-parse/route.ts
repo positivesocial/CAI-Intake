@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
-import { getAIProvider } from "@/lib/ai";
+import { OpenAIProvider, AnthropicProvider, type AIProvider } from "@/lib/ai";
 import type { CutPart } from "@/lib/schema";
 import { calculateAccuracyMetrics } from "@/lib/learning/accuracy";
 import { logParsingAccuracy } from "@/lib/learning/accuracy";
@@ -81,7 +81,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Get AI provider
-    const aiProvider = getAIProvider(provider);
+    const aiProvider: AIProvider = provider === "openai" 
+      ? new OpenAIProvider() 
+      : new AnthropicProvider();
 
     // Parse the text
     const startTime = Date.now();
