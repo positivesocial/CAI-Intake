@@ -2,6 +2,8 @@
  * CAI Intake - Training Accuracy API
  * 
  * GET /api/v1/training/accuracy - Get accuracy metrics and analytics
+ * 
+ * NOTE: Super admin only - platform-wide accuracy tracking.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -9,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 
 // ============================================================
-// GET ACCURACY METRICS
+// GET ACCURACY METRICS (Super Admin Only)
 // ============================================================
 
 export async function GET(request: NextRequest) {
@@ -21,11 +23,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization
+    // Get user - verify super admin access
     const dbUser = await prisma.user.findUnique({
       where: { email: user.email! },
       select: { organizationId: true, isSuperAdmin: true },
     });
+
+    // Super admin only
+    if (!dbUser?.isSuperAdmin) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden - Super admin access required" },
+        { status: 403 }
+      );
+    }
 
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get("days") || "30");

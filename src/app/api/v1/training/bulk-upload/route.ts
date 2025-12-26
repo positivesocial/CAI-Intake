@@ -2,6 +2,8 @@
  * CAI Intake - Bulk Training Upload API
  * 
  * POST /api/v1/training/bulk-upload - Upload PDFs for verification and training
+ * 
+ * NOTE: Super admin only - training affects the entire platform.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -19,11 +21,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization
+    // Get user - verify super admin access
     const dbUser = await prisma.user.findUnique({
       where: { email: user.email! },
       select: { organizationId: true, isSuperAdmin: true },
     });
+
+    // Super admin only
+    if (!dbUser?.isSuperAdmin) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden - Super admin access required" },
+        { status: 403 }
+      );
+    }
 
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];

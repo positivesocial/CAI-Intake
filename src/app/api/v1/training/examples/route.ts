@@ -3,6 +3,8 @@
  * 
  * POST /api/v1/training/examples - Create a new training example
  * GET /api/v1/training/examples - List training examples with filters
+ * 
+ * NOTE: These endpoints are SUPER ADMIN ONLY - training affects the entire platform.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -11,7 +13,7 @@ import { prisma } from "@/lib/db";
 import type { CutPart } from "@/lib/schema";
 
 // ============================================================
-// CREATE TRAINING EXAMPLE
+// CREATE TRAINING EXAMPLE (Super Admin Only)
 // ============================================================
 
 export async function POST(request: NextRequest) {
@@ -23,11 +25,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization
+    // Get user - verify super admin access
     const dbUser = await prisma.user.findUnique({
       where: { email: user.email! },
       select: { organizationId: true, isSuperAdmin: true },
     });
+
+    // Super admin only
+    if (!dbUser?.isSuperAdmin) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden - Super admin access required" },
+        { status: 403 }
+      );
+    }
 
     const body = await request.json();
     const {
@@ -120,7 +130,7 @@ export async function POST(request: NextRequest) {
 }
 
 // ============================================================
-// LIST TRAINING EXAMPLES
+// LIST TRAINING EXAMPLES (Super Admin Only)
 // ============================================================
 
 export async function GET(request: NextRequest) {
@@ -132,11 +142,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization
+    // Get user - verify super admin access
     const dbUser = await prisma.user.findUnique({
       where: { email: user.email! },
       select: { organizationId: true, isSuperAdmin: true },
     });
+
+    // Super admin only
+    if (!dbUser?.isSuperAdmin) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden - Super admin access required" },
+        { status: 403 }
+      );
+    }
 
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "50");

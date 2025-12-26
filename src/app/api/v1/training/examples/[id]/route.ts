@@ -4,6 +4,8 @@
  * GET /api/v1/training/examples/[id] - Get a specific training example
  * PATCH /api/v1/training/examples/[id] - Update a training example
  * DELETE /api/v1/training/examples/[id] - Delete (soft) a training example
+ * 
+ * NOTE: Super admin only - training affects the entire platform.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -11,8 +13,28 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db";
 import type { CutPart } from "@/lib/schema";
 
+// Helper to verify super admin access
+async function verifySuperAdmin(email: string): Promise<{ isSuperAdmin: boolean; error?: NextResponse }> {
+  const dbUser = await prisma.user.findUnique({
+    where: { email },
+    select: { isSuperAdmin: true },
+  });
+  
+  if (!dbUser?.isSuperAdmin) {
+    return {
+      isSuperAdmin: false,
+      error: NextResponse.json(
+        { ok: false, error: "Forbidden - Super admin access required" },
+        { status: 403 }
+      ),
+    };
+  }
+  
+  return { isSuperAdmin: true };
+}
+
 // ============================================================
-// GET SINGLE EXAMPLE
+// GET SINGLE EXAMPLE (Super Admin Only)
 // ============================================================
 
 export async function GET(
@@ -28,6 +50,10 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
+
+    // Super admin only
+    const { isSuperAdmin, error } = await verifySuperAdmin(user.email!);
+    if (!isSuperAdmin) return error!;
 
     const example = await prisma.trainingExample.findUnique({
       where: { id },
@@ -77,7 +103,7 @@ export async function GET(
 }
 
 // ============================================================
-// UPDATE EXAMPLE
+// UPDATE EXAMPLE (Super Admin Only)
 // ============================================================
 
 export async function PATCH(
@@ -94,25 +120,18 @@ export async function PATCH(
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    // Super admin only
+    const { isSuperAdmin, error } = await verifySuperAdmin(user.email!);
+    if (!isSuperAdmin) return error!;
+
     // Verify example exists
     const existing = await prisma.trainingExample.findUnique({
       where: { id },
-      select: { id: true, organizationId: true, isActive: true },
+      select: { id: true, isActive: true },
     });
 
     if (!existing || !existing.isActive) {
       return NextResponse.json({ ok: false, error: "Training example not found" }, { status: 404 });
-    }
-
-    // Get user's organization to verify access
-    const dbUser = await prisma.user.findUnique({
-      where: { email: user.email! },
-      select: { organizationId: true, isSuperAdmin: true },
-    });
-
-    // Only allow updates to own organization's examples or global examples for super admins
-    if (existing.organizationId !== null && existing.organizationId !== dbUser?.organizationId && !dbUser?.isSuperAdmin) {
-      return NextResponse.json({ ok: false, error: "Access denied" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -169,7 +188,7 @@ export async function PATCH(
 }
 
 // ============================================================
-// DELETE EXAMPLE (soft delete)
+// DELETE EXAMPLE (Super Admin Only - soft delete)
 // ============================================================
 
 export async function DELETE(
@@ -186,25 +205,18 @@ export async function DELETE(
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    // Super admin only
+    const { isSuperAdmin, error } = await verifySuperAdmin(user.email!);
+    if (!isSuperAdmin) return error!;
+
     // Verify example exists
     const existing = await prisma.trainingExample.findUnique({
       where: { id },
-      select: { id: true, organizationId: true, isActive: true },
+      select: { id: true, isActive: true },
     });
 
     if (!existing || !existing.isActive) {
       return NextResponse.json({ ok: false, error: "Training example not found" }, { status: 404 });
-    }
-
-    // Get user's organization to verify access
-    const dbUser = await prisma.user.findUnique({
-      where: { email: user.email! },
-      select: { organizationId: true, isSuperAdmin: true },
-    });
-
-    // Only allow deletion of own organization's examples or global examples for super admins
-    if (existing.organizationId !== null && existing.organizationId !== dbUser?.organizationId && !dbUser?.isSuperAdmin) {
-      return NextResponse.json({ ok: false, error: "Access denied" }, { status: 403 });
     }
 
     // Soft delete

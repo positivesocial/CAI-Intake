@@ -4,6 +4,7 @@
  * POST /api/v1/training/test-parse - Test parsing against ground truth
  * 
  * Useful for evaluating how well the system parses specific examples.
+ * NOTE: Super admin only - for platform-wide testing.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -23,11 +24,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization
+    // Get user - verify super admin access
     const dbUser = await prisma.user.findUnique({
       where: { email: user.email! },
-      select: { organizationId: true },
+      select: { organizationId: true, isSuperAdmin: true },
     });
+
+    // Super admin only
+    if (!dbUser?.isSuperAdmin) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden - Super admin access required" },
+        { status: 403 }
+      );
+    }
 
     const body = await request.json();
     const {

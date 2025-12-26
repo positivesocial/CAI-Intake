@@ -97,8 +97,8 @@ const SETTINGS_SECTIONS = [
     id: "training",
     label: "AI Training",
     icon: Brain,
-    description: "Training examples and accuracy metrics",
-    adminOnly: true,
+    description: "Training examples and accuracy metrics (Platform-wide)",
+    superAdminOnly: true,
     href: "/settings/training",
   },
   {
@@ -137,7 +137,7 @@ const SETTINGS_SECTIONS = [
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { user, updateUser, updatePreferences, updateNotifications, logout, setUser, isOrgAdmin } =
+  const { user, updateUser, updatePreferences, updateNotifications, logout, setUser, isOrgAdmin, isSuperAdmin } =
     useAuthStore();
   const { aiSettings, setAISettings, setAIProvider } = useIntakeStore();
   const { theme, setTheme, resolvedTheme } = useTheme();
@@ -173,9 +173,18 @@ export default function SettingsPage() {
     setIsSaving(false);
   };
 
-  const visibleSections = SETTINGS_SECTIONS.filter(
-    (s) => !s.adminOnly || isOrgAdmin()
-  );
+  const visibleSections = SETTINGS_SECTIONS.filter((s) => {
+    // Super admin only sections (platform-wide features)
+    if ((s as { superAdminOnly?: boolean }).superAdminOnly) {
+      return isSuperAdmin();
+    }
+    // Org admin sections
+    if (s.adminOnly) {
+      return isOrgAdmin();
+    }
+    // Everyone else
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
@@ -938,8 +947,8 @@ export default function SettingsPage() {
               </Link>
             )}
 
-            {/* AI Training Section (Admin Only) */}
-            {activeSection === "training" && isOrgAdmin() && (
+            {/* AI Training Section (Super Admin Only - Platform-wide) */}
+            {activeSection === "training" && isSuperAdmin() && (
               <Link href="/settings/training">
                 <Card className="cursor-pointer hover:shadow-md transition-shadow">
                   <CardContent className="pt-6">
@@ -952,7 +961,7 @@ export default function SettingsPage() {
                           AI Training & Accuracy
                         </h3>
                         <p className="text-[var(--muted-foreground)]">
-                          Manage training examples, view accuracy metrics, and improve parsing quality
+                          Platform-wide training examples, accuracy metrics, and model improvement
                         </p>
                       </div>
                       <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />
