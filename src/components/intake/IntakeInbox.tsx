@@ -57,6 +57,11 @@ import type { CutPart } from "@/lib/schema";
 import { PartPreviewSvg, type SimplePartPreviewProps } from "@/components/parts/PartPreviewSvg";
 import { convertOpsToPreview, type PartPreviewData } from "@/lib/services";
 import { OperationsInput, type OperationsData } from "@/components/operations";
+import { QuickOpsPopover, type QuickOpsType } from "./QuickOpsPopover";
+import { CorrectionDiff } from "./CorrectionDiff";
+import { calculateFieldConfidence, ConfidenceSummary } from "./FieldConfidence";
+import { ValidationPanel } from "./ValidationPanel";
+import { DuplicateDetector } from "./DuplicateDetector";
 
 // ============================================================
 // SHORTCODE FORMATTERS
@@ -457,6 +462,9 @@ function InboxPartRow({
   const [editingField, setEditingField] = React.useState<string | null>(null);
   const isRejected = part._status === "rejected";
 
+  // Calculate field-level confidence
+  const fieldConfidence = React.useMemo(() => calculateFieldConfidence(part), [part]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (editingField) return; // Don't handle shortcuts while editing
     
@@ -491,6 +499,7 @@ function InboxPartRow({
 
   return (
     <tr
+      data-row-index={rowIndex}
       className={cn(
         "group transition-colors",
         isRejected && "opacity-50 bg-red-50/50",
@@ -542,9 +551,12 @@ function InboxPartRow({
           className="w-full max-w-[140px]"
         />
         {part._originalText && (
-          <p className="text-[10px] text-[var(--muted-foreground)] truncate max-w-[140px] mt-0.5 px-2">
-            {part._originalText}
-          </p>
+          <div className="mt-0.5 px-2">
+            <p className="text-[10px] text-[var(--muted-foreground)] truncate max-w-[140px]">
+              {part._originalText}
+            </p>
+            <CorrectionDiff part={part} compact />
+          </div>
         )}
       </td>
 
@@ -660,8 +672,11 @@ function InboxPartRow({
       </td>
 
       {/* Confidence */}
-      <td className="px-2 py-2 text-center w-[80px]">
-        <ConfidenceBadge confidence={part.audit?.confidence} />
+      <td className="px-2 py-2 text-center w-[100px]">
+        <div className="flex flex-col items-center gap-1">
+          <ConfidenceBadge confidence={part.audit?.confidence} />
+          <ConfidenceSummary fieldConfidence={fieldConfidence} compact />
+        </div>
       </td>
 
       {/* Actions */}
@@ -1095,9 +1110,12 @@ function KeyboardHelp() {
       <span><kbd className="px-1 py-0.5 bg-[var(--muted)] rounded text-[9px]">Space</kbd> Select</span>
       <span><kbd className="px-1 py-0.5 bg-[var(--muted)] rounded text-[9px]">Enter</kbd> Accept</span>
       <span><kbd className="px-1 py-0.5 bg-[var(--muted)] rounded text-[9px]">Del</kbd> Reject</span>
-      <span><kbd className="px-1 py-0.5 bg-[var(--muted)] rounded text-[9px]">E</kbd> Edit</span>
       <span><kbd className="px-1 py-0.5 bg-[var(--muted)] rounded text-[9px]">S</kbd> Swap L↔W</span>
       <span><kbd className="px-1 py-0.5 bg-[var(--muted)] rounded text-[9px]">D</kbd> Duplicate</span>
+      <span className="border-l border-[var(--border)] pl-4"><kbd className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-[9px]">E</kbd> Edging</span>
+      <span><kbd className="px-1 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px]">G</kbd> Groove</span>
+      <span><kbd className="px-1 py-0.5 bg-green-100 text-green-700 rounded text-[9px]">M</kbd> Material</span>
+      <span><kbd className="px-1 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px]">H</kbd> Holes</span>
     </div>
   );
 }
@@ -1171,6 +1189,8 @@ export function IntakeInbox() {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [focusedIndex, setFocusedIndex] = React.useState<number>(0);
   const [filter, setFilter] = React.useState<FilterStatus>("all");
+  const [quickOpsType, setQuickOpsType] = React.useState<QuickOpsType>(null);
+  const [dismissedDuplicateGroups, setDismissedDuplicateGroups] = React.useState<Set<string>>(new Set());
   
   const materials = currentCutlist.materials;
 
@@ -1224,15 +1244,13 @@ export function IntakeInbox() {
         originalPart._originalText
       );
 
-      // Record each correction (async, non-blocking)
+      // Record each correction (async, non-blocking learning feature)
       if (corrections.length > 0) {
         for (const correction of corrections) {
+          // Fire-and-forget: corrections are for learning and don't affect user workflow
           recordCorrection({
             ...correction,
             cutlistId: currentCutlist.doc_id,
-          }).catch((err) => {
-            // Non-blocking - just log errors
-            console.warn("Failed to record correction:", err);
           });
         }
       }
@@ -1243,6 +1261,7 @@ export function IntakeInbox() {
   // Keyboard navigation for the table
   const handleTableKeyDown = (e: React.KeyboardEvent) => {
     const maxIndex = filteredParts.length - 1;
+    const hasSelection = selectedIds.size > 0;
 
     switch (e.key) {
       case "ArrowDown":
@@ -1257,6 +1276,35 @@ export function IntakeInbox() {
         if (e.metaKey || e.ctrlKey) {
           e.preventDefault();
           setSelectedIds(new Set(filteredParts.map((p) => p.part_id)));
+        }
+        break;
+      // Quick ops shortcuts (only when parts are selected and not in input)
+      case "e":
+      case "E":
+        if (hasSelection && !(e.target instanceof HTMLInputElement)) {
+          e.preventDefault();
+          setQuickOpsType("edging");
+        }
+        break;
+      case "g":
+      case "G":
+        if (hasSelection && !(e.target instanceof HTMLInputElement)) {
+          e.preventDefault();
+          setQuickOpsType("groove");
+        }
+        break;
+      case "m":
+      case "M":
+        if (hasSelection && !(e.target instanceof HTMLInputElement)) {
+          e.preventDefault();
+          setQuickOpsType("material");
+        }
+        break;
+      case "h":
+      case "H":
+        if (hasSelection && !(e.target instanceof HTMLInputElement)) {
+          e.preventDefault();
+          setQuickOpsType("holes");
         }
         break;
     }
@@ -1496,6 +1544,24 @@ export function IntakeInbox() {
     addToInbox(newParts);
   };
 
+  // Merge duplicate parts
+  const handleMergeDuplicates = (partIds: string[], intoPartId: string, newQty: number) => {
+    // Update the target part with combined quantity
+    updateInboxPart(intoPartId, { qty: newQty });
+    
+    // Reject the other parts (remove from inbox)
+    partIds.forEach(id => {
+      if (id !== intoPartId) {
+        rejectInboxPart(id);
+      }
+    });
+  };
+
+  // Dismiss a duplicate group
+  const handleDismissDuplicateGroup = (key: string) => {
+    setDismissedDuplicateGroups(prev => new Set([...prev, key]));
+  };
+
   // Empty state
   if (inboxParts.length === 0) {
     return (
@@ -1574,6 +1640,33 @@ export function IntakeInbox() {
         capabilities={currentCutlist.capabilities}
       />
 
+      {/* Validation Panel */}
+      <ValidationPanel
+        parts={filteredParts}
+        onSwapDimensions={handleSwapDimensions}
+        onScrollToRow={(index) => {
+          setFocusedIndex(index);
+          // Scroll the row into view
+          const row = document.querySelector(`[data-row-index="${index}"]`);
+          row?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }}
+        onSetMaterial={(partId, materialId) => updatePartWithCorrection(partId, { material_id: materialId })}
+        defaultMaterialId={materials[0]?.material_id || "MAT-WHITE-18"}
+      />
+
+      {/* Duplicate Detection */}
+      <DuplicateDetector
+        parts={filteredParts}
+        onMerge={handleMergeDuplicates}
+        onScrollToRow={(index) => {
+          setFocusedIndex(index);
+          const row = document.querySelector(`[data-row-index="${index}"]`);
+          row?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }}
+        onDismissGroup={handleDismissDuplicateGroup}
+        dismissedGroups={dismissedDuplicateGroups}
+      />
+
       {/* Table */}
       <div className="overflow-x-auto" onKeyDown={handleTableKeyDown}>
         <table className="w-full min-w-[800px]">
@@ -1589,7 +1682,7 @@ export function IntakeInbox() {
               <th className="w-[60px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Qty</th>
               <th className="px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Material</th>
               <th className="min-w-[100px] px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Ops</th>
-              <th className="w-[80px] px-2 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">Conf.</th>
+              <th className="w-[100px] px-2 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">Conf.</th>
               <th className="w-[100px] px-2 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Actions</th>
             </tr>
           </thead>
@@ -1620,6 +1713,20 @@ export function IntakeInbox() {
       <div className="px-4 py-2 border-t border-[var(--border)] bg-[var(--muted)]/30">
         <KeyboardHelp />
       </div>
+
+      {/* Quick Ops Popover (E/G/M/H keys) */}
+      {quickOpsType && (
+        <QuickOpsPopover
+          type={quickOpsType}
+          onClose={() => setQuickOpsType(null)}
+          onSelectEdging={handleSetEdgingSelected}
+          onSelectGroove={handleAddGrooveSelected}
+          onSelectMaterial={handleSetMaterialSelected}
+          onSelectHolePattern={handleSetHolePatternSelected}
+          materials={materials}
+          selectedCount={selectedIds.size}
+        />
+      )}
     </Card>
   );
 }

@@ -17,15 +17,18 @@ interface ReportStats {
   totalParts: number;
   totalPieces: number;
   totalArea: number;
+  totalFilesUploaded: number;
   avgEfficiency: number;
   avgPartsPerCutlist: number;
   cutlistsThisPeriod: number;
   partsThisPeriod: number;
+  filesThisPeriod: number;
   periodGrowth: {
     cutlists: number;
     parts: number;
     area: number;
     efficiency: number;
+    files: number;
   };
 }
 
@@ -153,6 +156,29 @@ export async function GET(request: NextRequest) {
     const totalParts = await prisma.cutPart.count({
       where: { cutlist: { ...orgFilter } },
     });
+    const totalFilesUploaded = await prisma.uploadedFile.count({
+      where: { organizationId: userData?.organization_id || undefined },
+    });
+
+    // Files this period
+    const currentFiles = await prisma.uploadedFile.count({
+      where: {
+        organizationId: userData?.organization_id || undefined,
+        createdAt: { gte: periodStart },
+      },
+    });
+
+    // Files previous period
+    const previousFiles = await prisma.uploadedFile.count({
+      where: {
+        organizationId: userData?.organization_id || undefined,
+        createdAt: { gte: previousPeriodStart, lt: periodStart },
+      },
+    });
+
+    const filesGrowth = previousFiles > 0
+      ? ((currentFiles - previousFiles) / previousFiles) * 100
+      : 0;
 
     // Get parts with dimensions for area calculation
     const partsWithDimensions = await prisma.cutPart.findMany({
@@ -284,15 +310,18 @@ export async function GET(request: NextRequest) {
       totalParts,
       totalPieces,
       totalArea: parseFloat(totalArea.toFixed(1)),
+      totalFilesUploaded,
       avgEfficiency: 0.78, // Would need optimization data
       avgPartsPerCutlist: totalCutlists > 0 ? Math.round(totalParts / totalCutlists) : 0,
       cutlistsThisPeriod: currentCutlists,
       partsThisPeriod: currentParts,
+      filesThisPeriod: currentFiles,
       periodGrowth: {
         cutlists: parseFloat(cutlistsGrowth.toFixed(1)),
         parts: parseFloat(partsGrowth.toFixed(1)),
         area: parseFloat(partsGrowth.toFixed(1)), // Using parts growth as proxy
         efficiency: 2.3, // Would need real optimization comparison
+        files: parseFloat(filesGrowth.toFixed(1)),
       },
     };
 

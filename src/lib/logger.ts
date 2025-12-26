@@ -117,6 +117,31 @@ function formatError(error: unknown): LogEntry["error"] | undefined {
     };
   }
   
+  // Handle Supabase/PostgrestError objects
+  if (typeof error === "object" && error !== null) {
+    const errObj = error as Record<string, unknown>;
+    // Check for Supabase/Postgrest error structure
+    if ("message" in errObj || "code" in errObj || "details" in errObj) {
+      return {
+        name: (errObj.name as string) || (errObj.code as string) || "DatabaseError",
+        message: (errObj.message as string) || (errObj.details as string) || JSON.stringify(errObj),
+        stack: errObj.hint as string,
+      };
+    }
+    // Generic object - try to stringify it
+    try {
+      return {
+        name: "ObjectError",
+        message: JSON.stringify(error),
+      };
+    } catch {
+      return {
+        name: "UnknownError",
+        message: "[Object could not be stringified]",
+      };
+    }
+  }
+  
   return {
     name: "UnknownError",
     message: String(error),

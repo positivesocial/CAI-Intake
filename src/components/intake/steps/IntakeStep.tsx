@@ -10,6 +10,7 @@ import {
   QrCode,
   Inbox,
   ChevronRight,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -157,24 +158,42 @@ export function IntakeStep() {
 
       {/* Parts Summary */}
       {(totalParts > 0 || inboxCount > 0) && (
-        <Card className="border-[var(--cai-teal)]/30 bg-[var(--cai-teal)]/5">
+        <Card className={cn(
+          "border-[var(--cai-teal)]/30 bg-[var(--cai-teal)]/5",
+          // Show warning style if there are inbox parts but no accepted parts
+          !canProceed && inboxCount > 0 && "border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20"
+        )}>
           <CardContent className="py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[var(--cai-teal)]/10">
-                  <Inbox className="h-5 w-5 text-[var(--cai-teal)]" />
+                <div className={cn(
+                  "flex items-center justify-center w-10 h-10 rounded-full",
+                  canProceed ? "bg-[var(--cai-teal)]/10" : "bg-amber-100 dark:bg-amber-900/30"
+                )}>
+                  {canProceed ? (
+                    <Inbox className="h-5 w-5 text-[var(--cai-teal)]" />
+                  ) : (
+                    <AlertCircle className="h-5 w-5 text-amber-600" />
+                  )}
                 </div>
                 <div>
                   <div className="font-medium">
                     {totalParts > 0 ? (
                       <>{totalParts} part{totalParts !== 1 ? "s" : ""} added</>
+                    ) : inboxCount > 0 ? (
+                      <span className="text-amber-700 dark:text-amber-400">Accept parts to continue</span>
                     ) : (
                       <>No parts yet</>
                     )}
                   </div>
                   <div className="text-sm text-[var(--muted-foreground)]">
                     {inboxCount > 0 && (
-                      <span className="text-[var(--cai-gold)]">{inboxCount} pending in inbox</span>
+                      <span className={cn(
+                        totalParts === 0 ? "text-amber-600 font-medium" : "text-[var(--cai-gold)]"
+                      )}>
+                        {inboxCount} pending in inbox
+                        {totalParts === 0 && " — click ✓ to accept"}
+                      </span>
                     )}
                     {inboxCount > 0 && totalParts > 0 && " • "}
                     {totalParts > 0 && (
@@ -183,12 +202,16 @@ export function IntakeStep() {
                   </div>
                 </div>
               </div>
-              {canProceed && (
+              {canProceed ? (
                 <Button variant="primary" onClick={goToNextStep}>
                   Review Parts
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
-              )}
+              ) : inboxCount > 0 ? (
+                <Badge variant="outline" className="text-amber-600 border-amber-400 px-3 py-1">
+                  Accept inbox parts first
+                </Badge>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -198,7 +221,13 @@ export function IntakeStep() {
       <StepNavigation
         onBack={goToPreviousStep}
         onNext={goToNextStep}
-        nextLabel={canProceed ? "Review Parts" : "Add Parts First"}
+        nextLabel={
+          canProceed 
+            ? "Review Parts" 
+            : inboxCount > 0 
+              ? "Accept Inbox Parts First" 
+              : "Add Parts First"
+        }
         nextDisabled={!canProceed}
       />
     </div>

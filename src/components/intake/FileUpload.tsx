@@ -8,6 +8,7 @@
  * - Start/Stop processing controls
  * - Real-time progress tracking with live item counts
  * - Batch processing support
+ * - Comprehensive logging for debugging and improvement
  */
 
 import * as React from "react";
@@ -39,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { type ParsedPartResult } from "@/lib/ai";
 import { detectQRCode, type QRDetectionResult } from "@/lib/ai/template-ocr";
 import { toast } from "sonner";
+import { fileUploadLogger, createFileContext } from "@/lib/logging/file-upload-logger";
 
 type FileType = "pdf" | "image" | "excel" | "csv" | "text" | "unknown";
 type ProcessingStatus = "queued" | "uploading" | "detecting_qr" | "processing" | "complete" | "error" | "cancelled";
@@ -117,6 +119,7 @@ function formatElapsedTime(seconds: number): string {
 
 export function FileUpload() {
   const addToInbox = useIntakeStore((state) => state.addToInbox);
+  const addPendingFileId = useIntakeStore((state) => state.addPendingFileId);
 
   const [files, setFiles] = React.useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -150,15 +153,27 @@ export function FileUpload() {
 
   // Queue files without processing
   const handleFiles = (fileList: FileList) => {
-    const newFiles: UploadedFile[] = Array.from(fileList).map((file) => ({
-      id: crypto.randomUUID(),
-      file,
-      type: getFileType(file),
-      status: "queued" as ProcessingStatus,
-      progress: 0,
-    }));
+    const newFiles: UploadedFile[] = Array.from(fileList).map((file) => {
+      const id = crypto.randomUUID();
+      const fileContext = createFileContext(file, id);
+      
+      // Log file being queued
+      fileUploadLogger.fileQueued(fileContext);
+      
+      return {
+        id,
+        file,
+        type: getFileType(file),
+        status: "queued" as ProcessingStatus,
+        progress: 0,
+      };
+    });
 
     setFiles((prev) => [...prev, ...newFiles]);
+    
+    console.info(`📤 [FileUpload] ${newFiles.length} file(s) added to queue`, {
+      files: newFiles.map(f => ({ name: f.file.name, type: f.type, size: `${(f.file.size / 1024).toFixed(1)}KB` })),
+    });
   };
 
   // Start processing all queued files
@@ -170,6 +185,15 @@ export function FileUpload() {
       });
       return;
     }
+
+    // Start a new logging session
+    const sessionId = fileUploadLogger.startSession();
+    console.info(`📤 [FileUpload] Starting batch processing`, {
+      sessionId,
+      fileCount: queuedFiles.length,
+      totalSize: `${(queuedFiles.reduce((s, f) => s + f.file.size, 0) / 1024).toFixed(1)}KB`,
+      files: queuedFiles.map(f => f.file.name),
+    });
 
     setIsProcessing(true);
     setIsCancelled(false);
@@ -186,6 +210,7 @@ export function FileUpload() {
 
     for (const uploadedFile of queuedFiles) {
       if (cancelRef.current) {
+        console.info(`📤 [FileUpload] Processing cancelled by user`);
         // Mark remaining files as cancelled
         setFiles((prev) =>
           prev.map((f) =>
@@ -199,8 +224,17 @@ export function FileUpload() {
 
     setIsProcessing(false);
     
+    // End the logging session
+    fileUploadLogger.endSession();
+    
     if (!cancelRef.current) {
       const stats = batchStats;
+      console.info(`📤 [FileUpload] Batch complete`, {
+        processed: stats.processedFiles,
+        failed: stats.failedFiles,
+        partsFound: stats.totalPartsFound,
+        elapsed: `${stats.elapsedSeconds}s`,
+      });
       toast.success("Processing complete!", {
         description: `Found ${stats.totalPartsFound} parts from ${stats.processedFiles} files.`,
       });
@@ -229,6 +263,17 @@ export function FileUpload() {
   // Process a single file
   const processFile = async (uploadedFile: UploadedFile) => {
     const startTime = Date.now();
+    const fileId = uploadedFile.id;
+    
+    console.info(`📤 [FileUpload] Processing file`, {
+      fileId: fileId.substring(0, 8),
+      name: uploadedFile.file.name,
+      type: uploadedFile.type,
+      size: `${(uploadedFile.file.size / 1024).toFixed(1)}KB`,
+    });
+    
+    // Log processing start
+    fileUploadLogger.processingStart(fileId);
     
     // Update to processing state
     setFiles((prev) =>
@@ -248,7 +293,17 @@ export function FileUpload() {
       switch (uploadedFile.type) {
         case "text":
         case "csv": {
+          console.info(`📤 [FileUpload] Parsing text/CSV file`, { fileId: fileId.substring(0, 8) });
+          const textStartTime = Date.now();
+          
           const text = await uploadedFile.file.text();
+          const lineCount = text.split('\n').length;
+          
+          console.debug(`📤 [FileUpload] Text file loaded`, {
+            fileId: fileId.substring(0, 8),
+            lines: lineCount,
+            chars: text.length,
+          });
           
           setFiles((prev) =>
             prev.map((f) =>
@@ -274,6 +329,14 @@ export function FileUpload() {
             ? parts.reduce((sum, p) => sum + (p.audit?.confidence || 0.8), 0) / parts.length 
             : 0;
           method = "Text Parser";
+          
+          // Log text parsing results
+          fileUploadLogger.textParsing(fileId, {
+            linesProcessed: lineCount,
+            partsExtracted: parts.length,
+            errors: results.parts.filter((r) => r.errors.length > 0).length,
+            processingTimeMs: Date.now() - textStartTime,
+          });
           break;
         }
 
@@ -290,17 +353,38 @@ export function FileUpload() {
               )
             );
             
+            const qrStartTime = Date.now();
             try {
+              console.debug(`📤 [FileUpload] Checking for QR template`, { fileId: fileId.substring(0, 8) });
               const imageBuffer = await uploadedFile.file.arrayBuffer();
               qrResult = await detectQRCode(imageBuffer);
+              
+              // Log QR detection result
+              fileUploadLogger.qrDetection(fileId, {
+                found: qrResult.found,
+                templateId: qrResult.templateId,
+                processingTimeMs: Date.now() - qrStartTime,
+              });
+              
+              if (qrResult.found) {
+                console.info(`📤 [FileUpload] QR template detected!`, {
+                  fileId: fileId.substring(0, 8),
+                  templateId: qrResult.templateId,
+                  version: qrResult.templateVersion,
+                });
+              }
               
               setFiles((prev) =>
                 prev.map((f) =>
                   f.id === uploadedFile.id ? { ...f, qrDetected: qrResult, progress: 30 } : f
                 )
               );
-            } catch {
+            } catch (qrError) {
               // QR detection failed, continue without template
+              console.debug(`📤 [FileUpload] QR detection failed (non-fatal)`, {
+                fileId: fileId.substring(0, 8),
+                error: qrError instanceof Error ? qrError.message : "Unknown error",
+              });
             }
           }
 
@@ -313,6 +397,13 @@ export function FileUpload() {
           );
 
           try {
+            const aiStartTime = Date.now();
+            console.info(`📤 [FileUpload] Sending to AI for parsing`, {
+              fileId: fileId.substring(0, 8),
+              type: uploadedFile.type,
+              hasTemplate: !!qrResult?.templateId,
+            });
+            
             setFiles((prev) =>
               prev.map((f) =>
                 f.id === uploadedFile.id ? { ...f, progress: 60 } : f
@@ -335,8 +426,23 @@ export function FileUpload() {
             });
 
             const data = await response.json();
+            const aiEndTime = Date.now();
 
             if (!response.ok) {
+              // Log AI error
+              fileUploadLogger.aiProcessingError(fileId, {
+                code: data.code || "API_ERROR",
+                message: data.error || "Unknown API error",
+                details: { status: response.status, statusText: response.statusText },
+              });
+              
+              console.error(`📤 [FileUpload] AI API error`, {
+                fileId: fileId.substring(0, 8),
+                status: response.status,
+                code: data.code,
+                error: data.error,
+              });
+              
               if (data.code === "AI_NOT_CONFIGURED") {
                 toast.error("AI processing is not available", {
                   description: "Please contact your system administrator to configure AI services.",
@@ -367,6 +473,11 @@ export function FileUpload() {
             );
 
             if (!data.success) {
+              fileUploadLogger.aiProcessingError(fileId, {
+                code: "PARSE_FAILED",
+                message: "AI parsing returned unsuccessful result",
+                details: data,
+              });
               throw new Error("AI parsing failed");
             }
 
@@ -387,15 +498,63 @@ export function FileUpload() {
               if (p.extractedMetadata?.grooving?.detected) metadata.grooving++;
               if (p.extractedMetadata?.cncOperations?.detected) metadata.cncOps++;
             }
+
+            // Log AI processing completion
+            fileUploadLogger.aiProcessingComplete(fileId, {
+              provider: "AI Vision",
+              processingTimeMs: aiEndTime - aiStartTime,
+              partsExtracted: parts.length,
+              confidence: confidence,
+            });
+            
+            console.info(`📤 [FileUpload] AI parsing successful`, {
+              fileId: fileId.substring(0, 8),
+              partsFound: parts.length,
+              confidence: `${(confidence * 100).toFixed(0)}%`,
+              aiTimeMs: aiEndTime - aiStartTime,
+              totalTimeMs: data.processingTimeMs,
+              edgeBanding: metadata.edgeBanding,
+              grooving: metadata.grooving,
+              cncOps: metadata.cncOps,
+            });
+
+            // Track uploaded file for linking to cutlist later
+            if (data.uploadedFileId) {
+              console.debug(`📤 [FileUpload] File saved to storage`, {
+                fileId: fileId.substring(0, 8),
+                uploadedFileId: data.uploadedFileId,
+              });
+              addPendingFileId(data.uploadedFileId);
+              
+              // Log storage
+              fileUploadLogger.fileStorage(fileId, {
+                success: true,
+                uploadedFileId: data.uploadedFileId,
+              });
+            }
             
           } catch (aiError) {
-            console.warn("AI processing failed:", aiError);
+            console.error(`📤 [FileUpload] AI processing failed`, {
+              fileId: fileId.substring(0, 8),
+              error: aiError instanceof Error ? aiError.message : "Unknown error",
+            });
             throw aiError;
           }
           break;
         }
 
         case "excel": {
+          console.warn(`📤 [FileUpload] Excel file not supported here`, {
+            fileId: fileId.substring(0, 8),
+            hint: "Use Excel Import tab instead",
+          });
+          
+          fileUploadLogger.fileError(fileId, {
+            stage: "validation",
+            message: "Use the Excel Import tab for spreadsheets",
+            code: "EXCEL_WRONG_TAB",
+          });
+          
           setFiles((prev) =>
             prev.map((f) =>
               f.id === uploadedFile.id
@@ -412,6 +571,11 @@ export function FileUpload() {
         }
 
         default: {
+          fileUploadLogger.fileError(fileId, {
+            stage: "validation",
+            message: "Unsupported file type",
+            code: "UNSUPPORTED_TYPE",
+          });
           throw new Error("Unsupported file type");
         }
       }
@@ -419,9 +583,22 @@ export function FileUpload() {
       // Add to inbox
       if (parts.length > 0) {
         addToInbox(parts);
+        console.info(`📤 [FileUpload] Parts added to inbox`, {
+          fileId: fileId.substring(0, 8),
+          count: parts.length,
+        });
       }
 
       const processingTime = Date.now() - startTime;
+
+      // Log file completion
+      fileUploadLogger.fileComplete(fileId, {
+        partsCount: parts.length,
+        method,
+        confidence,
+        totalProcessingTimeMs: processingTime,
+        metadata: metadata.edgeBanding || metadata.grooving || metadata.cncOps ? metadata : undefined,
+      });
 
       setFiles((prev) =>
         prev.map((f) =>
@@ -448,18 +625,41 @@ export function FileUpload() {
         processedFiles: prev.processedFiles + 1,
         totalPartsFound: prev.totalPartsFound + parts.length,
       }));
+      
+      // Log batch progress
+      fileUploadLogger.batchStats({
+        totalFiles: batchStats.totalFiles,
+        processedFiles: batchStats.processedFiles + 1,
+        failedFiles: batchStats.failedFiles,
+        totalPartsFound: batchStats.totalPartsFound + parts.length,
+        elapsedSeconds: batchStats.elapsedSeconds,
+      });
 
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to process file";
+      
+      // Log file error
+      fileUploadLogger.fileError(fileId, {
+        stage: "processing",
+        message: errorMessage,
+        code: "PROCESSING_ERROR",
+        details: error,
+      });
+      
+      console.error(`📤 [FileUpload] File processing failed`, {
+        fileId: fileId.substring(0, 8),
+        name: uploadedFile.file.name,
+        error: errorMessage,
+        processingTimeMs: Date.now() - startTime,
+      });
+      
       setFiles((prev) =>
         prev.map((f) =>
           f.id === uploadedFile.id
             ? {
                 ...f,
                 status: "error" as ProcessingStatus,
-                error:
-                  error instanceof Error
-                    ? error.message
-                    : "Failed to process file",
+                error: errorMessage,
               }
             : f
         )

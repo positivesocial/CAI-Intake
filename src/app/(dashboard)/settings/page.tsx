@@ -85,10 +85,18 @@ const SETTINGS_SECTIONS = [
     href: "/settings/shortcodes",
   },
   {
+    id: "branding",
+    label: "Branding",
+    icon: Palette,
+    description: "Company logo, colors, and PDF templates",
+    adminOnly: true,
+    href: "/settings/branding",
+  },
+  {
     id: "organization",
     label: "Organization",
     icon: Building2,
-    description: "Organization settings and branding",
+    description: "Organization settings",
     adminOnly: true,
   },
   {
@@ -888,6 +896,30 @@ export default function SettingsPage() {
                         <p className="text-[var(--muted-foreground)]">
                           Configure shortcode mappings for edge banding, grooves,
                           holes, and CNC operations
+                        </p>
+                      </div>
+                      <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
+
+            {/* Branding Section (Admin Only) */}
+            {activeSection === "branding" && isOrgAdmin() && (
+              <Link href="/settings/branding">
+                <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                        <Palette className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold">
+                          Company Branding
+                        </h3>
+                        <p className="text-[var(--muted-foreground)]">
+                          Customize your company logo, colors, and PDF export templates
                         </p>
                       </div>
                       <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />

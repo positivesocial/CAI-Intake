@@ -99,6 +99,8 @@ function SheetGoodsTab() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const [formData, setFormData] = useState({
     material_id: "",
     name: "",
@@ -111,6 +113,50 @@ function SheetGoodsTab() {
     default_sheet_w: 2070,
     supplier: "",
   });
+
+  // Toggle selection
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Toggle all in current filtered view
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredMaterials.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredMaterials.map((m) => m.id)));
+    }
+  };
+
+  // Bulk delete
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedIds.size} material(s)?`)) return;
+
+    setDeleting(true);
+    try {
+      const deletePromises = Array.from(selectedIds).map((id) =>
+        fetch(`/api/v1/materials/${id}`, { method: "DELETE" })
+      );
+      await Promise.all(deletePromises);
+      toast.success(`Deleted ${selectedIds.size} material(s)`);
+      setSelectedIds(new Set());
+      fetchMaterials();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete";
+      toast.error("Error", { description: message });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // Fetch materials
   const fetchMaterials = useCallback(async () => {
@@ -154,6 +200,7 @@ function SheetGoodsTab() {
     setSaving(true);
 
     try {
+      // Send all columns that exist in the database
       const payload = {
         material_id: formData.material_id,
         name: formData.name,
@@ -376,6 +423,41 @@ function SheetGoodsTab() {
         </CardContent>
       </Card>
 
+      {/* Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <Card className="border-[var(--cai-teal)] bg-[var(--cai-teal)]/5">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">
+                {selectedIds.size} material{selectedIds.size > 1 ? "s" : ""} selected
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  Clear Selection
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4 mr-2" />
+                  )}
+                  Delete {selectedIds.size} Selected
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Materials Table */}
       <Card>
         <CardHeader>
@@ -388,28 +470,47 @@ function SheetGoodsTab() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]">
+                    <label className="inline-flex p-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={filteredMaterials.length > 0 && selectedIds.size === filteredMaterials.length}
+                        onChange={toggleSelectAll}
+                      />
+                    </label>
+                  </TableHead>
                   <TableHead className="w-[50px]">Color</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>ID</TableHead>
                   <TableHead className="text-right">Thickness</TableHead>
                   <TableHead>Core</TableHead>
-                  <TableHead>Grain</TableHead>
                   <TableHead>Sheet Size</TableHead>
-                  <TableHead>Supplier</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredMaterials.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={8} className="text-center py-8">
                       <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
                       <p className="text-muted-foreground">No sheet materials found</p>
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredMaterials.map((material) => (
-                    <TableRow key={material.id}>
+                    <TableRow
+                      key={material.id}
+                      className={selectedIds.has(material.id) ? "bg-muted/50" : ""}
+                    >
+                      <TableCell>
+                        <label className="inline-flex p-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(material.id)}
+                            onChange={() => toggleSelect(material.id)}
+                          />
+                        </label>
+                      </TableCell>
                       <TableCell>
                         <div
                           className="h-8 w-8 rounded border"
@@ -428,20 +529,10 @@ function SheetGoodsTab() {
                       <TableCell>
                         <Badge variant="outline">{material.core_type || "-"}</Badge>
                       </TableCell>
-                      <TableCell>
-                        {material.grain && material.grain !== "none" ? (
-                          <Badge variant="secondary">{material.grain}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
                       <TableCell className="font-mono text-sm">
                         {material.default_sheet
                           ? `${material.default_sheet.L} × ${material.default_sheet.W}`
                           : "-"}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {material.supplier || "-"}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
@@ -667,6 +758,8 @@ function EdgebandingTab() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingEdgeband, setEditingEdgeband] = useState<Edgeband | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
   const [formData, setFormData] = useState({
     edgeband_id: "",
     name: "",
@@ -719,6 +812,50 @@ function EdgebandingTab() {
 
   // Get unique materials for stats
   const edgebandMaterials = [...new Set(edgebands.map((e) => e.material))].filter(Boolean);
+
+  // Toggle selection
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Toggle all in current filtered view
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredEdgebands.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredEdgebands.map((e) => e.id)));
+    }
+  };
+
+  // Bulk delete
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedIds.size} edgeband(s)?`)) return;
+
+    setDeleting(true);
+    try {
+      const deletePromises = Array.from(selectedIds).map((id) =>
+        fetch(`/api/v1/edgebands/${id}`, { method: "DELETE" })
+      );
+      await Promise.all(deletePromises);
+      toast.success(`Deleted ${selectedIds.size} edgeband(s)`);
+      setSelectedIds(new Set());
+      fetchEdgebands();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete";
+      toast.error("Error", { description: message });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -792,10 +929,10 @@ function EdgebandingTab() {
   const handleEdit = (edgeband: Edgeband) => {
     setEditingEdgeband(edgeband);
     setFormData({
-      edgeband_id: edgeband.edgeband_id,
-      name: edgeband.name,
-      thickness_mm: edgeband.thickness_mm,
-      width_mm: edgeband.width_mm,
+      edgeband_id: edgeband.edgeband_id ?? "",
+      name: edgeband.name ?? "",
+      thickness_mm: edgeband.thickness_mm ?? 0.4,
+      width_mm: edgeband.width_mm ?? 22,
       material: edgeband.material ?? "PVC",
       color_code: edgeband.color_code ?? "#FFFFFF",
       color_match_material_id: edgeband.color_match_material_id ?? "",
@@ -943,6 +1080,41 @@ function EdgebandingTab() {
         </CardContent>
       </Card>
 
+      {/* Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <Card className="border-[var(--cai-teal)] bg-[var(--cai-teal)]/5">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">
+                {selectedIds.size} edgeband{selectedIds.size > 1 ? "s" : ""} selected
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  Clear Selection
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4 mr-2" />
+                  )}
+                  Delete {selectedIds.size} Selected
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Edgebands Table */}
       <Card>
         <CardHeader>
@@ -955,13 +1127,21 @@ function EdgebandingTab() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]">
+                    <label className="inline-flex p-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={filteredEdgebands.length > 0 && selectedIds.size === filteredEdgebands.length}
+                        onChange={toggleSelectAll}
+                      />
+                    </label>
+                  </TableHead>
                   <TableHead className="w-[50px]">Color</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>ID</TableHead>
                   <TableHead className="text-right">Thickness</TableHead>
                   <TableHead className="text-right">Width</TableHead>
                   <TableHead>Material</TableHead>
-                  <TableHead className="text-right">Waste</TableHead>
                   <TableHead className="text-right">Overhang</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
@@ -976,7 +1156,19 @@ function EdgebandingTab() {
                   </TableRow>
                 ) : (
                   filteredEdgebands.map((edgeband) => (
-                    <TableRow key={edgeband.id}>
+                    <TableRow
+                      key={edgeband.id}
+                      className={selectedIds.has(edgeband.id) ? "bg-muted/50" : ""}
+                    >
+                      <TableCell>
+                        <label className="inline-flex p-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(edgeband.id)}
+                            onChange={() => toggleSelect(edgeband.id)}
+                          />
+                        </label>
+                      </TableCell>
                       <TableCell>
                         <div
                           className="h-8 w-8 rounded border"
@@ -997,9 +1189,6 @@ function EdgebandingTab() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{edgeband.material || "-"}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        <span className="text-amber-600">{edgeband.waste_factor_pct}%</span>
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {edgeband.overhang_mm > 0 ? (
@@ -1080,7 +1269,7 @@ function EdgebandingTab() {
               <div className="space-y-2">
                 <Label>Thickness (mm)</Label>
                 <Select
-                  value={formData.thickness_mm.toString()}
+                  value={(formData.thickness_mm ?? 0.4).toString()}
                   onValueChange={(value) =>
                     setFormData({ ...formData, thickness_mm: parseFloat(value) })
                   }
@@ -1100,7 +1289,7 @@ function EdgebandingTab() {
               <div className="space-y-2">
                 <Label>Width (mm)</Label>
                 <Select
-                  value={formData.width_mm.toString()}
+                  value={(formData.width_mm ?? 22).toString()}
                   onValueChange={(value) =>
                     setFormData({ ...formData, width_mm: parseFloat(value) })
                   }

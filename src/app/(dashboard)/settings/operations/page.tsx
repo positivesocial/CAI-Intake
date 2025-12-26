@@ -1131,6 +1131,8 @@ function GrooveTypesTab() {
   const [showDialog, setShowDialog] = useState(false);
   const [editingType, setEditingType] = useState<GrooveType | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const [formData, setFormData] = useState({
     code: "",
@@ -1148,6 +1150,7 @@ function GrooveTypesTab() {
       if (!response.ok) throw new Error("Failed to fetch groove types");
       const data = await response.json();
       setTypes(data.types || []);
+      setSelectedIds(new Set()); // Clear selection on refresh
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load types");
     } finally {
@@ -1159,17 +1162,50 @@ function GrooveTypesTab() {
     fetchTypes();
   }, []);
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === types.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(types.map(t => t.id)));
+    }
+  };
+
   const handleCreate = () => {
     setEditingType(null);
     setFormData({ code: "", name: "", default_width_mm: 4, default_depth_mm: 8, description: "", is_active: true });
     setShowDialog(true);
   };
 
+  const handleEdit = (type: GrooveType) => {
+    setEditingType(type);
+    setFormData({
+      code: type.code,
+      name: type.name,
+      default_width_mm: type.default_width_mm || 4,
+      default_depth_mm: type.default_depth_mm || 8,
+      description: type.description || "",
+      is_active: type.is_active,
+    });
+    setShowDialog(true);
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
-      const response = await fetch("/api/v1/groove-types", {
-        method: "POST",
+      const url = editingType 
+        ? `/api/v1/groove-types/${editingType.id}` 
+        : "/api/v1/groove-types";
+      const response = await fetch(url, {
+        method: editingType ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
@@ -1186,6 +1222,39 @@ function GrooveTypesTab() {
     }
   };
 
+  const handleDelete = async (type: GrooveType) => {
+    if (!confirm(`Delete groove type "${type.name}"? This cannot be undone.`)) return;
+    try {
+      const response = await fetch(`/api/v1/groove-types/${type.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete");
+      }
+      fetchTypes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete type");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} groove type(s)? This cannot be undone.`)) return;
+    
+    setDeleting(true);
+    try {
+      const deletePromises = Array.from(selectedIds).map(id =>
+        fetch(`/api/v1/groove-types/${id}`, { method: "DELETE" })
+      );
+      await Promise.all(deletePromises);
+      fetchTypes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete some types");
+      fetchTypes();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   }
@@ -1197,32 +1266,71 @@ function GrooveTypesTab() {
   return (
     <>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-muted-foreground">Define shortcodes for groove operations</p>
-          <Button onClick={handleCreate}><Plus className="h-4 w-4 mr-2" />Add Groove Type</Button>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={deleting}>
+                {deleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                Delete {selectedIds.size} Selected
+              </Button>
+            )}
+            <Button onClick={handleCreate}><Plus className="h-4 w-4 mr-2" />Add Groove Type</Button>
+          </div>
         </div>
         <div className="border rounded-lg">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <label className="inline-flex p-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={types.length > 0 && selectedIds.size === types.length}
+                      onChange={toggleSelectAll}
+                      className="rounded border-[var(--border)]"
+                    />
+                  </label>
+                </TableHead>
                 <TableHead>Code</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Width (mm)</TableHead>
                 <TableHead>Depth (mm)</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {types.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No groove types defined</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No groove types defined</TableCell></TableRow>
               ) : (
                 types.map((t) => (
-                  <TableRow key={t.id}>
+                  <TableRow key={t.id} className={selectedIds.has(t.id) ? "bg-muted/50" : ""}>
+                    <TableCell>
+                      <label className="inline-flex p-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(t.id)}
+                          onChange={() => toggleSelect(t.id)}
+                          className="rounded border-[var(--border)]"
+                        />
+                      </label>
+                    </TableCell>
                     <TableCell className="font-mono font-bold">{t.code}</TableCell>
                     <TableCell>{t.name}</TableCell>
                     <TableCell>{t.default_width_mm || "-"}</TableCell>
                     <TableCell>{t.default_depth_mm || "-"}</TableCell>
                     <TableCell><Badge variant={t.is_active ? "default" : "secondary"}>{t.is_active ? "Active" : "Inactive"}</Badge></TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(t)} title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(t)} className="text-destructive hover:text-destructive" title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -1234,14 +1342,14 @@ function GrooveTypesTab() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Groove Type</DialogTitle>
-            <DialogDescription>Create a shortcode for groove operations</DialogDescription>
+            <DialogTitle>{editingType ? "Edit Groove Type" : "Add Groove Type"}</DialogTitle>
+            <DialogDescription>{editingType ? "Update the groove type shortcode" : "Create a shortcode for groove operations"}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Code (shortcode)</Label>
-                <Input value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})} placeholder="e.g., D, R, BP" />
+                <Input value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})} placeholder="e.g., D, R, BP" disabled={!!editingType} />
               </div>
               <div className="space-y-2">
                 <Label>Name</Label>
@@ -1262,11 +1370,15 @@ function GrooveTypesTab() {
               <Label>Description</Label>
               <Input value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Optional description" />
             </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={formData.is_active} onCheckedChange={(checked) => setFormData({...formData, is_active: checked})} />
+              <Label>Active</Label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving || !formData.code || !formData.name}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Create
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}{editingType ? "Save Changes" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1284,7 +1396,10 @@ function HoleTypesTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
+  const [editingType, setEditingType] = useState<HoleType | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const [formData, setFormData] = useState({
     code: "",
@@ -1303,6 +1418,7 @@ function HoleTypesTab() {
       if (!response.ok) throw new Error("Failed to fetch hole types");
       const data = await response.json();
       setTypes(data.types || []);
+      setSelectedIds(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load types");
     } finally {
@@ -1314,16 +1430,49 @@ function HoleTypesTab() {
     fetchTypes();
   }, []);
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === types.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(types.map(t => t.id)));
+    }
+  };
+
   const handleCreate = () => {
+    setEditingType(null);
     setFormData({ code: "", name: "", diameter_mm: 5, depth_mm: 12, spacing_mm: 32, description: "", is_active: true });
+    setShowDialog(true);
+  };
+
+  const handleEdit = (type: HoleType) => {
+    setEditingType(type);
+    setFormData({
+      code: type.code,
+      name: type.name,
+      diameter_mm: type.diameter_mm || 5,
+      depth_mm: type.depth_mm || 12,
+      spacing_mm: type.spacing_mm || 32,
+      description: type.description || "",
+      is_active: type.is_active,
+    });
     setShowDialog(true);
   };
 
   const handleSave = async () => {
     try {
       setSaving(true);
-      const response = await fetch("/api/v1/hole-types", {
-        method: "POST",
+      const url = editingType ? `/api/v1/hole-types/${editingType.id}` : "/api/v1/hole-types";
+      const response = await fetch(url, {
+        method: editingType ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
@@ -1340,6 +1489,39 @@ function HoleTypesTab() {
     }
   };
 
+  const handleDelete = async (type: HoleType) => {
+    if (!confirm(`Delete hole type "${type.name}"? This cannot be undone.`)) return;
+    try {
+      const response = await fetch(`/api/v1/hole-types/${type.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete");
+      }
+      fetchTypes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete type");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} hole type(s)? This cannot be undone.`)) return;
+    
+    setDeleting(true);
+    try {
+      const deletePromises = Array.from(selectedIds).map(id =>
+        fetch(`/api/v1/hole-types/${id}`, { method: "DELETE" })
+      );
+      await Promise.all(deletePromises);
+      fetchTypes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete some types");
+      fetchTypes();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   }
@@ -1351,34 +1533,73 @@ function HoleTypesTab() {
   return (
     <>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-muted-foreground">Define shortcodes for hole patterns</p>
-          <Button onClick={handleCreate}><Plus className="h-4 w-4 mr-2" />Add Hole Type</Button>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={deleting}>
+                {deleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                Delete {selectedIds.size} Selected
+              </Button>
+            )}
+            <Button onClick={handleCreate}><Plus className="h-4 w-4 mr-2" />Add Hole Type</Button>
+          </div>
         </div>
         <div className="border rounded-lg">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <label className="inline-flex p-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={types.length > 0 && selectedIds.size === types.length}
+                      onChange={toggleSelectAll}
+                      className="rounded border-[var(--border)]"
+                    />
+                  </label>
+                </TableHead>
                 <TableHead>Code</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Diameter (mm)</TableHead>
                 <TableHead>Depth (mm)</TableHead>
                 <TableHead>Spacing (mm)</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {types.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No hole types defined</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No hole types defined</TableCell></TableRow>
               ) : (
                 types.map((t) => (
-                  <TableRow key={t.id}>
+                  <TableRow key={t.id} className={selectedIds.has(t.id) ? "bg-muted/50" : ""}>
+                    <TableCell>
+                      <label className="inline-flex p-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(t.id)}
+                          onChange={() => toggleSelect(t.id)}
+                          className="rounded border-[var(--border)]"
+                        />
+                      </label>
+                    </TableCell>
                     <TableCell className="font-mono font-bold">{t.code}</TableCell>
                     <TableCell>{t.name}</TableCell>
                     <TableCell>{t.diameter_mm || "-"}</TableCell>
                     <TableCell>{t.depth_mm || "-"}</TableCell>
                     <TableCell>{t.spacing_mm || "-"}</TableCell>
                     <TableCell><Badge variant={t.is_active ? "default" : "secondary"}>{t.is_active ? "Active" : "Inactive"}</Badge></TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(t)} title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(t)} className="text-destructive hover:text-destructive" title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -1390,14 +1611,14 @@ function HoleTypesTab() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Hole Type</DialogTitle>
-            <DialogDescription>Create a shortcode for hole patterns</DialogDescription>
+            <DialogTitle>{editingType ? "Edit Hole Type" : "Add Hole Type"}</DialogTitle>
+            <DialogDescription>{editingType ? "Update the hole type shortcode" : "Create a shortcode for hole patterns"}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Code (shortcode)</Label>
-                <Input value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})} placeholder="e.g., S32, HG35" />
+                <Input value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})} placeholder="e.g., S32, HG35" disabled={!!editingType} />
               </div>
               <div className="space-y-2">
                 <Label>Name</Label>
@@ -1422,11 +1643,15 @@ function HoleTypesTab() {
               <Label>Description</Label>
               <Input value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Optional description" />
             </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={formData.is_active} onCheckedChange={(checked) => setFormData({...formData, is_active: checked})} />
+              <Label>Active</Label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving || !formData.code || !formData.name}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Create
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}{editingType ? "Save Changes" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1444,7 +1669,10 @@ function CncTypesTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
+  const [editingType, setEditingType] = useState<CncOperationType | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const [formData, setFormData] = useState({
     code: "",
@@ -1461,6 +1689,7 @@ function CncTypesTab() {
       if (!response.ok) throw new Error("Failed to fetch CNC types");
       const data = await response.json();
       setTypes(data.types || []);
+      setSelectedIds(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load types");
     } finally {
@@ -1472,16 +1701,47 @@ function CncTypesTab() {
     fetchTypes();
   }, []);
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === types.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(types.map(t => t.id)));
+    }
+  };
+
   const handleCreate = () => {
+    setEditingType(null);
     setFormData({ code: "", name: "", op_type: "custom", description: "", is_active: true });
+    setShowDialog(true);
+  };
+
+  const handleEdit = (type: CncOperationType) => {
+    setEditingType(type);
+    setFormData({
+      code: type.code,
+      name: type.name,
+      op_type: (type.op_type || "custom") as typeof formData.op_type,
+      description: type.description || "",
+      is_active: type.is_active,
+    });
     setShowDialog(true);
   };
 
   const handleSave = async () => {
     try {
       setSaving(true);
-      const response = await fetch("/api/v1/cnc-types", {
-        method: "POST",
+      const url = editingType ? `/api/v1/cnc-types/${editingType.id}` : "/api/v1/cnc-types";
+      const response = await fetch(url, {
+        method: editingType ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
@@ -1498,6 +1758,39 @@ function CncTypesTab() {
     }
   };
 
+  const handleDelete = async (type: CncOperationType) => {
+    if (!confirm(`Delete CNC type "${type.name}"? This cannot be undone.`)) return;
+    try {
+      const response = await fetch(`/api/v1/cnc-types/${type.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete");
+      }
+      fetchTypes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete type");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} CNC type(s)? This cannot be undone.`)) return;
+    
+    setDeleting(true);
+    try {
+      const deletePromises = Array.from(selectedIds).map(id =>
+        fetch(`/api/v1/cnc-types/${id}`, { method: "DELETE" })
+      );
+      await Promise.all(deletePromises);
+      fetchTypes();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete some types");
+      fetchTypes();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   }
@@ -1509,32 +1802,71 @@ function CncTypesTab() {
   return (
     <>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-muted-foreground">Define shortcodes for CNC operations</p>
-          <Button onClick={handleCreate}><Plus className="h-4 w-4 mr-2" />Add CNC Type</Button>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={deleting}>
+                {deleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                Delete {selectedIds.size} Selected
+              </Button>
+            )}
+            <Button onClick={handleCreate}><Plus className="h-4 w-4 mr-2" />Add CNC Type</Button>
+          </div>
         </div>
         <div className="border rounded-lg">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <label className="inline-flex p-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={types.length > 0 && selectedIds.size === types.length}
+                      onChange={toggleSelectAll}
+                      className="rounded border-[var(--border)]"
+                    />
+                  </label>
+                </TableHead>
                 <TableHead>Code</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Operation Type</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {types.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No CNC types defined</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No CNC types defined</TableCell></TableRow>
               ) : (
                 types.map((t) => (
-                  <TableRow key={t.id}>
+                  <TableRow key={t.id} className={selectedIds.has(t.id) ? "bg-muted/50" : ""}>
+                    <TableCell>
+                      <label className="inline-flex p-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(t.id)}
+                          onChange={() => toggleSelect(t.id)}
+                          className="rounded border-[var(--border)]"
+                        />
+                      </label>
+                    </TableCell>
                     <TableCell className="font-mono font-bold">{t.code}</TableCell>
                     <TableCell>{t.name}</TableCell>
                     <TableCell>{t.op_type || "-"}</TableCell>
                     <TableCell className="text-muted-foreground">{t.description || "-"}</TableCell>
                     <TableCell><Badge variant={t.is_active ? "default" : "secondary"}>{t.is_active ? "Active" : "Inactive"}</Badge></TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(t)} title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(t)} className="text-destructive hover:text-destructive" title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -1546,14 +1878,14 @@ function CncTypesTab() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add CNC Type</DialogTitle>
-            <DialogDescription>Create a shortcode for CNC operations</DialogDescription>
+            <DialogTitle>{editingType ? "Edit CNC Type" : "Add CNC Type"}</DialogTitle>
+            <DialogDescription>{editingType ? "Update the CNC type shortcode" : "Create a shortcode for CNC operations"}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Code (shortcode)</Label>
-                <Input value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})} placeholder="e.g., HINGE, PKT" />
+                <Input value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})} placeholder="e.g., HINGE, PKT" disabled={!!editingType} />
               </div>
               <div className="space-y-2">
                 <Label>Name</Label>
@@ -1578,11 +1910,15 @@ function CncTypesTab() {
               <Label>Description</Label>
               <Input value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Optional description" />
             </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={formData.is_active} onCheckedChange={(checked) => setFormData({...formData, is_active: checked})} />
+              <Label>Active</Label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving || !formData.code || !formData.name}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Create
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}{editingType ? "Save Changes" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>

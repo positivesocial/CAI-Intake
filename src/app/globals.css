@@ -491,11 +491,9 @@ html:not(.dark) {
 
 /* Mobile touch target sizing */
 @media (max-width: 768px) {
-  /* Ensure minimum touch target size of 44x44px for accessibility */
-  button,
-  [role="button"],
-  input[type="checkbox"],
-  input[type="radio"] {
+  /* Ensure minimum touch target size of 44x44px for accessibility on buttons */
+  button:not(.checkbox-wrapper),
+  [role="button"]:not(.checkbox-wrapper) {
     min-height: 44px;
     min-width: 44px;
   }
@@ -503,7 +501,12 @@ html:not(.dark) {
   /* Allow smaller buttons with explicit size classes */
   .h-8,
   .h-9,
-  .h-10 {
+  .h-10,
+  button.h-8,
+  button.h-9,
+  button.h-10,
+  [class*="size-sm"],
+  [class*="size-icon"] {
     min-height: unset;
     min-width: unset;
   }
@@ -520,6 +523,28 @@ html:not(.dark) {
   .overflow-auto {
     -webkit-overflow-scrolling: touch;
   }
+}
+
+/* Checkbox styling - keep visual small, expand touch area with padding */
+input[type="checkbox"],
+input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  cursor: pointer;
+  accent-color: var(--cai-teal);
+  border-radius: 4px;
+}
+
+/* Checkbox wrapper for better touch targets on mobile */
+.checkbox-touch-target {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  margin: -8px;
+  cursor: pointer;
 }
 
 /* Responsive table improvements */

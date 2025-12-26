@@ -3,9 +3,11 @@
 /**
  * Sheet component - Side sliding panel
  * Custom implementation (no external dependencies)
+ * Uses Portal to render outside DOM hierarchy
  */
 
 import * as React from "react";
+import ReactDOM from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -95,6 +97,12 @@ const sideClasses = {
 
 function SheetContent({ children, side = "right", className, ...props }: SheetContentProps) {
   const { open, onOpenChange } = useSheetContext();
+  const [mounted, setMounted] = React.useState(false);
+
+  // Only render portal on client
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -114,9 +122,10 @@ function SheetContent({ children, side = "right", className, ...props }: SheetCo
     };
   }, [open, onOpenChange]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  // Use Portal to render outside the current DOM hierarchy
+  return ReactDOM.createPortal(
     <div className="fixed inset-0 z-50">
       {/* Backdrop */}
       <div
@@ -147,7 +156,8 @@ function SheetContent({ children, side = "right", className, ...props }: SheetCo
         </button>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

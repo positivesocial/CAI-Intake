@@ -19,8 +19,11 @@ import crypto from "crypto";
 const CreateCutlistSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
-  job_ref: z.string().optional(),
-  client_ref: z.string().optional(),
+  project_name: z.string().optional(), // Project name for this cutlist
+  customer_name: z.string().optional(), // Customer/client name
+  job_ref: z.string().optional(), // Legacy field (alias for project)
+  client_ref: z.string().optional(), // Legacy field (alias for customer)
+  file_ids: z.array(z.string().uuid()).optional(), // IDs of uploaded files to link
   capabilities: z.object({
     core_parts: z.boolean().optional(),
     edging: z.boolean().optional(),
@@ -149,8 +152,11 @@ export async function GET(request: NextRequest) {
     // Get file counts for each cutlist (separate query since relationship may not exist)
     const cutlistIds = cutlists?.map((c: { id: string }) => c.id) || [];
     let fileCounts: Record<string, number> = {};
+    let materialCounts: Record<string, number> = {};
+    let pieceCounts: Record<string, number> = {};
     
     if (cutlistIds.length > 0) {
+      // Get file counts
       try {
         const { data: fileData } = await serviceClient
           .from("uploaded_files")
@@ -166,19 +172,54 @@ export async function GET(request: NextRequest) {
       } catch {
         // File counts are optional - table may not have cutlist_id column
       }
+
+      // Get unique material counts and total pieces per cutlist
+      try {
+        const { data: partsData } = await serviceClient
+          .from("cut_parts")
+          .select("cutlist_id, material_ref, qty")
+          .in("cutlist_id", cutlistIds);
+        
+        if (partsData) {
+          // Group by cutlist_id to count unique materials and sum qty
+          const cutlistGroups: Record<string, { materials: Set<string>; totalPieces: number }> = {};
+          
+          for (const part of partsData) {
+            if (!cutlistGroups[part.cutlist_id]) {
+              cutlistGroups[part.cutlist_id] = { materials: new Set(), totalPieces: 0 };
+            }
+            if (part.material_ref) {
+              cutlistGroups[part.cutlist_id].materials.add(part.material_ref);
+            }
+            cutlistGroups[part.cutlist_id].totalPieces += part.qty || 1;
+          }
+          
+          for (const [cutlistId, data] of Object.entries(cutlistGroups)) {
+            materialCounts[cutlistId] = data.materials.size;
+            pieceCounts[cutlistId] = data.totalPieces;
+          }
+        }
+      } catch {
+        // Material counts are optional
+      }
     }
 
     return NextResponse.json({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       cutlists: cutlists?.map((c: any) => ({
         id: c.id,
+        docId: c.doc_id,
         name: c.name,
         description: c.description,
+        projectName: c.project_name || c.job_ref || null, // Use project_name if available, fallback to job_ref
+        customerName: c.customer_name || c.client_ref || null, // Use customer_name if available, fallback to client_ref
+        jobRef: c.job_ref,
+        clientRef: c.client_ref,
         status: c.status,
         partsCount: c.parts?.[0]?.count ?? 0,
-        totalPieces: 0, // Will be calculated if needed
+        totalPieces: pieceCounts[c.id] || 0,
         totalArea: 0,   // Will be calculated if needed
-        materialsCount: 0, // Will be calculated if needed
+        materialsCount: materialCounts[c.id] || 0,
         createdAt: c.created_at,
         updatedAt: c.updated_at,
         efficiency: c.efficiency,
@@ -257,7 +298,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, description, job_ref, client_ref, capabilities, parts } = parseResult.data;
+    const { name, description, project_name, customer_name, job_ref, client_ref, file_ids, capabilities, parts } = parseResult.data;
 
     // Generate doc_id and unique cutlist ID
     const doc_id = generateId("DOC");
@@ -274,6 +315,8 @@ export async function POST(request: NextRequest) {
         doc_id,
         name,
         description,
+        project_name: project_name || job_ref || null, // Use project_name or fallback to job_ref
+        customer_name: customer_name || client_ref || null, // Use customer_name or fallback to client_ref
         job_ref,
         client_ref,
         source_method: "web", // Required field
@@ -355,6 +398,29 @@ export async function POST(request: NextRequest) {
       if (partsError) {
         logger.error("Failed to create parts", partsError, { cutlistId: cutlist.id });
         // Don't fail the whole request, cutlist was created
+      }
+    }
+
+    // Link uploaded files to this cutlist
+    if (file_ids && file_ids.length > 0) {
+      const { error: linkError } = await serviceClient
+        .from("uploaded_files")
+        .update({ cutlist_id: cutlist.id })
+        .in("id", file_ids)
+        .eq("organization_id", organizationId); // Security: only link files from same org
+
+      if (linkError) {
+        logger.warn("Failed to link files to cutlist", { 
+          cutlistId: cutlist.id, 
+          fileIds: file_ids,
+          error: linkError 
+        });
+        // Don't fail the request, cutlist was created
+      } else {
+        logger.info("📁 Linked files to cutlist", { 
+          cutlistId: cutlist.id, 
+          fileCount: file_ids.length 
+        });
       }
     }
 

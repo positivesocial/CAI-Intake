@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, getUser } from "@/lib/supabase/server";
+import { getUser, getServiceClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
 
@@ -54,17 +54,21 @@ export async function GET(request: NextRequest) {
     const user = await getUser();
     
     if (!user) {
+      logger.debug("Branding: No user found");
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
         { status: 401 }
       );
     }
 
-    const supabase = await createClient();
+    logger.debug("Branding: User authenticated", { userId: user.id });
+
+    // Use service client to bypass RLS for organization data
+    const serviceClient = getServiceClient();
 
     // Get user's organization - check demo mode first
     const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-    let organizationId: string | null = null;
+    let organizationId: string | undefined = undefined;
     let userRole: string = "operator";
 
     if (isDemoMode) {
@@ -72,44 +76,124 @@ export async function GET(request: NextRequest) {
       organizationId = user.user_metadata?.organization_id || "demo-org-id";
       userRole = "org_admin";
     } else {
-      const { data: userData, error: userError } = await supabase
+      // First get user data
+      logger.debug("Branding: Looking up user", { userId: user.id });
+      
+      const { data: userData, error: userError } = await serviceClient
         .from("users")
-        .select("organization_id, role")
+        .select("organization_id, is_super_admin, role_id")
         .eq("id", user.id)
         .single();
 
-      if (userError || !userData?.organization_id) {
+      if (userError) {
+        logger.error("Branding: User lookup failed", userError, {
+          userId: user.id,
+          code: userError.code,
+        });
+        return NextResponse.json(
+          { success: false, error: "User lookup failed" },
+          { status: 500 }
+        );
+      }
+      
+      if (!userData?.organization_id && !userData?.is_super_admin) {
+        logger.warn("User has no organization", {
+          userId: user.id,
+          userData,
+        });
         return NextResponse.json(
           { success: false, error: "Organization not found" },
           { status: 404 }
         );
       }
+      
+      logger.debug("Branding: Found user org", { organizationId: userData.organization_id });
       organizationId = userData.organization_id;
-      userRole = userData.role;
+      
+      // Get role name separately if we have a role_id
+      if (userData.is_super_admin) {
+        userRole = "super_admin";
+      } else if (userData.role_id) {
+        const { data: roleData } = await serviceClient
+          .from("roles")
+          .select("name")
+          .eq("id", userData.role_id)
+          .single();
+        userRole = roleData?.name || "viewer";
+      } else {
+        userRole = "viewer";
+      }
     }
 
     // Get organization branding
-    const { data: org, error: orgError } = await supabase
+    logger.debug("Branding: Fetching org branding", { organizationId });
+    
+    const { data: org, error: orgError } = await serviceClient
       .from("organizations")
-      .select("branding")
+      .select("id, name, branding")
       .eq("id", organizationId)
       .single();
+    
+    logger.debug("Branding: Query result", { 
+      hasData: !!org,
+      hasError: !!orgError,
+      errorCode: orgError?.code,
+    });
 
     if (orgError) {
-      logger.error("Failed to get org branding:", orgError);
+      logger.error("Failed to get org branding", orgError, {
+        code: orgError.code,
+        details: orgError.details,
+        hint: orgError.hint,
+        organizationId,
+      });
+      
+      // If branding column doesn't exist, return default
+      if (orgError.code === "PGRST204" || orgError.message?.includes("column") || orgError.message?.includes("branding")) {
+        logger.info("Branding column not found, returning defaults");
+        return NextResponse.json({
+          success: true,
+          branding: {},
+        });
+      }
+      
+      // If organization not found
+      if (orgError.code === "PGRST116") {
+        logger.warn("Organization not found", { organizationId });
+        return NextResponse.json({
+          success: true,
+          branding: {},
+        });
+      }
+      
       return NextResponse.json(
         { success: false, error: "Failed to get branding" },
         { status: 500 }
       );
     }
 
+    // Build branding with defaults
+    const branding = org?.branding || {};
+    
+    // If no company_name in branding, use org name
+    if (!branding.company_name && org?.name) {
+      branding.company_name = org.name;
+    }
+
     return NextResponse.json({
       success: true,
-      branding: org?.branding || {},
+      branding,
     });
 
   } catch (error) {
-    logger.error("Branding GET error:", error);
+    // Log with proper error handling
+    const errorDetails = error instanceof Error 
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : typeof error === "object" && error !== null
+        ? JSON.stringify(error)
+        : String(error);
+    
+    logger.error("Branding GET error", error, { errorDetails });
     return NextResponse.json(
       { success: false, error: "Internal server error" },
       { status: 500 }
@@ -132,11 +216,12 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
+    // Use service client to bypass RLS for organization data
+    const serviceClient = getServiceClient();
 
     // Get user's organization and check permissions - check demo mode first
     const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-    let organizationId: string | null = null;
+    let organizationId: string | undefined = undefined;
     let userRole: string = "operator";
 
     if (isDemoMode) {
@@ -144,20 +229,35 @@ export async function PUT(request: NextRequest) {
       organizationId = user.user_metadata?.organization_id || "demo-org-id";
       userRole = "org_admin";
     } else {
-      const { data: userData, error: userError } = await supabase
+      // First get user data
+      const { data: userData, error: userError } = await serviceClient
         .from("users")
-        .select("organization_id, role")
+        .select("organization_id, is_super_admin, role_id")
         .eq("id", user.id)
         .single();
 
-      if (userError || !userData?.organization_id) {
+      if (userError || (!userData?.organization_id && !userData?.is_super_admin)) {
         return NextResponse.json(
           { success: false, error: "Organization not found" },
           { status: 404 }
         );
       }
+      
       organizationId = userData.organization_id;
-      userRole = userData.role;
+      
+      // Get role name separately if we have a role_id
+      if (userData.is_super_admin) {
+        userRole = "super_admin";
+      } else if (userData.role_id) {
+        const { data: roleData } = await serviceClient
+          .from("roles")
+          .select("name")
+          .eq("id", userData.role_id)
+          .single();
+        userRole = roleData?.name || "viewer";
+      } else {
+        userRole = "viewer";
+      }
     }
 
     // Only admins can update branding
@@ -180,13 +280,13 @@ export async function PUT(request: NextRequest) {
     }
 
     // Update branding
-    const { error: updateError } = await supabase
+    const { error: updateError } = await serviceClient
       .from("organizations")
       .update({ branding: parseResult.data })
       .eq("id", organizationId);
 
     if (updateError) {
-      logger.error("Failed to update org branding:", updateError);
+      logger.error("Failed to update org branding", { error: updateError.message });
       return NextResponse.json(
         { success: false, error: "Failed to update branding" },
         { status: 500 }

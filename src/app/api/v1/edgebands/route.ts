@@ -6,28 +6,28 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, getUser } from "@/lib/supabase/server";
+import { getUser, getServiceClient } from "@/lib/supabase/server";
 import { z } from "zod";
 import { sanitizeLikePattern, SIZE_LIMITS } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
 
-// Create edgeband schema
+// Create edgeband schema - matches actual DB columns
 const CreateEdgebandSchema = z.object({
   edgeband_id: z.string().min(1, "Edgeband ID is required"),
   name: z.string().min(1, "Name is required"),
   thickness_mm: z.number().positive("Thickness must be positive"),
-  width_mm: z.number().positive("Width must be positive"),
-  material: z.string().optional(),
-  color_code: z.string().optional(),
+  width_mm: z.number().positive("Width must be positive").default(22),
+  material: z.string().optional().default("PVC"),
+  color_code: z.string().optional().default("#FFFFFF"),
   color_match_material_id: z.string().optional(),
+  finish: z.string().optional(),
   // Waste factor as percentage (1 = 1%, default)
   waste_factor_pct: z.number().min(0).max(100).default(1),
   // Overhang on each end of the edgeband (adds 2x this to total length)
   overhang_mm: z.number().min(0).default(0),
   supplier: z.string().optional(),
-  sku: z.string().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -37,16 +37,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = await createClient();
+    // Use service client to bypass RLS
+    const serviceClient = getServiceClient();
 
     // Get user's organization
-    const { data: userData } = await supabase
+    const { data: userData } = await serviceClient
       .from("users")
-      .select("organization_id")
+      .select("organization_id, is_super_admin")
       .eq("id", user.id)
       .single();
 
-    if (!userData?.organization_id) {
+    if (!userData?.organization_id && !userData?.is_super_admin) {
       return NextResponse.json(
         { error: "User not associated with an organization" },
         { status: 400 }
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
     const material = searchParams.get("material");
 
     // Build query
-    let query = supabase
+    let query = serviceClient
       .from("edgebands")
       .select("*")
       .eq("organization_id", userData.organization_id)
@@ -87,22 +88,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Transform to canonical format
+    // Transform to canonical format - only include actual DB columns
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const transformedEdgebands = edgebands?.map((e: any) => ({
       id: e.id,
       edgeband_id: e.edgeband_id,
       name: e.name,
       thickness_mm: e.thickness_mm,
-      width_mm: e.width_mm,
-      material: e.material,
-      color_code: e.color_code,
+      width_mm: e.width_mm ?? 22,
+      material: e.material ?? "PVC",
+      color_code: e.color_code ?? "#FFFFFF",
       color_match_material_id: e.color_match_material_id,
+      finish: e.finish,
       waste_factor_pct: e.waste_factor_pct ?? 1,
       overhang_mm: e.overhang_mm ?? 0,
       supplier: e.supplier,
-      sku: e.sku,
-      metadata: e.metadata,
+      meta: e.meta,
       created_at: e.created_at,
       updated_at: e.updated_at,
     })) ?? [];
@@ -123,29 +124,35 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const user = await getUser();
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization and role
-    const { data: userData } = await supabase
+    // Use service client to bypass RLS
+    const serviceClient = getServiceClient();
+
+    // Get user's organization and role (join roles table)
+    const { data: userData } = await serviceClient
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin, roles:role_id(name)")
       .eq("id", user.id)
       .single();
 
-    if (!userData?.organization_id) {
+    if (!userData?.organization_id && !userData?.is_super_admin) {
       return NextResponse.json(
         { error: "User not associated with an organization" },
         { status: 400 }
       );
     }
 
+    // Get role name from joined data
+    const roleName = userData.is_super_admin ? "super_admin" : 
+      (userData.roles as { name: string } | null)?.name || "viewer";
+
     // Check permission
-    if (!["super_admin", "org_admin", "manager"].includes(userData.role)) {
+    if (!["super_admin", "org_admin", "manager"].includes(roleName)) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
         { status: 403 }
@@ -165,8 +172,8 @@ export async function POST(request: NextRequest) {
 
     const data = parseResult.data;
 
-    // Create edgeband
-    const { data: edgeband, error } = await supabase
+    // Create edgeband - only include actual DB columns
+    const { data: edgeband, error } = await serviceClient
       .from("edgebands")
       .insert({
         organization_id: userData.organization_id,
@@ -177,11 +184,11 @@ export async function POST(request: NextRequest) {
         material: data.material,
         color_code: data.color_code,
         color_match_material_id: data.color_match_material_id,
+        finish: data.finish,
         waste_factor_pct: data.waste_factor_pct,
         overhang_mm: data.overhang_mm,
         supplier: data.supplier,
-        sku: data.sku,
-        metadata: data.metadata,
+        meta: data.meta,
       })
       .select()
       .single();
@@ -217,15 +224,15 @@ export async function POST(request: NextRequest) {
         edgeband_id: edgeband.edgeband_id,
         name: edgeband.name,
         thickness_mm: edgeband.thickness_mm,
-        width_mm: edgeband.width_mm,
-        material: edgeband.material,
-        color_code: edgeband.color_code,
+        width_mm: edgeband.width_mm ?? 22,
+        material: edgeband.material ?? "PVC",
+        color_code: edgeband.color_code ?? "#FFFFFF",
         color_match_material_id: edgeband.color_match_material_id,
+        finish: edgeband.finish,
         waste_factor_pct: edgeband.waste_factor_pct ?? 1,
         overhang_mm: edgeband.overhang_mm ?? 0,
         supplier: edgeband.supplier,
-        sku: edgeband.sku,
-        metadata: edgeband.metadata,
+        meta: edgeband.meta,
         created_at: edgeband.created_at,
       },
     }, { status: 201 });

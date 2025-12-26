@@ -102,6 +102,8 @@ export interface IntakeState {
   currentCutlist: {
     doc_id: string;
     name: string;
+    project_name?: string;
+    customer_name?: string;
     parts: CutPart[];
     materials: MaterialDef[];
     edgebands: EdgebandDef[];
@@ -109,6 +111,9 @@ export interface IntakeState {
     /** Project tracking info */
     project?: ProjectTracking;
   };
+
+  // Pending file IDs to link when saving cutlist
+  pendingFileIds: string[];
 
   // Intake inbox - parts waiting for review
   inboxParts: ParsedPartWithStatus[];
@@ -194,13 +199,17 @@ export interface IntakeState {
 
   // Cutlist
   setCutlistName: (name: string) => void;
+  setProjectName: (project_name: string | undefined) => void;
+  setCustomerName: (customer_name: string | undefined) => void;
   setCapabilities: (capabilities: Partial<CutlistCapabilities>) => void;
   setProjectTracking: (project: Partial<ProjectTracking>) => void;
+  addPendingFileId: (fileId: string) => void;
   resetCutlist: () => void;
   
   // Save/Load
-  saveCutlist: () => Promise<{ success: boolean; cutlistId?: string; error?: string }>;
+  saveCutlist: (markAsCompleted?: boolean) => Promise<{ success: boolean; cutlistId?: string; error?: string }>;
   saveCutlistAsDraft: () => Promise<{ success: boolean; cutlistId?: string; error?: string }>;
+  markCutlistComplete: () => Promise<{ success: boolean; error?: string }>;
   loadCutlist: (cutlistId: string) => Promise<{ success: boolean; error?: string }>;
   loadCutlistForEditing: (cutlist: {
     id: string;
@@ -294,6 +303,7 @@ const getInitialState = () => ({
     edgebands: defaultEdgebands,
     capabilities: defaultCapabilities,
   },
+  pendingFileIds: [] as string[],
   inboxParts: [],
   uploadBatches: [] as UploadBatch[],
   activeMode: "manual" as IntakeMode,
@@ -358,8 +368,9 @@ export const useIntakeStore = create<IntakeState>()(
       
       canProceedToReview: () => {
         const state = get();
-        // Can proceed if there are parts
-        return state.currentCutlist.parts.length > 0 || state.inboxParts.length > 0;
+        // Can proceed only if there are accepted parts in the cutlist
+        // Having parts in inbox is NOT enough - they must be accepted first
+        return state.currentCutlist.parts.length > 0;
       },
       
       canProceedToExport: () => {
@@ -822,6 +833,22 @@ export const useIntakeStore = create<IntakeState>()(
           },
         })),
 
+      setProjectName: (project_name) =>
+        set((state) => ({
+          currentCutlist: {
+            ...state.currentCutlist,
+            project_name,
+          },
+        })),
+
+      setCustomerName: (customer_name) =>
+        set((state) => ({
+          currentCutlist: {
+            ...state.currentCutlist,
+            customer_name,
+          },
+        })),
+
       setCapabilities: (capabilities) =>
         set((state) => ({
           currentCutlist: {
@@ -844,6 +871,11 @@ export const useIntakeStore = create<IntakeState>()(
           },
         })),
 
+      addPendingFileId: (fileId: string) =>
+        set((state) => ({
+          pendingFileIds: [...state.pendingFileIds, fileId],
+        })),
+
       resetCutlist: () => {
         set({
           ...getInitialState(),
@@ -853,7 +885,7 @@ export const useIntakeStore = create<IntakeState>()(
       },
 
       // Save/Load cutlist to database
-      saveCutlist: async () => {
+      saveCutlist: async (markAsCompleted = false) => {
         const state = get();
         if (state.isSaving) {
           return { success: false, error: "Already saving" };
@@ -862,7 +894,7 @@ export const useIntakeStore = create<IntakeState>()(
         set({ isSaving: true });
 
         try {
-          const { currentCutlist, savedCutlistId } = state;
+          const { currentCutlist, savedCutlistId, pendingFileIds } = state;
 
           // If already saved, update existing
           if (savedCutlistId) {
@@ -871,8 +903,11 @@ export const useIntakeStore = create<IntakeState>()(
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 name: currentCutlist.name,
+                project_name: currentCutlist.project_name,
+                customer_name: currentCutlist.customer_name,
                 capabilities: currentCutlist.capabilities,
-                status: "completed",
+                // Only mark as completed when explicitly requested (e.g., after export)
+                ...(markAsCompleted && { status: "completed" }),
               }),
             });
 
@@ -919,7 +954,10 @@ export const useIntakeStore = create<IntakeState>()(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: currentCutlist.name,
+              project_name: currentCutlist.project_name,
+              customer_name: currentCutlist.customer_name,
               capabilities: currentCutlist.capabilities,
+              file_ids: pendingFileIds.length > 0 ? pendingFileIds : undefined,
               parts: currentCutlist.parts.map(p => ({
                 part_id: p.part_id,
                 label: p.label,
@@ -947,6 +985,7 @@ export const useIntakeStore = create<IntakeState>()(
             isSaving: false, 
             savedCutlistId: data.cutlist.id,
             lastSavedAt: new Date().toISOString(),
+            pendingFileIds: [], // Clear pending files after successful save
           });
           return { success: true, cutlistId: data.cutlist.id };
         } catch (error) {
@@ -974,6 +1013,8 @@ export const useIntakeStore = create<IntakeState>()(
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 name: currentCutlist.name,
+                project_name: currentCutlist.project_name,
+                customer_name: currentCutlist.customer_name,
                 capabilities: currentCutlist.capabilities,
                 status: "draft",
               }),
@@ -993,12 +1034,16 @@ export const useIntakeStore = create<IntakeState>()(
           }
 
           // Create new draft cutlist
+          const { pendingFileIds } = state;
           const response = await fetch("/api/v1/cutlists", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: currentCutlist.name || "Untitled Draft",
+              project_name: currentCutlist.project_name,
+              customer_name: currentCutlist.customer_name,
               capabilities: currentCutlist.capabilities,
+              file_ids: pendingFileIds.length > 0 ? pendingFileIds : undefined,
               parts: currentCutlist.parts.map(p => ({
                 part_id: p.part_id,
                 label: p.label,
@@ -1026,11 +1071,38 @@ export const useIntakeStore = create<IntakeState>()(
             isSaving: false, 
             savedCutlistId: data.cutlist.id,
             lastSavedAt: new Date().toISOString(),
+            pendingFileIds: [], // Clear pending files after successful save
           });
           return { success: true, cutlistId: data.cutlist.id };
         } catch (error) {
           console.error("Save draft error:", error);
           set({ isSaving: false });
+          return { success: false, error: "Network error" };
+        }
+      },
+
+      markCutlistComplete: async () => {
+        const { savedCutlistId } = get();
+        
+        if (!savedCutlistId) {
+          return { success: false, error: "No cutlist to mark complete" };
+        }
+
+        try {
+          const response = await fetch(`/api/v1/cutlists/${savedCutlistId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "completed" }),
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            return { success: false, error: data.error || "Failed to mark cutlist complete" };
+          }
+
+          return { success: true };
+        } catch (error) {
+          console.error("Mark complete error:", error);
           return { success: false, error: "Network error" };
         }
       },

@@ -97,6 +97,9 @@ model User {
   parseCorrections ParseCorrection[]
   ocrJobs          OcrJob[]
 
+  @@index([organizationId])
+  @@index([roleId])
+  @@index([lastLoginAt(sort: Desc)])
   @@map("users")
 }
 
@@ -296,6 +299,9 @@ model Cutlist {
   @@index([organizationId])
   @@index([userId])
   @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([organizationId, createdAt(sort: Desc)])
   @@map("cutlists")
 }
 
@@ -413,6 +419,8 @@ model UploadedFile {
 
   @@index([organizationId])
   @@index([cutlistId])
+  @@index([createdAt(sort: Desc)])
+  @@index([organizationId, createdAt(sort: Desc)])
   @@map("uploaded_files")
 }
 
@@ -442,6 +450,8 @@ model OptimizeJob {
 
   @@index([cutlistId])
   @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@index([status, cutlistId])
   @@map("optimize_jobs")
 }
 

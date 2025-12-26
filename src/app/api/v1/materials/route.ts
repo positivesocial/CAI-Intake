@@ -6,27 +6,29 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, getUser } from "@/lib/supabase/server";
+import { getUser, getServiceClient } from "@/lib/supabase/server";
 import { z } from "zod";
 import { sanitizeLikePattern, SIZE_LIMITS } from "@/lib/security";
 import { logger } from "@/lib/logger";
 import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
 
-// Create material schema
+// Create material schema - matches actual DB columns
 const CreateMaterialSchema = z.object({
   material_id: z.string().min(1),
   name: z.string().min(1),
   thickness_mm: z.number().positive(),
   core_type: z.string().optional(),
-  grain: z.enum(["none", "length", "width"]).optional(),
+  grain: z.enum(["none", "length", "width"]).optional().default("none"),
   finish: z.string().optional(),
   color_code: z.string().optional(),
   default_sheet: z.object({
     L: z.number().positive(),
     W: z.number().positive(),
   }).optional(),
-  supplier: z.string().optional(),
   sku: z.string().optional(),
+  supplier: z.string().optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
+  // Legacy field name - map to meta
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -37,16 +39,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = await createClient();
+    // Use service client to bypass RLS
+    const serviceClient = getServiceClient();
 
     // Get user's organization
-    const { data: userData } = await supabase
+    const { data: userData } = await serviceClient
       .from("users")
-      .select("organization_id")
+      .select("organization_id, is_super_admin")
       .eq("id", user.id)
       .single();
 
-    if (!userData?.organization_id) {
+    if (!userData?.organization_id && !userData?.is_super_admin) {
       return NextResponse.json(
         { error: "User not associated with an organization" },
         { status: 400 }
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
     const thickness = searchParams.get("thickness");
 
     // Build query
-    let query = supabase
+    let query = serviceClient
       .from("materials")
       .select("*")
       .eq("organization_id", userData.organization_id)
@@ -84,7 +87,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Transform to canonical format
+    // Transform to canonical format - include all DB columns
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const transformedMaterials = materials?.map((m: any) => ({
       id: m.id,
@@ -92,16 +95,13 @@ export async function GET(request: NextRequest) {
       name: m.name,
       thickness_mm: m.thickness_mm,
       core_type: m.core_type,
-      grain: m.grain,
+      grain: m.grain ?? "none",
       finish: m.finish,
       color_code: m.color_code,
-      default_sheet: m.default_sheet_l && m.default_sheet_w ? {
-        L: m.default_sheet_l,
-        W: m.default_sheet_w,
-      } : undefined,
-      supplier: m.supplier,
+      default_sheet: m.default_sheet || undefined,
       sku: m.sku,
-      metadata: m.metadata,
+      supplier: m.supplier,
+      meta: m.meta,
       created_at: m.created_at,
       updated_at: m.updated_at,
     })) ?? [];
@@ -122,29 +122,35 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const user = await getUser();
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization and role
-    const { data: userData } = await supabase
+    // Use service client to bypass RLS
+    const serviceClient = getServiceClient();
+
+    // Get user's organization and role (join roles table)
+    const { data: userData } = await serviceClient
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin, roles:role_id(name)")
       .eq("id", user.id)
       .single();
 
-    if (!userData?.organization_id) {
+    if (!userData?.organization_id && !userData?.is_super_admin) {
       return NextResponse.json(
         { error: "User not associated with an organization" },
         { status: 400 }
       );
     }
 
+    // Get role name from joined data
+    const roleName = userData.is_super_admin ? "super_admin" : 
+      (userData.roles as { name: string } | null)?.name || "viewer";
+
     // Check permission
-    if (!["super_admin", "org_admin", "manager"].includes(userData.role)) {
+    if (!["super_admin", "org_admin", "manager"].includes(roleName)) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
         { status: 403 }
@@ -164,8 +170,8 @@ export async function POST(request: NextRequest) {
 
     const data = parseResult.data;
 
-    // Create material
-    const { data: material, error } = await supabase
+    // Create material - include all DB columns
+    const { data: material, error } = await serviceClient
       .from("materials")
       .insert({
         organization_id: userData.organization_id,
@@ -173,14 +179,13 @@ export async function POST(request: NextRequest) {
         name: data.name,
         thickness_mm: data.thickness_mm,
         core_type: data.core_type,
-        grain: data.grain,
+        grain: data.grain || "none",
         finish: data.finish,
         color_code: data.color_code,
-        default_sheet_l: data.default_sheet?.L,
-        default_sheet_w: data.default_sheet?.W,
-        supplier: data.supplier,
+        default_sheet: data.default_sheet ? { L: data.default_sheet.L, W: data.default_sheet.W } : null,
         sku: data.sku,
-        metadata: data.metadata,
+        supplier: data.supplier,
+        meta: data.meta || data.metadata || null,
       })
       .select()
       .single();
@@ -217,16 +222,13 @@ export async function POST(request: NextRequest) {
         name: material.name,
         thickness_mm: material.thickness_mm,
         core_type: material.core_type,
-        grain: material.grain,
+        grain: material.grain ?? "none",
         finish: material.finish,
         color_code: material.color_code,
-        default_sheet: material.default_sheet_l && material.default_sheet_w ? {
-          L: material.default_sheet_l,
-          W: material.default_sheet_w,
-        } : undefined,
-        supplier: material.supplier,
+        default_sheet: material.default_sheet || undefined,
         sku: material.sku,
-        metadata: material.metadata,
+        supplier: material.supplier,
+        meta: material.meta,
         created_at: material.created_at,
       },
     }, { status: 201 });

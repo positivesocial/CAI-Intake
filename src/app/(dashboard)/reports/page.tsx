@@ -15,6 +15,7 @@ import {
   Target,
   RefreshCw,
   AlertCircle,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,15 +31,18 @@ interface ReportStats {
   totalParts: number;
   totalPieces: number;
   totalArea: number;
+  totalFilesUploaded: number;
   avgEfficiency: number;
   avgPartsPerCutlist: number;
   cutlistsThisPeriod: number;
   partsThisPeriod: number;
+  filesThisPeriod: number;
   periodGrowth: {
     cutlists: number;
     parts: number;
     area: number;
     efficiency: number;
+    files: number;
   };
 }
 
@@ -123,6 +127,7 @@ export default function ReportsPage() {
       ["Total Parts", data.stats.totalParts],
       ["Total Pieces", data.stats.totalPieces],
       ["Total Area (m²)", data.stats.totalArea],
+      ["Files Uploaded", data.stats.totalFilesUploaded],
       ["Avg Efficiency", formatPercentage(data.stats.avgEfficiency)],
       ["Avg Parts/Cutlist", data.stats.avgPartsPerCutlist],
       [""],
@@ -213,7 +218,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -313,6 +318,32 @@ export default function ReportsPage() {
               </div>
               <div className="h-12 w-12 rounded-xl bg-purple-100 flex items-center justify-center">
                 <Target className="h-6 w-6 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-[var(--muted-foreground)]">Files Uploaded</p>
+                <p className="text-3xl font-bold">{stats.totalFilesUploaded}</p>
+                <p className={cn(
+                  "text-xs flex items-center gap-1 mt-1",
+                  (stats.periodGrowth.files || 0) >= 0 ? "text-green-600" : "text-red-600"
+                )}>
+                  {(stats.periodGrowth.files || 0) >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {(stats.periodGrowth.files || 0) >= 0 ? "+" : ""}
+                  {stats.periodGrowth.files || 0}% vs last period
+                </p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-orange-100 flex items-center justify-center">
+                <Upload className="h-6 w-6 text-orange-600" />
               </div>
             </div>
           </CardContent>

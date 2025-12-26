@@ -37,8 +37,13 @@ import { cn } from "@/lib/utils";
 
 interface Cutlist {
   id: string;
+  docId?: string;
   name: string;
   description?: string;
+  projectName?: string;
+  customerName?: string;
+  jobRef?: string;
+  clientRef?: string;
   status: "draft" | "processing" | "optimized" | "completed";
   partsCount: number;
   totalPieces: number;
@@ -116,18 +121,42 @@ export default function CutlistsPage() {
       .finally(() => setLoading(false));
   }, [search, statusFilter, sortField, sortDirection]);
 
-  // Format date
+  // Format date - handles both ISO strings and timestamps correctly
   const formatDate = (dateStr: string) => {
+    if (!dateStr) return "—";
+    
+    // Parse the date - handle ISO strings correctly
     const date = new Date(dateStr);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) return "—";
+    
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     
-    if (diff < 60000) return "Just now";
+    // For future dates or very recent (handles timezone issues)
+    if (diff < 0 || diff < 60000) return "Just now";
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
     if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
     
-    return date.toLocaleDateString();
+    // For older dates, show full date with local timezone
+    return date.toLocaleDateString(undefined, { 
+      month: 'short', 
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    });
+  };
+  
+  // Format full timestamp for tooltip
+  const formatFullDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "";
+    return date.toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
   };
 
   // Status badge
@@ -176,26 +205,101 @@ export default function CutlistsPage() {
     }
   };
 
-  // Handle actions
+  // Handle single actions
   const handleDuplicate = async (id: string) => {
-    console.log("Duplicate:", id);
+    try {
+      const response = await fetch(`/api/v1/cutlists/${id}/duplicate`, {
+        method: "POST",
+      });
+      if (response.ok) {
+        // Refresh the list
+        fetchCutlists({ search, status: statusFilter, sort: sortField, order: sortDirection })
+          .then(setCutlists);
+      }
+    } catch (error) {
+      console.error("Failed to duplicate:", error);
+    }
     setMenuOpen(null);
   };
 
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this cutlist?")) {
-      setCutlists(prev => prev.filter(c => c.id !== id));
+      try {
+        const response = await fetch(`/api/v1/cutlists/${id}`, {
+          method: "DELETE",
+        });
+        if (response.ok) {
+          setCutlists(prev => prev.filter(c => c.id !== id));
+        }
+      } catch (error) {
+        console.error("Failed to delete:", error);
+      }
     }
     setMenuOpen(null);
   };
 
   const handleExport = async (id: string) => {
-    console.log("Export:", id);
+    // Navigate to the cutlist detail page with export mode
+    window.location.href = `/cutlists/${id}?export=true`;
     setMenuOpen(null);
   };
 
+  // Handle bulk actions
+  const handleBulkExport = async () => {
+    if (selectedIds.length === 0) return;
+    // For single selection, go to export page
+    if (selectedIds.length === 1) {
+      window.location.href = `/cutlists/${selectedIds[0]}?export=true`;
+      return;
+    }
+    // For multiple, show message
+    alert(`Export ${selectedIds.length} cutlists: This feature will export all selected cutlists.`);
+  };
+
+  const handleBulkDuplicate = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Duplicate ${selectedIds.length} cutlist(s)?`)) return;
+    
+    try {
+      await Promise.all(
+        selectedIds.map(id =>
+          fetch(`/api/v1/cutlists/${id}/duplicate`, { method: "POST" })
+        )
+      );
+      setSelectedIds([]);
+      fetchCutlists({ search, status: statusFilter, sort: sortField, order: sortDirection })
+        .then(setCutlists);
+    } catch (error) {
+      console.error("Failed to duplicate:", error);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Delete ${selectedIds.length} cutlist(s)? This cannot be undone.`)) return;
+    
+    try {
+      await Promise.all(
+        selectedIds.map(id =>
+          fetch(`/api/v1/cutlists/${id}`, { method: "DELETE" })
+        )
+      );
+      setCutlists(prev => prev.filter(c => !selectedIds.includes(c.id)));
+      setSelectedIds([]);
+    } catch (error) {
+      console.error("Failed to delete:", error);
+    }
+  };
+
+  const handleBulkOptimize = () => {
+    if (selectedIds.length === 0) return;
+    // Open CAI 2D optimizer with selected cutlist IDs
+    const ids = selectedIds.join(",");
+    window.open(`https://cai-2d.app/optimize?cutlists=${ids}`, "_blank");
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -275,25 +379,36 @@ export default function CutlistsPage() {
 
       {/* Bulk Actions */}
       {selectedIds.length > 0 && (
-        <div className="flex items-center gap-4 p-3 bg-[var(--muted)] rounded-lg">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 bg-[var(--muted)] rounded-lg">
           <span className="text-sm font-medium">
             {selectedIds.length} selected
           </span>
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-1" />
-            Export
-          </Button>
-          <Button variant="outline" size="sm">
-            <Copy className="h-4 w-4 mr-1" />
-            Duplicate
-          </Button>
-          <Button variant="destructive" size="sm">
-            <Trash2 className="h-4 w-4 mr-1" />
-            Delete
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>
-            Clear
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleBulkExport}>
+              <Download className="h-4 w-4 mr-1" />
+              Export
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleBulkDuplicate}>
+              <Copy className="h-4 w-4 mr-1" />
+              Duplicate
+            </Button>
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={handleBulkOptimize}
+              className="bg-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/90"
+            >
+              <ExternalLink className="h-4 w-4 mr-1" />
+              Optimize in CAI 2D
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>
+              Clear
+            </Button>
+          </div>
         </div>
       )}
 
@@ -338,15 +453,17 @@ export default function CutlistsPage() {
             >
               <CardContent className="p-4">
                 {/* Selection Checkbox */}
-                <div className="absolute top-3 left-3">
+                <label 
+                  className="absolute top-2 left-2 p-2 cursor-pointer checkbox-touch-target"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input
                     type="checkbox"
                     checked={selectedIds.includes(cutlist.id)}
                     onChange={() => toggleSelect(cutlist.id)}
-                    className="h-4 w-4 rounded border-[var(--border)]"
-                    onClick={(e) => e.stopPropagation()}
+                    className="rounded border-[var(--border)]"
                   />
-                </div>
+                </label>
 
                 {/* Menu Button */}
                 <div className="absolute top-3 right-3">
@@ -399,12 +516,30 @@ export default function CutlistsPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <h3 className="font-semibold truncate">{cutlist.name}</h3>
+                      {/* Project & Customer */}
+                      <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--muted-foreground)] mt-0.5">
+                        {cutlist.projectName && (
+                          <span className="flex items-center gap-1">
+                            <span className="font-medium">Project:</span> {cutlist.projectName}
+                          </span>
+                        )}
+                        {cutlist.customerName && (
+                          <span className="flex items-center gap-1">
+                            <span className="font-medium">Customer:</span> {cutlist.customerName}
+                          </span>
+                        )}
+                      </div>
                       {cutlist.description && (
-                        <p className="text-sm text-[var(--muted-foreground)] line-clamp-1">
+                        <p className="text-sm text-[var(--muted-foreground)] line-clamp-1 mt-1">
                           {cutlist.description}
                         </p>
                       )}
                     </div>
+                  </div>
+                  
+                  {/* Cutlist ID */}
+                  <div className="text-[10px] text-[var(--muted-foreground)] font-mono mb-2 truncate" title={`ID: ${cutlist.id}`}>
+                    ID: {cutlist.id.substring(0, 8)}...
                   </div>
 
                   {/* Stats */}
@@ -419,7 +554,10 @@ export default function CutlistsPage() {
                       <span className="text-sm font-medium">{cutlist.materialsCount}</span>
                       <span className="text-xs text-[var(--muted-foreground)] block">materials</span>
                     </div>
-                    <div className="text-center p-2 bg-[var(--muted)] rounded">
+                    <div 
+                      className="text-center p-2 bg-[var(--muted)] rounded cursor-help"
+                      title={formatFullDate(cutlist.updatedAt)}
+                    >
                       <Calendar className="h-4 w-4 mx-auto mb-1 text-[var(--muted-foreground)]" />
                       <span className="text-sm font-medium">{formatDate(cutlist.updatedAt)}</span>
                       <span className="text-xs text-[var(--muted-foreground)] block">updated</span>
@@ -431,15 +569,19 @@ export default function CutlistsPage() {
                     <div className="flex items-center gap-2">
                       <StatusBadge status={cutlist.status} />
                       {cutlist.filesCount && cutlist.filesCount > 0 && (
-                        <a
-                          href={`/cutlists/${cutlist.id}/files`}
-                          onClick={(e) => e.stopPropagation()}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.location.href = `/cutlists/${cutlist.id}/files`;
+                          }}
                           className="flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
                           title={`View ${cutlist.filesCount} source file${cutlist.filesCount > 1 ? 's' : ''} with parsed parts`}
                         >
                           <Paperclip className="h-3 w-3" />
                           {cutlist.filesCount}
-                        </a>
+                        </button>
                       )}
                     </div>
                     {cutlist.efficiency && (
@@ -463,13 +605,16 @@ export default function CutlistsPage() {
               <thead>
                 <tr className="border-b border-[var(--border)]">
                   <th className="p-3 text-left">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.length === cutlists.length}
-                      onChange={selectAll}
-                      className="h-4 w-4 rounded border-[var(--border)]"
-                    />
+                    <label className="inline-flex p-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.length === cutlists.length}
+                        onChange={selectAll}
+                        className="rounded border-[var(--border)]"
+                      />
+                    </label>
                   </th>
+                  <th className="p-3 text-left text-sm font-medium">ID</th>
                   <th className="p-3 text-left text-sm font-medium">
                     <button 
                       onClick={() => toggleSort("name")}
@@ -479,6 +624,7 @@ export default function CutlistsPage() {
                       {sortField === "name" && (sortDirection === "asc" ? <SortAsc className="h-3 w-3" /> : <SortDesc className="h-3 w-3" />)}
                     </button>
                   </th>
+                  <th className="p-3 text-left text-sm font-medium">Project / Customer</th>
                   <th className="p-3 text-left text-sm font-medium">Status</th>
                   <th className="p-3 text-left text-sm font-medium">
                     <button 
@@ -499,7 +645,6 @@ export default function CutlistsPage() {
                       {sortField === "updatedAt" && (sortDirection === "asc" ? <SortAsc className="h-3 w-3" /> : <SortDesc className="h-3 w-3" />)}
                     </button>
                   </th>
-                  <th className="p-3 text-left text-sm font-medium">Efficiency</th>
                   <th className="p-3 text-center text-sm font-medium">Files</th>
                   <th className="p-3 text-right text-sm font-medium">Actions</th>
                 </tr>
@@ -514,12 +659,22 @@ export default function CutlistsPage() {
                     )}
                   >
                     <td className="p-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(cutlist.id)}
-                        onChange={() => toggleSelect(cutlist.id)}
-                        className="h-4 w-4 rounded border-[var(--border)]"
-                      />
+                      <label className="inline-flex p-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(cutlist.id)}
+                          onChange={() => toggleSelect(cutlist.id)}
+                          className="rounded border-[var(--border)]"
+                        />
+                      </label>
+                    </td>
+                    <td className="p-3">
+                      <span 
+                        className="text-xs font-mono text-[var(--muted-foreground)] cursor-help"
+                        title={cutlist.id}
+                      >
+                        {cutlist.id.substring(0, 8)}
+                      </span>
                     </td>
                     <td className="p-3">
                       <a href={`/cutlists/${cutlist.id}`} className="hover:text-[var(--cai-teal)]">
@@ -532,21 +687,32 @@ export default function CutlistsPage() {
                       </a>
                     </td>
                     <td className="p-3">
+                      <div className="text-sm">
+                        {cutlist.projectName && (
+                          <div className="truncate max-w-[150px]" title={cutlist.projectName}>
+                            {cutlist.projectName}
+                          </div>
+                        )}
+                        {cutlist.customerName && (
+                          <div className="text-[var(--muted-foreground)] text-xs truncate max-w-[150px]" title={cutlist.customerName}>
+                            {cutlist.customerName}
+                          </div>
+                        )}
+                        {!cutlist.projectName && !cutlist.customerName && (
+                          <span className="text-[var(--muted-foreground)]">—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3">
                       <StatusBadge status={cutlist.status} />
                     </td>
                     <td className="p-3 font-medium">{cutlist.partsCount}</td>
                     <td className="p-3">{cutlist.materialsCount}</td>
-                    <td className="p-3 text-[var(--muted-foreground)]">
+                    <td 
+                      className="p-3 text-[var(--muted-foreground)] cursor-help"
+                      title={formatFullDate(cutlist.updatedAt)}
+                    >
                       {formatDate(cutlist.updatedAt)}
-                    </td>
-                    <td className="p-3">
-                      {cutlist.efficiency ? (
-                        <span className="text-green-600 font-medium">
-                          {(cutlist.efficiency * 100).toFixed(0)}%
-                        </span>
-                      ) : (
-                        <span className="text-[var(--muted-foreground)]">—</span>
-                      )}
                     </td>
                     <td className="p-3 text-center">
                       {cutlist.filesCount && cutlist.filesCount > 0 ? (

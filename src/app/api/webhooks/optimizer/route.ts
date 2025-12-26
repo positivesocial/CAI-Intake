@@ -1,6 +1,16 @@
 /**
  * CAI Intake - Optimizer Webhook Handler
  * 
+ * @deprecated This webhook handler is no longer needed.
+ * 
+ * The CAI 2D Optimizer API (https://cai-2d.app/api) uses synchronous
+ * optimization - results are returned directly in the POST /api/optimize
+ * response. No webhooks or polling required.
+ * 
+ * This file is kept for:
+ * 1. Backwards compatibility with any external systems that may still call it
+ * 2. Reference for potential future async optimization support
+ * 
  * POST /api/webhooks/optimizer - Receive optimization completion notifications
  */
 

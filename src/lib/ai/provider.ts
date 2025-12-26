@@ -29,6 +29,10 @@ export interface ParseOptions {
   defaultThicknessMm?: number;
   /** Learning context for adaptive parsing */
   learningContext?: LearningContext;
+  /** Text is pasted from clipboard/spreadsheet (may have header row) */
+  isPastedText?: boolean;
+  /** Text is messy/unstructured */
+  isMessyData?: boolean;
 }
 
 // ============================================================

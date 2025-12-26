@@ -69,3 +69,4 @@ CREATE TRIGGER trigger_update_branding_timestamp
   EXECUTE FUNCTION update_branding_timestamp();
 
 
+

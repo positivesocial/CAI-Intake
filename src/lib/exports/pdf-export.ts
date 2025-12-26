@@ -941,8 +941,8 @@ export function generateCutlistPDF(
       fillColor: [248, 248, 248],
     },
     columnStyles: {
-      0: { halign: "center", cellWidth: 6 },
-      1: { cellWidth: 28 },
+      0: { halign: "center", cellWidth: 10 },  // Part # - wider for 3-digit numbers
+      1: { cellWidth: 24 },                     // Label - slightly narrower
       2: { halign: "right", cellWidth: 12 },
       3: { halign: "right", cellWidth: 12 },
       4: { halign: "right", cellWidth: 8 },
@@ -997,17 +997,24 @@ export function generateCutlistPDF(
     yPos = 25;
 
     const halfWidth = (pageWidth - 2 * margin - 10) / 2;
+    
+    // Track row positions for two-column layout
+    let leftColumnY = yPos;
+    let rightColumnY = yPos;
+    let leftColumnEndY = yPos;
+    let rightColumnEndY = yPos;
 
     // ============================================================
+    // ROW 1: EDGEBANDING (left) + CNC (right)
+    // ============================================================
+
     // EDGEBANDING BREAKDOWN (left column)
-    // ============================================================
-
     if (edgebandMetrics.totalParts > 0) {
       doc.setTextColor(...blueColor);
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("Edgebanding Breakdown", margin, yPos);
-      yPos += 2;
+      doc.text("Edgebanding Breakdown", margin, leftColumnY);
+      leftColumnY += 2;
 
       const ebandData: (string | number)[][] = [];
       edgebandMetrics.byMaterial.forEach((data) => {
@@ -1030,7 +1037,7 @@ export function generateCutlistPDF(
       autoTable(doc, {
         head: [["Material", "Thick", "Length", "Parts"]],
         body: ebandData,
-        startY: yPos,
+        startY: leftColumnY,
         margin: { left: margin, right: margin + halfWidth + 10 },
         styles: { fontSize: 8, cellPadding: 2 },
         headStyles: { fillColor: blueColor, textColor: [255, 255, 255], fontStyle: "bold" },
@@ -1045,140 +1052,18 @@ export function generateCutlistPDF(
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      yPos = Math.max(yPos, (doc as any).lastAutoTable?.finalY || yPos) + 10;
+      leftColumnEndY = (doc as any).lastAutoTable?.finalY || leftColumnY;
     }
 
-    // ============================================================
-    // GROOVE BREAKDOWN (right column or below)
-    // ============================================================
-
-    if (grooveMetrics.totalParts > 0) {
-      let grooveStartY = 25;
-      let grooveStartX = margin + halfWidth + 10;
-
-      // If no edgeband data, use left column
-      if (edgebandMetrics.totalParts === 0) {
-        grooveStartX = margin;
-      }
-
-      doc.setTextColor(...amberColor);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.text("Groove Breakdown", grooveStartX, grooveStartY);
-      grooveStartY += 2;
-
-      const grooveData: (string | number)[][] = [];
-      grooveMetrics.byProfile.forEach((data) => {
-        grooveData.push([
-          data.name,
-          `${data.widthMm}mm`,
-          `${data.depthMm}mm`,
-          formatLength(data.lengthMm),
-          data.partsCount.toString(),
-        ]);
-      });
-
-      grooveData.push([
-        "TOTAL",
-        "",
-        "",
-        formatLength(grooveMetrics.totalLengthMm),
-        grooveMetrics.totalParts.toString(),
-      ]);
-
-      autoTable(doc, {
-        head: [["Profile", "Width", "Depth", "Length", "Parts"]],
-        body: grooveData,
-        startY: grooveStartY,
-        margin: { left: grooveStartX, right: edgebandMetrics.totalParts > 0 ? margin : margin + halfWidth + 10 },
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: amberColor, textColor: [255, 255, 255], fontStyle: "bold" },
-        alternateRowStyles: { fillColor: [255, 251, 235] },
-        tableWidth: halfWidth,
-        didParseCell: (data) => {
-          if (data.row.index === grooveData.length - 1) {
-            data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [254, 243, 199];
-          }
-        },
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      yPos = Math.max(yPos, (doc as any).lastAutoTable?.finalY || yPos) + 10;
-    }
-
-    // ============================================================
-    // HOLES BREAKDOWN
-    // ============================================================
-
-    if (holeMetrics.totalParts > 0) {
-      if (yPos > pageHeight - 60) {
-        doc.addPage();
-        yPos = margin + 10;
-      }
-
-      doc.setTextColor(...purpleColor);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.text("Drilling Breakdown", margin, yPos);
-      yPos += 2;
-
-      const holeData: (string | number)[][] = [];
-      holeMetrics.byPattern.forEach((data) => {
-        holeData.push([
-          data.name,
-          data.diameterMm ? `${data.diameterMm.toFixed(1)}mm` : "-",
-          data.holeCount.toString(),
-          data.partsCount.toString(),
-        ]);
-      });
-
-      holeData.push([
-        "TOTAL",
-        "",
-        holeMetrics.totalHoles.toString(),
-        holeMetrics.totalParts.toString(),
-      ]);
-
-      autoTable(doc, {
-        head: [["Pattern", "Diameter", "Holes", "Parts"]],
-        body: holeData,
-        startY: yPos,
-        margin: { left: margin, right: margin + halfWidth + 10 },
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: purpleColor, textColor: [255, 255, 255], fontStyle: "bold" },
-        alternateRowStyles: { fillColor: [250, 245, 255] },
-        tableWidth: halfWidth,
-        didParseCell: (data) => {
-          if (data.row.index === holeData.length - 1) {
-            data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [243, 232, 255];
-          }
-        },
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      yPos = (doc as any).lastAutoTable?.finalY + 10;
-    }
-
-    // ============================================================
-    // CNC OPERATIONS BREAKDOWN
-    // ============================================================
-
+    // CNC OPERATIONS BREAKDOWN (right column, same row as edgebanding)
     if (cncMetrics.totalParts > 0) {
-      let cncStartY = holeMetrics.totalParts > 0 ? 25 : yPos;
-      let cncStartX = holeMetrics.totalParts > 0 ? margin + halfWidth + 10 : margin;
-
-      // Check if we need to go below instead of side by side
-      if (holeMetrics.totalParts === 0 && grooveMetrics.totalParts === 0 && edgebandMetrics.totalParts === 0) {
-        cncStartX = margin;
-      }
+      const cncStartX = margin + halfWidth + 10;
 
       doc.setTextColor(...greenColor);
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("CNC Operations Breakdown", cncStartX, cncStartY);
-      cncStartY += 2;
+      doc.text("CNC Operations Breakdown", cncStartX, rightColumnY);
+      rightColumnY += 2;
 
       const cncData: (string | number)[][] = [];
       cncMetrics.byType.forEach((data) => {
@@ -1202,8 +1087,8 @@ export function generateCutlistPDF(
       autoTable(doc, {
         head: [["Operation", "Count", "Area/Length", "Parts"]],
         body: cncData,
-        startY: cncStartY,
-        margin: { left: cncStartX, right: holeMetrics.totalParts > 0 ? margin : margin + halfWidth + 10 },
+        startY: rightColumnY,
+        margin: { left: cncStartX, right: margin },
         styles: { fontSize: 8, cellPadding: 2 },
         headStyles: { fillColor: greenColor, textColor: [255, 255, 255], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [236, 253, 245] },
@@ -1217,69 +1102,240 @@ export function generateCutlistPDF(
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      yPos = Math.max(yPos, (doc as any).lastAutoTable?.finalY || yPos) + 10;
+      rightColumnEndY = (doc as any).lastAutoTable?.finalY || rightColumnY;
+    }
+
+    // Move yPos to after the first row (max of both columns)
+    yPos = Math.max(leftColumnEndY, rightColumnEndY) + 15;
+
+    // ============================================================
+    // ROW 2: MATERIAL BREAKDOWN (left) + DRILLING BREAKDOWN (right)
+    // ============================================================
+
+    // Check for page break
+    if (yPos > pageHeight - 80) {
+      doc.addPage();
+      yPos = margin + 10;
+    }
+
+    // Reset column trackers for row 2
+    leftColumnY = yPos;
+    rightColumnY = yPos;
+    leftColumnEndY = yPos;
+    rightColumnEndY = yPos;
+
+    // MATERIAL BREAKDOWN (left column)
+    const materialBreakdown: Record<string, { count: number; area: number }> = {};
+    for (const part of cutlist.parts) {
+      if (!materialBreakdown[part.material_id]) {
+        materialBreakdown[part.material_id] = { count: 0, area: 0 };
+      }
+      materialBreakdown[part.material_id].count += part.qty;
+      materialBreakdown[part.material_id].area += part.qty * part.size.L * part.size.W;
+    }
+
+    if (Object.keys(materialBreakdown).length > 0) {
+      doc.setTextColor(...textColor);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("Material Breakdown", margin, leftColumnY);
+      leftColumnY += 2;
+
+      const materialTableData = Object.entries(materialBreakdown).map(([matId, data]) => {
+        const material = cutlist.materials.find(m => m.material_id === matId);
+        return [
+          material?.name || matId,
+          material?.thickness_mm ? `${material.thickness_mm}mm` : "-",
+          data.count.toString(),
+          `${(data.area / 1_000_000).toFixed(2)} m²`,
+        ];
+      });
+
+      autoTable(doc, {
+        head: [["Material", "Thickness", "Pieces", "Area"]],
+        body: materialTableData,
+        startY: leftColumnY,
+        margin: { left: margin, right: margin + halfWidth + 10 },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: primaryColor, textColor: [255, 255, 255], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [248, 248, 248] },
+        tableWidth: halfWidth,
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      leftColumnEndY = (doc as any).lastAutoTable?.finalY || leftColumnY;
+    }
+
+    // DRILLING BREAKDOWN (right column, same row as material)
+    if (holeMetrics.totalParts > 0) {
+      const holeStartX = margin + halfWidth + 10;
+
+      doc.setTextColor(...purpleColor);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("Drilling Breakdown", holeStartX, rightColumnY);
+      rightColumnY += 2;
+
+      const holeData: (string | number)[][] = [];
+      holeMetrics.byPattern.forEach((data) => {
+        holeData.push([
+          data.name,
+          data.diameterMm ? `${data.diameterMm.toFixed(1)}mm` : "-",
+          data.holeCount.toString(),
+          data.partsCount.toString(),
+        ]);
+      });
+
+      holeData.push([
+        "TOTAL",
+        "",
+        holeMetrics.totalHoles.toString(),
+        holeMetrics.totalParts.toString(),
+      ]);
+
+      autoTable(doc, {
+        head: [["Pattern", "Diameter", "Holes", "Parts"]],
+        body: holeData,
+        startY: rightColumnY,
+        margin: { left: holeStartX, right: margin },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: purpleColor, textColor: [255, 255, 255], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [250, 245, 255] },
+        tableWidth: halfWidth,
+        didParseCell: (data) => {
+          if (data.row.index === holeData.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [243, 232, 255];
+          }
+        },
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rightColumnEndY = (doc as any).lastAutoTable?.finalY || rightColumnY;
+    }
+
+    // Move yPos to after row 2
+    yPos = Math.max(leftColumnEndY, rightColumnEndY) + 15;
+
+    // ============================================================
+    // ROW 3: GROOVE BREAKDOWN (full width if present)
+    // ============================================================
+
+    if (grooveMetrics.totalParts > 0) {
+      // Check for page break
+      if (yPos > pageHeight - 60) {
+        doc.addPage();
+        yPos = margin + 10;
+      }
+
+      doc.setTextColor(...amberColor);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("Groove Breakdown", margin, yPos);
+      yPos += 2;
+
+      const grooveData: (string | number)[][] = [];
+      grooveMetrics.byProfile.forEach((data) => {
+        grooveData.push([
+          data.name,
+          `${data.widthMm}mm`,
+          `${data.depthMm}mm`,
+          formatLength(data.lengthMm),
+          data.partsCount.toString(),
+        ]);
+      });
+
+      grooveData.push([
+        "TOTAL",
+        "",
+        "",
+        formatLength(grooveMetrics.totalLengthMm),
+        grooveMetrics.totalParts.toString(),
+      ]);
+
+      autoTable(doc, {
+        head: [["Profile", "Width", "Depth", "Length", "Parts"]],
+        body: grooveData,
+        startY: yPos,
+        margin: { left: margin, right: margin + halfWidth + 10 },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: amberColor, textColor: [255, 255, 255], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [255, 251, 235] },
+        tableWidth: halfWidth,
+        didParseCell: (data) => {
+          if (data.row.index === grooveData.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [254, 243, 199];
+          }
+        },
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      yPos = (doc as any).lastAutoTable?.finalY + 10;
     }
   }
 
   // ============================================================
-  // MATERIAL BREAKDOWN
+  // MATERIAL BREAKDOWN (standalone page if no detailed metrics)
   // ============================================================
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let finalY = (doc as any).lastAutoTable?.finalY || yPos;
-  
-  if (finalY > pageHeight - 50) {
-    doc.addPage();
-    yPos = margin;
-  } else {
-    yPos = finalY + 15;
-  }
-
-  doc.setTextColor(...textColor);
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text("Material Breakdown", margin, yPos);
-  yPos += 5;
-
-  const materialBreakdown: Record<string, { count: number; area: number }> = {};
-  for (const part of cutlist.parts) {
-    if (!materialBreakdown[part.material_id]) {
-      materialBreakdown[part.material_id] = { count: 0, area: 0 };
+  if (!includeDetailedMetrics) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let finalY = (doc as any).lastAutoTable?.finalY || yPos;
+    
+    if (finalY > pageHeight - 50) {
+      doc.addPage();
+      yPos = margin;
+    } else {
+      yPos = finalY + 15;
     }
-    materialBreakdown[part.material_id].count += part.qty;
-    materialBreakdown[part.material_id].area += part.qty * part.size.L * part.size.W;
+
+    doc.setTextColor(...textColor);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Material Breakdown", margin, yPos);
+    yPos += 5;
+
+    const materialBreakdown: Record<string, { count: number; area: number }> = {};
+    for (const part of cutlist.parts) {
+      if (!materialBreakdown[part.material_id]) {
+        materialBreakdown[part.material_id] = { count: 0, area: 0 };
+      }
+      materialBreakdown[part.material_id].count += part.qty;
+      materialBreakdown[part.material_id].area += part.qty * part.size.L * part.size.W;
+    }
+
+    const materialTableData = Object.entries(materialBreakdown).map(([matId, data]) => {
+      const material = cutlist.materials.find(m => m.material_id === matId);
+      return [
+        material?.name || matId,
+        material?.thickness_mm ? `${material.thickness_mm}mm` : "-",
+        data.count.toString(),
+        `${(data.area / 1_000_000).toFixed(2)} m²`,
+      ];
+    });
+
+    autoTable(doc, {
+      head: [["Material", "Thickness", "Pieces", "Area"]],
+      body: materialTableData,
+      startY: yPos,
+      margin: { left: margin, right: margin },
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+        textColor: textColor,
+      },
+      headStyles: {
+        fillColor: primaryColor,
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+      },
+      alternateRowStyles: {
+        fillColor: [248, 248, 248],
+      },
+      tableWidth: 150,
+    });
   }
-
-  const materialTableData = Object.entries(materialBreakdown).map(([matId, data]) => {
-    const material = cutlist.materials.find(m => m.material_id === matId);
-    return [
-      material?.name || matId,
-      material?.thickness_mm ? `${material.thickness_mm}mm` : "-",
-      data.count.toString(),
-      `${(data.area / 1_000_000).toFixed(2)} m²`,
-    ];
-  });
-
-  autoTable(doc, {
-    head: [["Material", "Thickness", "Pieces", "Area"]],
-    body: materialTableData,
-    startY: yPos,
-    margin: { left: margin, right: margin },
-    styles: {
-      fontSize: 9,
-      cellPadding: 3,
-      textColor: textColor,
-    },
-    headStyles: {
-      fillColor: primaryColor,
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-    },
-    alternateRowStyles: {
-      fillColor: [248, 248, 248],
-    },
-    tableWidth: 150,
-  });
 
   return doc;
 }

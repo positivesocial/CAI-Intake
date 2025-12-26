@@ -2,44 +2,102 @@
  * CAI Intake - AI Prompts for Cutlist Extraction
  * 
  * Highly trained prompts for accurate cutlist parsing from various input formats.
+ * 
+ * ACCURACY GOAL: 100% extraction with field-level confidence scoring.
+ * Every field should have a confidence score so users can focus on uncertain data.
  */
+
+// ============================================================
+// VALIDATION RULES (used across all prompts)
+// ============================================================
+
+export const VALIDATION_RULES = `
+## MANDATORY VALIDATION RULES (Apply to EVERY part)
+
+### Dimension Validation
+- Length and Width MUST be positive numbers
+- Typical range: 50mm to 3000mm (standard sheets are 2440×1220mm or 2800×2070mm)
+- If a dimension > 3000mm, set fieldConfidence.length/width to 0.5 and add warning
+- Length MUST be >= Width. If L < W, SWAP them
+- If dimensions look like they might be inches, multiply by 25.4 to get mm
+
+### Quantity Validation
+- Default quantity is 1 if not specified
+- Reasonable range: 1 to 500
+- If > 100, add warning "High quantity - verify"
+
+### Material Validation
+- Keep material codes SHORT: W, Ply, B, M, BK, WH, OAK, etc.
+- If material is unclear, use empty string "" and set fieldConfidence.material to 0.5
+
+### FIELD-LEVEL CONFIDENCE (0.0 to 1.0)
+For EACH part, include a "fieldConfidence" object:
+\`\`\`json
+{
+  "fieldConfidence": {
+    "length": 0.98,
+    "width": 0.98,
+    "quantity": 0.95,
+    "material": 0.90,
+    "edgeBanding": 0.85,
+    "grooving": 1.0
+  }
+}
+\`\`\`
+
+Confidence scoring guide:
+- 1.0: Crystal clear, unambiguous
+- 0.9: Very likely correct, minor uncertainty
+- 0.8: Probably correct, some interpretation needed
+- 0.7: Likely correct but should verify
+- 0.6: Uncertain, used context/defaults
+- 0.5: Guessed based on patterns
+- <0.5: Very uncertain, needs human review
+`;
 
 // ============================================================
 // BASE CUTLIST EXTRACTION PROMPT
 // ============================================================
 
-export const BASE_CUTLIST_PROMPT = `You are an expert cutlist parser for woodworking, cabinet making, and furniture manufacturing. Your task is to extract structured part data from the provided input.
+export const BASE_CUTLIST_PROMPT = `You are an expert cutlist parser for woodworking, cabinet making, and furniture manufacturing. Your task is to extract structured part data with HIGH ACCURACY and FIELD-LEVEL CONFIDENCE SCORES.
 
 ## Your Expertise
 - You understand cabinet/furniture terminology (carcass, face frame, drawer box, etc.)
 - You recognize dimension formats: 720x560, 720 x 560, 720mm × 560mm, 28.3" x 22"
 - You understand quantity notation: qty 2, x2, 2pcs, ×2, (2), 2 off, 2 no.
-- You know material names: melamine, MDF, plywood, particleboard, MFC, HPL
+- You know material codes: W=White, Ply=Plywood, B=Black/Brown, M=MDF/Melamine
 - You understand grain/rotation: GL (grain length), GW (grain width), "can rotate", "fixed"
-- You recognize edge banding notation: EB, ABS, PVC, L1, L2, W1, W2, "all edges", "4 sides"
-- You recognize shorthand edge notation: "1E" (1 edge), "2E" (2 edges), "3E" (3 edges), "4E" (all edges)
+- You recognize edge banding: L1, L2, W1, W2 columns with checkmarks (✓, X, /)
+- You recognize groove columns: GL (groove length), GW (groove width) with checkmarks
 
 ## Output Format
 Return a JSON array of parts with this structure:
 \`\`\`json
 [
   {
+    "row": 1,
     "label": "Part name or description",
     "length": 720,
     "width": 560,
     "thickness": 18,
     "quantity": 2,
-    "material": "White Melamine",
-    "grain": "none" | "along_L",
+    "material": "W",
+    "grain": "none",
     "allowRotation": true,
     "edgeBanding": {
       "detected": true,
-      "edges": ["L1", "L2", "W1"],
-      "description": "3 long edges"
+      "L1": true,
+      "L2": true,
+      "W1": false,
+      "W2": false,
+      "edges": ["L1", "L2"],
+      "description": "2 long edges"
     },
     "grooving": {
-      "detected": false,
-      "description": null
+      "detected": true,
+      "GL": true,
+      "GW": false,
+      "description": "groove on length"
     },
     "cncOperations": {
       "detected": false,
@@ -47,121 +105,445 @@ Return a JSON array of parts with this structure:
       "routing": false
     },
     "notes": "Any special instructions",
+    "confidence": 0.95,
+    "fieldConfidence": {
+      "length": 0.98,
+      "width": 0.98,
+      "quantity": 1.0,
+      "material": 0.95,
+      "edgeBanding": 0.90,
+      "grooving": 1.0
+    },
+    "warnings": []
+  }
+]
+\`\`\`
+
+## Edge Banding Object Structure
+\`\`\`json
+{
+  "detected": true,          // true if ANY edge has banding
+  "L1": true,                // Long edge 1 (first long side)
+  "L2": false,               // Long edge 2 (second long side)
+  "W1": true,                // Width edge 1 (first short side)
+  "W2": false,               // Width edge 2 (second short side)
+  "edges": ["L1", "W1"],     // Array of edges with banding
+  "description": "2 edges"   // Human readable
+}
+\`\`\`
+
+## Grooving Object Structure
+\`\`\`json
+{
+  "detected": true,          // true if ANY groove present
+  "GL": true,                // Groove parallel to Length
+  "GW": false,               // Groove parallel to Width
+  "description": "groove on length"
+}
+\`\`\`
+
+## Rules
+1. Dimensions: Always in mm. Convert inches (multiply by 25.4)
+2. Length is always the longer dimension (L >= W) - swap if needed
+3. Default thickness: 18mm if not specified
+4. Default quantity: 1 if not specified
+5. Confidence: 0.0-1.0 based on how clearly the data was specified
+6. Keep material codes short (W, Ply, B, M) - don't expand
+7. Checkmarks/ticks in edge columns = that edge has banding
+8. Checkmarks/ticks in groove columns = has groove in that direction
+
+## Important
+- Return ONLY valid JSON, no additional text
+- Include ALL parts you can identify, even partial ones with lower confidence
+- If dimensions seem impossible (>5000mm), flag with lower confidence
+- NEVER skip rows - extract every single row from the input`;
+
+// ============================================================
+// TEXT PASTE PROMPT (for copy-paste input)
+// ============================================================
+
+export const TEXT_PASTE_PROMPT = `You are an expert cutlist parser. The user has pasted text that may contain a cutlist copied from a spreadsheet, document, or other source.
+
+## CRITICAL: IDENTIFY THE HEADER ROW
+
+The FIRST row is often the header row containing column names. Common header patterns:
+
+**Standard Headers:**
+\`\`\`
+NO  COLOUR  LENGTH  WIDTH  QTY  L1  L2  W1  W2  GL  GW
+\`\`\`
+
+**Variations:**
+\`\`\`
+#   MAT     L       W      QTY  EDGING           GROOVE
+ROW MATERIAL LENGTH  WIDTH  Q   L1  L2  W1  W2  GL  GW  NOTES
+    COLOR   LEN     WID    PCS  EDGE1 EDGE2       GROOVE
+\`\`\`
+
+**IMPORTANT:** Do NOT include the header row as a part! It defines column structure.
+
+## STEP 1: PARSE THE HEADER ROW
+
+Identify which columns contain what data:
+- **Row/NO/#**: Row number (skip when outputting)
+- **COLOUR/MAT/MATERIAL/COLOR**: Material code
+- **LENGTH/LEN/L**: Length dimension
+- **WIDTH/WID/W**: Width dimension  
+- **QTY/Q/PCS/QUANTITY**: Quantity
+- **L1/EDGE1**: Long edge 1 edgebanding
+- **L2/EDGE2**: Long edge 2 edgebanding
+- **W1**: Width edge 1 edgebanding
+- **W2**: Width edge 2 edgebanding
+- **GL/GROOVE L**: Groove on length
+- **GW/GROOVE W**: Groove on width
+- **NOTES/DESC/DESCRIPTION**: Notes column
+
+## STEP 2: PARSE DATA ROWS
+
+For each data row after the header:
+
+### Material Column Values:
+- "W", "w", "White" → material: "W"
+- "Ply", "PLY", "Plywood" → material: "Ply"
+- "B", "b", "Black", "Brown" → material: "B"
+- "M", "MDF", "Melamine" → material: "M"
+- Empty → material: "" (use default)
+
+### Edge Banding Columns (L1, L2, W1, W2):
+Any of these values means the edge HAS banding:
+- "✓", "√", "X", "x", "Y", "y", "/", "1", "yes", "*", "•"
+These values mean NO banding:
+- "", "0", "N", "n", "no", "-", empty/blank
+
+### Groove Columns (GL, GW):
+Same logic as edgebanding:
+- "✓", "√", "X", "x", "Y", "y", "/", "1", "yes" → true
+- "", "0", "N", "n", "no", "-", empty → false
+
+## TAB/SPACE SEPARATED VALUES
+
+Text may be tab-separated (from spreadsheet copy) or space-separated:
+
+**Tab-separated example:**
+\`\`\`
+1	W	636	200	6	✓					
+2	W	502	200	6	✓					
+3	Ply	780	900	2						
+\`\`\`
+
+**Space-separated example:**
+\`\`\`
+1  W    636  200  6  X  -  -  -  -  -
+2  W    502  200  6  X  -  -  -  -  -
+3  Ply  780  900  2  -  -  -  -  -  -
+\`\`\`
+
+## OUTPUT FORMAT
+
+Return JSON array with this EXACT structure:
+\`\`\`json
+[
+  {
+    "row": 1,
+    "label": "",
+    "length": 636,
+    "width": 200,
+    "thickness": 18,
+    "quantity": 6,
+    "material": "W",
+    "edgeBanding": {
+      "detected": true,
+      "L1": true,
+      "L2": false,
+      "W1": false,
+      "W2": false,
+      "edges": ["L1"],
+      "description": "1 long edge"
+    },
+    "grooving": {
+      "detected": false,
+      "GL": false,
+      "GW": false,
+      "description": ""
+    },
     "confidence": 0.95
   }
 ]
 \`\`\`
 
-## Rules
-1. Dimensions: Always in mm. Convert inches (multiply by 25.4)
-2. Length is always the longer dimension (L >= W)
-3. Default thickness: 18mm if not specified
-4. Default quantity: 1 if not specified
-5. Confidence: 0.0-1.0 based on how clearly the data was specified
-6. If grain is mentioned, set allowRotation to false
-7. Parse edge banding from context clues (EB, "edged", "banded", L1/L2/W1/W2)
+## RULES
 
-## Important
-- Return ONLY valid JSON, no additional text
-- Include ALL parts you can identify, even partial ones with lower confidence
-- If dimensions seem impossible (>5000mm), flag with lower confidence`;
+1. **SKIP the header row** - it defines columns, not parts
+2. **Extract ALL data rows** - count them and verify
+3. **Keep material codes short** - W, Ply, B, M (don't expand)
+4. **Map edge columns correctly** - check each L1, L2, W1, W2 column
+5. **Map groove columns correctly** - check GL and GW columns
+6. **Default thickness: 18mm** if not specified
+7. **Default quantity: 1** if unclear
+8. **Length >= Width** - swap if needed
+9. **Include row numbers** for verification
+
+## EXAMPLE PARSING
+
+Input:
+\`\`\`
+NO	COLOUR	LENGTH	WIDTH	QTY	L1	L2	W1	W2	GL	GW
+1	W	636	200	6	✓					
+2	W	502	200	6	✓					
+3	Ply	780	900	2						
+4	B	780	560	1	✓	✓	✓	✓		✓
+\`\`\`
+
+Output:
+\`\`\`json
+[
+  {"row":1,"material":"W","length":636,"width":200,"quantity":6,"edgeBanding":{"detected":true,"L1":true,"L2":false,"W1":false,"W2":false,"edges":["L1"]},"grooving":{"detected":false,"GL":false,"GW":false},"confidence":0.98},
+  {"row":2,"material":"W","length":636,"width":200,"quantity":6,"edgeBanding":{"detected":true,"L1":true,"L2":false,"W1":false,"W2":false,"edges":["L1"]},"grooving":{"detected":false,"GL":false,"GW":false},"confidence":0.98},
+  {"row":3,"material":"Ply","length":900,"width":780,"quantity":2,"edgeBanding":{"detected":false,"L1":false,"L2":false,"W1":false,"W2":false,"edges":[]},"grooving":{"detected":false,"GL":false,"GW":false},"confidence":0.98},
+  {"row":4,"material":"B","length":780,"width":560,"quantity":1,"edgeBanding":{"detected":true,"L1":true,"L2":true,"W1":true,"W2":true,"edges":["L1","L2","W1","W2"]},"grooving":{"detected":true,"GL":false,"GW":true},"confidence":0.98}
+]
+\`\`\`
+
+Return ONLY valid JSON array. No markdown, no explanations.`;
 
 // ============================================================
 // METADATA EXTRACTION PROMPT
 // ============================================================
 
-export const METADATA_EXTRACTION_PROMPT = `Additionally, analyze the input for manufacturing metadata:
+export const METADATA_EXTRACTION_PROMPT = `
 
-## Edge Banding Detection
-Look for:
-- Explicit notation: "EB all", "4 sides banded", "L1 L2 edged"
-- Edge references: L1 (long edge 1), L2 (long edge 2), W1 (short edge 1), W2 (short edge 2)
-- Material mentions: "0.8mm ABS", "2mm PVC", "matching edge"
-- Implicit context: "visible edges", "front and top edged"
-- Shorthand: "1E", "2E", "3E", "4E" (number of edges)
+## OPERATIONS METADATA EXTRACTION
 
-## Grooving Detection (IMPORTANT - Check notes/description column)
-Look for these patterns in ANY column, especially notes/description:
-- "GL" = Groove on Length (groove runs along the long edge)
-- "GW" = Groove on Width (groove runs along the short edge)
-- "grv", "groove", "GRV" = Generic groove indicator
-- "back groove", "back panel groove", "BPG"
-- "Light groove", "light grv" = Shallow groove
-- "dado", "rebate", "rabbet"
+### Edge Banding Detection
+
+**Column-based Detection (HIGHEST PRIORITY):**
+When you see dedicated columns like L1, L2, W1, W2 or "EDGING":
+- ANY mark in the cell (✓, √, X, x, Y, /, tick, check) = edge HAS banding
+- Empty cell = edge does NOT have banding
+- Map to: L1 (first long edge), L2 (second long edge), W1 (first width edge), W2 (second width edge)
+
+**Text-based Detection:**
+- "EB all", "4 sides banded", "all edges" → all 4 edges: L1, L2, W1, W2
+- "L1 L2 edged", "2L" → both long edges: L1, L2
+- "1E", "2E", "3E", "4E" → 1, 2, 3, or 4 edges respectively
+- "front edge", "visible edge" → typically L1
+
+**Material Detection:**
+- "0.4mm", "0.8mm ABS", "2mm PVC", "matching edge"
+- Store in edgeBanding.material if detected
+
+### Grooving Detection
+
+**Column-based Detection (HIGHEST PRIORITY):**
+When you see dedicated columns like GL, GW or "GROOVE":
+- ANY mark in the cell (✓, √, X, x, Y, /, tick, check) = HAS groove
+- Empty cell = NO groove
+- GL = Groove runs parallel to the LENGTH (long) dimension
+- GW = Groove runs parallel to the WIDTH (short) dimension
+
+**Text-based Detection:**
+- "GL" anywhere = Groove on Length → grooving.GL = true
+- "GW" anywhere = Groove on Width → grooving.GW = true
+- "grv", "groove", "GRV", "dado", "rebate", "rabbet" = Has groove
+- "back groove", "BPG", "back panel groove" = Groove for back panel
+- "light groove", "light grv" = Shallow groove (note in description)
 - "4mm groove", "6x10mm groove" = Groove with dimensions
-- "x" or "X" in a dedicated groove column often means "has groove"
 
-When detected, set grooving.detected = true and describe in grooving.description.
-For GL/GW, also set grooving.profileHint to "length" or "width".
+### CNC Operations Detection
 
-## CNC Operations Detection (Check notes/description column)
-Look for these patterns in ANY column:
-- "vents", "vent holes", "ventilation" = CNC ventilation holes
-- "cnc", "CNC" = Generic CNC operations required
-- "holes", "drilling" = Drilling operations
-- "system 32", "shelf pin holes", "hinge cups", "hinge bore"
-- "routing", "profile edge", "shaped", "routed"
-- "cam locks", "minifix", "confirmat", "rafix"
-- Counts like "8 holes", "2 hinge bores", "4 shelf pins"
+**Text Patterns to Look For:**
+- "vents", "vent holes", "ventilation" → Ventilation holes
+- "cnc", "CNC" → Generic CNC operations
+- "holes", "drilling", "bore", "boring" → Drilling operations
+- "system 32", "shelf pins", "hinge cups", "hinge bore" → Furniture hardware
+- "routing", "profile", "shaped" → Edge routing
+- "cam locks", "minifix", "confirmat", "rafix" → Fastener holes
+- Number patterns: "8 holes", "2x hinge", "4 shelf pins"
 
-When detected, set cncOperations.detected = true and include description.
+### Notes/Description Column
 
-## Notes/Description Column Analysis (CRITICAL)
-The notes or description column may contain:
-- Operation shortcodes: "GL", "GW", "grv", "cnc", "vents"
-- Material overrides: "use oak", "ply", "MDF"
+Extract ANY additional information:
+- Material overrides: "ply", "MDF", "use oak"
 - Special instructions: "cut first", "priority", "rush"
-- Hardware notes: "soft close", "blum", "hettich"
+- Hardware: "soft close", "blum", "hettich"
+- Assembly notes: "left hand", "right hand", "pair"
 
-ALWAYS extract this information into the appropriate metadata fields!
+Store in the \`notes\` field and also parse into appropriate metadata fields.
 
-Include any detected operations in the part's metadata fields.`;
+### Material Code Mapping
+
+Common abbreviations:
+| Code | Meaning |
+|------|---------|
+| W | White melamine |
+| Ply | Plywood |
+| B | Black or Brown |
+| M | MDF or Melamine |
+| WH | White |
+| BK | Black |
+| NAT | Natural |
+| OAK | Oak |
+| CHY | Cherry |
+| WN | Walnut |
+
+If material code is unclear, include it as-is and let downstream processing handle mapping.`;
 
 // ============================================================
 // IMAGE/SCAN PROMPT
 // ============================================================
 
-export const IMAGE_ANALYSIS_PROMPT = `You are analyzing an image that may contain a cutlist, parts list, or cutting diagram.
+export const IMAGE_ANALYSIS_PROMPT = `You are an expert OCR system specialized in reading handwritten and printed cutlists for cabinet making and woodworking.
 
-## CRITICAL: EXTRACT ALL ROWS
-You MUST extract EVERY SINGLE ROW from the table. Count the rows carefully. If you see 38 rows, extract 38 parts. Do not skip any rows even if they seem similar to others.
+## CRITICAL INSTRUCTION: EXTRACT EVERY ROW
+You MUST extract EVERY SINGLE ROW from the table/list. Count carefully!
+- If you see 36 numbered rows, extract 36 parts
+- If you see 50 rows, extract 50 parts
+- NEVER skip rows, even if data seems similar or repeated
+- NEVER merge multiple rows into one part
 
-## What to Look For
-1. **Tables/Lists**: Rows of part data with dimensions
-2. **Cutting Diagrams**: Sheet layouts showing parts to cut
-3. **Handwritten Notes**: Part specifications written by hand
-4. **Labels**: Part names, dimensions, quantities
-5. **Drawings**: Technical drawings with dimensions
+## STEP 1: ANALYZE THE TABLE STRUCTURE
 
-## Reading Strategy
-1. First, identify the document type (list, diagram, drawing)
-2. Look for column headers to understand data structure
-3. COUNT THE TOTAL NUMBER OF DATA ROWS
-4. Read each row/part systematically - DO NOT SKIP OR MERGE ROWS
-5. Note any symbols or abbreviations used consistently
+Before extracting data, identify the column headers. Common structures include:
 
-## Edge Banding Notation (IMPORTANT)
-Many cutlists use abbreviated edge notation:
-- "1E" = 1 edge banded → edges: ["L1"]
-- "2E" = 2 edges banded → edges: ["L1", "L2"] (both long edges)
-- "3E" = 3 edges banded → edges: ["L1", "L2", "W1"]
-- "4E" = 4 edges banded (all edges) → edges: ["L1", "L2", "W1", "W2"]
-- "2L" or "LL" = 2 long edges → edges: ["L1", "L2"]
-- "2W" = 2 short edges → edges: ["W1", "W2"]
-- Checkmarks (✓, X, x) in edge columns also indicate edging
+### Standard Table Headers (VERY COMMON):
+| NO | COLOUR | LENGTH | WIDTH | QTY | EDGING (L1, L2, W1, W2) | GROOVE (GL, GW) |
 
-When you see "1E", "2E", etc. in the data:
-- This is EDGE BANDING information, NOT part of the label
-- Extract it separately into the edgeBanding field
-- Do not include it in the part label
+Or variations like:
+| # | MAT | L | W | Q | EDGING | GROOVE | NOTES |
+| ROW | MATERIAL | LENGTH | WIDTH | QTY | L1 | L2 | W1 | W2 | GL | GW |
 
-## Handwriting Tips
-- Numbers 1 and 7 may look similar
-- 0 and O can be confused
-- Check context for unlikely dimensions
-- Decimals vs commas for thousands
+### Understanding Column Types:
 
-${BASE_CUTLIST_PROMPT}`;
+**MATERIAL/COLOUR Column** - Material codes (usually 1-3 characters):
+- "W" or "w" = White melamine/board
+- "Ply" = Plywood
+- "B" = Brown, Black, or another color
+- "M" = Melamine, MDF
+- "O" = Oak, or other wood
+- "BK" = Black
+- "WH" = White
+- "NAT" = Natural
+- Empty = Use default material
+
+**EDGING Columns (L1, L2, W1, W2)** - Which edges get edgebanding:
+- L1 = First long edge (length side 1)
+- L2 = Second long edge (length side 2)  
+- W1 = First short edge (width side 1)
+- W2 = Second short edge (width side 2)
+- A checkmark (✓, √, ✔, X, x, Y, y, /) = Edge NEEDS banding
+- Empty cell = No edgebanding on this edge
+
+**GROOVE Columns (GL, GW)** - Which direction gets a groove:
+- GL = Groove on Length (groove runs parallel to LENGTH dimension)
+- GW = Groove on Width (groove runs parallel to WIDTH dimension)
+- A checkmark (✓, √, ✔, X, x, Y, y, /) = HAS a groove
+- Empty cell = No groove
+
+## STEP 2: READ EACH ROW SYSTEMATICALLY
+
+For EACH numbered row, extract:
+1. Row number (NO)
+2. Material code from COLOUR/MATERIAL column
+3. LENGTH dimension (the longer number)
+4. WIDTH dimension (the shorter number)
+5. QTY (quantity) - default to 1 if unclear
+6. Check EACH edge column (L1, L2, W1, W2) for checkmarks
+7. Check EACH groove column (GL, GW) for checkmarks
+
+## STEP 3: HANDWRITING RECOGNITION TIPS
+
+Common handwriting confusions:
+- "1" vs "7" - Look at the top stroke
+- "0" vs "6" vs "8" - Look at curves
+- "5" vs "S" - Numbers in dimension columns
+- "4" vs "9" - Check the closing
+- Checkmarks appear as: ✓ √ ✔ / X x Y y
+- Slashes or ticks in cells indicate "yes"
+
+Dimension sanity checks:
+- Most cabinet parts are 100-2500mm
+- Widths are usually smaller than lengths
+- If a number seems too large/small, reread it
+- 2070, 2440, 2800 are common sheet lengths
+
+## OUTPUT FORMAT
+
+Return JSON array with this EXACT structure:
+\`\`\`json
+[
+  {
+    "row": 1,
+    "label": "Part description or empty",
+    "length": 780,
+    "width": 560,
+    "thickness": 18,
+    "quantity": 2,
+    "material": "W",
+    "edgeBanding": {
+      "detected": true,
+      "L1": true,
+      "L2": false,
+      "W1": false,
+      "W2": false,
+      "edges": ["L1"],
+      "description": "1 long edge"
+    },
+    "grooving": {
+      "detected": true,
+      "GL": true,
+      "GW": false,
+      "description": "groove on length"
+    },
+    "confidence": 0.95
+  }
+]
+\`\`\`
+
+## EDGE BANDING OBJECT FORMAT
+
+The edgeBanding object MUST include:
+- \`detected\`: true if ANY edge has banding
+- \`L1\`, \`L2\`, \`W1\`, \`W2\`: boolean for each edge (true = has banding)
+- \`edges\`: array of edge codes that have banding ["L1", "W1", etc.]
+- \`description\`: human-readable summary
+
+Examples:
+- Checkmarks in L1 only: \`{ detected: true, L1: true, L2: false, W1: false, W2: false, edges: ["L1"], description: "1 long edge" }\`
+- Checkmarks in L1, L2, W1, W2: \`{ detected: true, L1: true, L2: true, W1: true, W2: true, edges: ["L1","L2","W1","W2"], description: "all edges" }\`
+
+## GROOVING OBJECT FORMAT
+
+The grooving object MUST include:
+- \`detected\`: true if ANY groove is indicated
+- \`GL\`: boolean (true = groove on length direction)
+- \`GW\`: boolean (true = groove on width direction)
+- \`description\`: human-readable description
+
+Examples:
+- Checkmark in GL column: \`{ detected: true, GL: true, GW: false, description: "groove on length" }\`
+- Checkmarks in both: \`{ detected: true, GL: true, GW: true, description: "grooves on both length and width" }\`
+
+## IMPORTANT RULES
+
+1. **EXTRACT ALL ROWS** - Count rows, verify you extracted that many parts
+2. **Material codes stay short** - "W" not "White", "Ply" not "Plywood"
+3. **Checkmarks mean TRUE** - Any mark (✓, X, x, /, Y) in edge/groove columns = true
+4. **Empty means FALSE** - Empty edge/groove cells = false
+5. **Default quantity is 1** - If QTY is unclear, use 1
+6. **Default thickness is 18mm** - Unless clearly specified otherwise
+7. **Verify dimensions** - Length should be >= Width (swap if needed)
+8. **Include row number** - Helps verify all rows extracted
+9. **Don't guess labels** - If no label/description column, leave empty or use row number
+
+## CONFIDENCE SCORING
+
+- 0.95-1.0: Crystal clear handwriting, all data visible
+- 0.80-0.94: Readable but some characters unclear
+- 0.60-0.79: Several uncertain characters, used context
+- 0.40-0.59: Significant guessing required
+- Below 0.40: Very uncertain, include anyway with warnings
+
+Return ONLY valid JSON array. No markdown, no explanations.`;
 
 // ============================================================
 // TEMPLATE-SPECIFIC PROMPTS
@@ -212,6 +594,86 @@ ${BASE_CUTLIST_PROMPT}
 When uncertain, include the part with a lower confidence score (0.5-0.7) rather than omitting it. Include warnings in a "warnings" array field.`;
 
 // ============================================================
+// VOICE INPUT PROMPT (Structured, minimal format)
+// ============================================================
+
+export const VOICE_INPUT_PROMPT = `You are a voice-to-cutlist parser. Parse spoken part specifications into structured JSON.
+
+## VOICE INPUT FORMAT (Simple and Concise)
+
+Users speak parts in this format:
+**[QUANTITY] [LENGTH] by [WIDTH] [OPERATIONS]**
+
+### QUANTITY (optional, default 1)
+- "two" or "2" → quantity: 2
+- "five" or "5" → quantity: 5
+- If no quantity mentioned, default to 1
+
+### DIMENSIONS (required)
+- "seven twenty by five sixty" → 720 × 560mm
+- "800 by 400" → 800 × 400mm
+- "five hundred by three hundred" → 500 × 300mm
+- Always put larger dimension as length
+
+### OPERATIONS (optional keywords)
+**Edge Banding:**
+- "edges" or "all edges" → L1, L2, W1, W2 all true
+- "long edges" or "two long" → L1, L2 true
+- "short edges" or "two short" → W1, W2 true
+- "front edge" or "one edge" → L1 true
+- "three edges" → L1, L2, W1 true
+- No edge keywords → all edges false
+
+**Grooving:**
+- "groove" or "grv" → GL true (default: groove on length)
+- "groove width" → GW true
+- "back panel" or "back groove" → GL true
+
+**Material (optional):**
+- "white" → material: "W"
+- "ply" or "plywood" → material: "Ply"
+- "black" → material: "B"
+- "mdf" → material: "M"
+- If no material, use empty string
+
+### SEPARATORS BETWEEN PARTS
+- "next" or "next part" → start new part
+- Pause (silence) → might indicate new part
+- "done" or "that's it" → finished dictating
+
+## EXAMPLE TRANSCRIPTS
+
+Input: "two seven twenty by five sixty edges"
+Output:
+\`\`\`json
+[{"quantity": 2, "length": 720, "width": 560, "edgeBanding": {"detected": true, "L1": true, "L2": true, "W1": true, "W2": true}, "confidence": 0.95}]
+\`\`\`
+
+Input: "four eight hundred by four hundred long edges groove"
+Output:
+\`\`\`json
+[{"quantity": 4, "length": 800, "width": 400, "edgeBanding": {"detected": true, "L1": true, "L2": true, "W1": false, "W2": false}, "grooving": {"detected": true, "GL": true, "GW": false}, "confidence": 0.95}]
+\`\`\`
+
+Input: "five hundred by three hundred white next six hundred by two hundred ply three edges"
+Output:
+\`\`\`json
+[
+  {"quantity": 1, "length": 500, "width": 300, "material": "W", "confidence": 0.95},
+  {"quantity": 1, "length": 600, "width": 200, "material": "Ply", "edgeBanding": {"detected": true, "L1": true, "L2": true, "W1": true, "W2": false}, "confidence": 0.90}
+]
+\`\`\`
+
+## RULES
+1. ALWAYS include "confidence" field (0.0-1.0)
+2. Default quantity to 1 if not spoken
+3. Default all edges/grooves to false unless specifically mentioned
+4. Length must be >= Width (swap if needed)
+5. Parse spoken numbers: "seven twenty" = 720, "five sixty" = 560
+6. Return ONLY valid JSON array
+`;
+
+// ============================================================
 // SYSTEM PROMPTS
 // ============================================================
 
@@ -227,6 +689,8 @@ export interface PromptOptions {
   extractMetadata: boolean;
   isMessyData?: boolean;
   isImage?: boolean;
+  isPastedText?: boolean;
+  isVoice?: boolean;
   templateId?: string;
   templateConfig?: {
     fieldLayout?: Record<string, unknown>;
@@ -236,15 +700,30 @@ export interface PromptOptions {
 export function buildParsePrompt(options: PromptOptions): string {
   let prompt = "";
   
-  // Select base prompt
-  if (options.isImage) {
+  // Select base prompt based on input type
+  if (options.isVoice) {
+    // Voice input - use simple structured format
+    prompt = VOICE_INPUT_PROMPT;
+  } else if (options.isImage) {
+    // Image/scan OCR - use comprehensive image prompt
     prompt = IMAGE_ANALYSIS_PROMPT;
+  } else if (options.isPastedText) {
+    // Pasted text with potential headers - use text paste prompt
+    prompt = TEXT_PASTE_PROMPT;
   } else if (options.templateId && options.templateConfig) {
+    // Known template format
     prompt = getTemplatePrompt(options.templateId, options.templateConfig.fieldLayout);
   } else if (options.isMessyData) {
+    // Unstructured/messy data
     prompt = MESSY_DATA_PROMPT;
   } else {
-    prompt = BASE_CUTLIST_PROMPT;
+    // Default: use text paste prompt since most text input has structure
+    prompt = TEXT_PASTE_PROMPT;
+  }
+  
+  // Add validation rules to all prompts (except voice which is self-contained)
+  if (!options.isVoice) {
+    prompt += "\n\n" + VALIDATION_RULES;
   }
   
   // Add metadata extraction if requested
@@ -259,7 +738,31 @@ export function buildParsePrompt(options: PromptOptions): string {
 // RESPONSE PARSING HELPERS
 // ============================================================
 
+/** Per-field confidence scores (0.0 to 1.0) */
+export interface FieldConfidenceScores {
+  label?: number;
+  length?: number;
+  width?: number;
+  thickness?: number;
+  quantity?: number;
+  material?: number;
+  edgeBanding?: number;
+  grooving?: number;
+  cncOperations?: number;
+  /** Overall field quality score */
+  overall?: number;
+}
+
+/** Thresholds for field-level confidence */
+export const CONFIDENCE_THRESHOLDS = {
+  HIGH: 0.9,    // No review needed
+  MEDIUM: 0.7,  // May need review
+  LOW: 0.5,     // Needs review
+  CRITICAL: 0.3, // Likely incorrect
+};
+
 export interface AIPartResponse {
+  row?: number;
   label?: string;
   length: number;
   width: number;
@@ -270,11 +773,23 @@ export interface AIPartResponse {
   allowRotation?: boolean;
   edgeBanding?: {
     detected: boolean;
+    /** Individual edge flags */
+    L1?: boolean;
+    L2?: boolean;
+    W1?: boolean;
+    W2?: boolean;
+    /** Legacy: array of edge codes */
     edges?: string[];
+    /** Edgeband material if detected */
+    edgebandMaterial?: string;
     description?: string;
   };
   grooving?: {
     detected: boolean;
+    /** Groove on length (parallel to L dimension) */
+    GL?: boolean;
+    /** Groove on width (parallel to W dimension) */
+    GW?: boolean;
     description?: string;
     profileHint?: string;
   };
@@ -286,6 +801,8 @@ export interface AIPartResponse {
   };
   notes?: string;
   confidence?: number;
+  /** Per-field confidence scores (0.0-1.0) */
+  fieldConfidence?: FieldConfidenceScores;
   warnings?: string[];
 }
 

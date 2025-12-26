@@ -81,6 +81,8 @@ export function SetupStep() {
   const {
     currentCutlist,
     setCutlistName,
+    setProjectName,
+    setCustomerName,
     setCapabilities,
     goToNextStep,
     canProceedToIntake,
@@ -136,21 +138,55 @@ export function SetupStep() {
       <section className="space-y-4">
         <div className="space-y-1">
           <h2 className="text-2xl font-bold text-[var(--foreground)]">
-            Name Your Cutlist
+            Cutlist Details
           </h2>
           <p className="text-[var(--muted-foreground)]">
-            Give your cutlist a descriptive name to identify it later
+            Give your cutlist a descriptive name and optional project/customer info
           </p>
         </div>
 
-        <Input
-          ref={nameInputRef}
-          type="text"
-          value={currentCutlist.name}
-          onChange={(e) => setCutlistName(e.target.value)}
-          placeholder="e.g., Kitchen Cabinets - Johnson Project"
-          className="text-lg h-14 px-4"
-        />
+        <div className="space-y-3">
+          <div>
+            <label className="text-sm font-medium text-[var(--foreground)] mb-1.5 block">
+              Cutlist Name <span className="text-red-500">*</span>
+            </label>
+            <Input
+              ref={nameInputRef}
+              type="text"
+              value={currentCutlist.name}
+              onChange={(e) => setCutlistName(e.target.value)}
+              placeholder="e.g., Kitchen Cabinets - Base Units"
+              className="text-lg h-12 px-4"
+            />
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium text-[var(--foreground)] mb-1.5 block">
+                Project Name
+              </label>
+              <Input
+                type="text"
+                value={currentCutlist.project_name || ""}
+                onChange={(e) => setProjectName(e.target.value || undefined)}
+                placeholder="e.g., Johnson Residence"
+                className="h-10"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[var(--foreground)] mb-1.5 block">
+                Customer
+              </label>
+              <Input
+                type="text"
+                value={currentCutlist.customer_name || ""}
+                onChange={(e) => setCustomerName(e.target.value || undefined)}
+                placeholder="e.g., John Smith"
+                className="h-10"
+              />
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Capabilities Section */}

@@ -248,14 +248,54 @@ export function VoiceDictation() {
           </div>
         )}
 
-        {/* Dictation format help */}
-        <div className="text-xs text-[var(--muted-foreground)] bg-[var(--muted)] rounded-lg p-3">
-          <p className="font-medium mb-1">Say parts like:</p>
-          <ul className="space-y-0.5 list-disc list-inside">
-            <li>"Side panel seven twenty by five sixty quantity two"</li>
-            <li>"Shelf five sixty by five hundred times four"</li>
-            <li>"Top panel eight hundred by six hundred grain length"</li>
-          </ul>
+        {/* Dictation format help - Simplified */}
+        <div className="bg-[var(--muted)] rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-[var(--foreground)]">Voice Format</p>
+            <Badge variant="secondary" className="text-[10px]">Simple &amp; Fast</Badge>
+          </div>
+          
+          <div className="text-xs text-[var(--foreground)] mb-3 p-2 bg-[var(--background)] rounded font-mono">
+            [QTY] [LENGTH] by [WIDTH] [OPS]
+          </div>
+          
+          <div className="grid gap-2 text-xs">
+            <p className="font-medium text-[var(--foreground)]">Examples:</p>
+            <div className="space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-[var(--muted-foreground)]">"2 720 by 560"</span>
+                <span className="text-green-600">→ 2× 720×560</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--muted-foreground)]">"800 by 400 edges"</span>
+                <span className="text-green-600">→ 1× 800×400, all edges</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--muted-foreground)]">"4 600 by 300 two long"</span>
+                <span className="text-green-600">→ 4× 600×300, L1+L2</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--muted-foreground)]">"500 by 200 groove white"</span>
+                <span className="text-green-600">→ 1× 500×200, groove, W</span>
+              </div>
+            </div>
+            
+            <div className="mt-2 pt-2 border-t border-[var(--border)]">
+              <p className="font-medium text-[var(--foreground)] mb-1">Operation Keywords:</p>
+              <div className="flex flex-wrap gap-1">
+                <Badge variant="outline" className="text-[9px]">edges</Badge>
+                <Badge variant="outline" className="text-[9px]">two long</Badge>
+                <Badge variant="outline" className="text-[9px]">two short</Badge>
+                <Badge variant="outline" className="text-[9px]">front edge</Badge>
+                <Badge variant="outline" className="text-[9px]">groove</Badge>
+                <Badge variant="outline" className="text-[9px]">white/ply/mdf</Badge>
+              </div>
+            </div>
+            
+            <p className="text-[var(--muted-foreground)] mt-2">
+              💡 Say <strong>"next"</strong> between parts, <strong>"done"</strong> when finished
+            </p>
+          </div>
         </div>
 
         {/* Transcripts queue */}

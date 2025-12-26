@@ -19,6 +19,8 @@ import { applyRateLimit } from "@/lib/api-middleware";
 const UpdateCutlistSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).optional(),
+  project_name: z.string().max(255).optional().nullable(),
+  customer_name: z.string().max(255).optional().nullable(),
   job_ref: z.string().max(100).optional(),
   client_ref: z.string().max(100).optional(),
   status: z.enum(["draft", "pending", "processing", "completed", "archived"]).optional(),
@@ -176,10 +178,18 @@ export async function GET(
     }> = [];
 
     try {
-      const { data: sourceFiles } = await serviceClient
+      const { data: sourceFiles, error: filesError } = await serviceClient
         .from("uploaded_files")
         .select("id, file_name, original_name, mime_type, size_bytes, storage_path, kind, created_at")
         .eq("cutlist_id", id);
+
+      if (filesError) {
+        logger.warn("Failed to fetch source files", { 
+          cutlistId: id, 
+          error: filesError.message,
+          code: filesError.code 
+        });
+      }
 
       if (sourceFiles && sourceFiles.length > 0) {
         sourceFilesWithUrls = await Promise.all(
@@ -193,9 +203,18 @@ export async function GET(
             kind: string;
             created_at: string;
           }) => {
-            const { data: urlData } = await supabase.storage
+            // Use service client for signed URL generation (has proper permissions)
+            const { data: urlData, error: urlError } = await serviceClient.storage
               .from("cutlist-files")
               .createSignedUrl(file.storage_path, 3600); // 1 hour expiry
+            
+            if (urlError) {
+              logger.warn("Failed to generate signed URL for file", {
+                fileId: file.id,
+                storagePath: file.storage_path,
+                error: urlError.message,
+              });
+            }
             
             return {
               ...file,
@@ -203,10 +222,16 @@ export async function GET(
             };
           })
         );
+        
+        logger.debug("Fetched source files with URLs", {
+          cutlistId: id,
+          fileCount: sourceFilesWithUrls.length,
+          withUrls: sourceFilesWithUrls.filter(f => f.url).length,
+        });
       }
     } catch (fileError) {
       // Source files are optional - log but don't fail the request
-      console.warn("Could not fetch source files for cutlist:", id, fileError);
+      logger.warn("Could not fetch source files for cutlist", { cutlistId: id, error: fileError });
     }
 
     return NextResponse.json({

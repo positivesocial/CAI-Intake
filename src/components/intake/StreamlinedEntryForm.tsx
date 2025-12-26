@@ -129,11 +129,12 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
     const [viewMode, setViewMode] = React.useState<"table" | "cards">("table");
 
     // Rows state
-    const [rows, setRows] = React.useState<PartCardData[]>([
-      createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband),
-      createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband),
-      createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband),
-    ]);
+    // Initialize with 25 empty rows for efficient data entry
+    const [rows, setRows] = React.useState<PartCardData[]>(() => 
+      Array.from({ length: 25 }, () => 
+        createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband)
+      )
+    );
 
     // Selection state
     const [selectedRowIds, setSelectedRowIds] = React.useState<Set<string>>(new Set());
@@ -504,13 +505,15 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
                 <thead>
                   <tr className="bg-[var(--muted)]">
                     <th className="w-10 px-2 py-2 border-b">
-                      <input
-                        type="checkbox"
-                        checked={selectedRowIds.size === rows.length && rows.length > 0}
-                        ref={(el) => { if (el) el.indeterminate = selectedRowIds.size > 0 && selectedRowIds.size < rows.length; }}
-                        onChange={(e) => e.target.checked ? selectAllRows() : clearSelection()}
-                        className="rounded border-[var(--border)]"
-                      />
+                      <label className="inline-flex p-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.size === rows.length && rows.length > 0}
+                          ref={(el) => { if (el) el.indeterminate = selectedRowIds.size > 0 && selectedRowIds.size < rows.length; }}
+                          onChange={(e) => e.target.checked ? selectAllRows() : clearSelection()}
+                          className="rounded border-[var(--border)]"
+                        />
+                      </label>
                     </th>
                     <th className="w-32 px-2 py-2 text-left text-xs font-medium border-b">Label</th>
                     <th className="w-36 px-2 py-2 text-center text-xs font-medium border-b">

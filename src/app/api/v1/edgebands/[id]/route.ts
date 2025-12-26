@@ -7,12 +7,12 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getUser, getServiceClient } from "@/lib/supabase/server";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { logAuditFromRequest, AUDIT_ACTIONS } from "@/lib/audit";
 
-// Update edgeband schema
+// Update edgeband schema - matches actual DB columns
 const UpdateEdgebandSchema = z.object({
   edgeband_id: z.string().min(1).optional(),
   name: z.string().min(1).optional(),
@@ -21,11 +21,11 @@ const UpdateEdgebandSchema = z.object({
   material: z.string().optional().nullable(),
   color_code: z.string().optional().nullable(),
   color_match_material_id: z.string().optional().nullable(),
+  finish: z.string().optional().nullable(),
   waste_factor_pct: z.number().min(0).max(100).optional(),
   overhang_mm: z.number().min(0).optional(),
   supplier: z.string().optional().nullable(),
-  sku: z.string().optional().nullable(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function GET(
@@ -34,21 +34,23 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const user = await getUser();
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Use service client to bypass RLS
+    const serviceClient = getServiceClient();
+
     // Get user's organization
-    const { data: userData } = await supabase
+    const { data: userData } = await serviceClient
       .from("users")
-      .select("organization_id")
+      .select("organization_id, is_super_admin")
       .eq("id", user.id)
       .single();
 
-    if (!userData?.organization_id) {
+    if (!userData?.organization_id && !userData?.is_super_admin) {
       return NextResponse.json(
         { error: "User not associated with an organization" },
         { status: 400 }
@@ -56,7 +58,7 @@ export async function GET(
     }
 
     // Get edgeband
-    const { data: edgeband, error } = await supabase
+    const { data: edgeband, error } = await serviceClient
       .from("edgebands")
       .select("*")
       .eq("id", id)
@@ -76,15 +78,15 @@ export async function GET(
         edgeband_id: edgeband.edgeband_id,
         name: edgeband.name,
         thickness_mm: edgeband.thickness_mm,
-        width_mm: edgeband.width_mm,
-        material: edgeband.material,
-        color_code: edgeband.color_code,
+        width_mm: edgeband.width_mm ?? 22,
+        material: edgeband.material ?? "PVC",
+        color_code: edgeband.color_code ?? "#FFFFFF",
         color_match_material_id: edgeband.color_match_material_id,
+        finish: edgeband.finish,
         waste_factor_pct: edgeband.waste_factor_pct ?? 1,
         overhang_mm: edgeband.overhang_mm ?? 0,
         supplier: edgeband.supplier,
-        sku: edgeband.sku,
-        metadata: edgeband.metadata,
+        meta: edgeband.meta,
         created_at: edgeband.created_at,
         updated_at: edgeband.updated_at,
       },
@@ -105,29 +107,35 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const user = await getUser();
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization and role
-    const { data: userData } = await supabase
+    // Use service client to bypass RLS
+    const serviceClient = getServiceClient();
+
+    // Get user's organization and role (join roles table)
+    const { data: userData } = await serviceClient
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin, roles:role_id(name)")
       .eq("id", user.id)
       .single();
 
-    if (!userData?.organization_id) {
+    if (!userData?.organization_id && !userData?.is_super_admin) {
       return NextResponse.json(
         { error: "User not associated with an organization" },
         { status: 400 }
       );
     }
 
+    // Get role name from joined data
+    const roleName = userData.is_super_admin ? "super_admin" : 
+      (userData.roles as { name: string } | null)?.name || "viewer";
+
     // Check permission
-    if (!["super_admin", "org_admin", "manager"].includes(userData.role)) {
+    if (!["super_admin", "org_admin", "manager"].includes(roleName)) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
         { status: 403 }
@@ -147,8 +155,8 @@ export async function PUT(
 
     const data = parseResult.data;
 
-    // Update edgeband
-    const { data: edgeband, error } = await supabase
+    // Update edgeband - only include actual DB columns
+    const { data: edgeband, error } = await serviceClient
       .from("edgebands")
       .update({
         ...(data.edgeband_id !== undefined && { edgeband_id: data.edgeband_id }),
@@ -158,11 +166,11 @@ export async function PUT(
         ...(data.material !== undefined && { material: data.material }),
         ...(data.color_code !== undefined && { color_code: data.color_code }),
         ...(data.color_match_material_id !== undefined && { color_match_material_id: data.color_match_material_id }),
+        ...(data.finish !== undefined && { finish: data.finish }),
         ...(data.waste_factor_pct !== undefined && { waste_factor_pct: data.waste_factor_pct }),
         ...(data.overhang_mm !== undefined && { overhang_mm: data.overhang_mm }),
         ...(data.supplier !== undefined && { supplier: data.supplier }),
-        ...(data.sku !== undefined && { sku: data.sku }),
-        ...(data.metadata !== undefined && { metadata: data.metadata }),
+        ...(data.meta !== undefined && { meta: data.meta }),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
@@ -200,15 +208,15 @@ export async function PUT(
         edgeband_id: edgeband.edgeband_id,
         name: edgeband.name,
         thickness_mm: edgeband.thickness_mm,
-        width_mm: edgeband.width_mm,
-        material: edgeband.material,
-        color_code: edgeband.color_code,
+        width_mm: edgeband.width_mm ?? 22,
+        material: edgeband.material ?? "PVC",
+        color_code: edgeband.color_code ?? "#FFFFFF",
         color_match_material_id: edgeband.color_match_material_id,
+        finish: edgeband.finish,
         waste_factor_pct: edgeband.waste_factor_pct ?? 1,
         overhang_mm: edgeband.overhang_mm ?? 0,
         supplier: edgeband.supplier,
-        sku: edgeband.sku,
-        metadata: edgeband.metadata,
+        meta: edgeband.meta,
         created_at: edgeband.created_at,
         updated_at: edgeband.updated_at,
       },
@@ -229,29 +237,35 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const user = await getUser();
     
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization and role
-    const { data: userData } = await supabase
+    // Use service client to bypass RLS
+    const serviceClient = getServiceClient();
+
+    // Get user's organization and role (join roles table)
+    const { data: userData } = await serviceClient
       .from("users")
-      .select("organization_id, role")
+      .select("organization_id, is_super_admin, roles:role_id(name)")
       .eq("id", user.id)
       .single();
 
-    if (!userData?.organization_id) {
+    if (!userData?.organization_id && !userData?.is_super_admin) {
       return NextResponse.json(
         { error: "User not associated with an organization" },
         { status: 400 }
       );
     }
 
+    // Get role name from joined data
+    const roleName = userData.is_super_admin ? "super_admin" : 
+      (userData.roles as { name: string } | null)?.name || "viewer";
+
     // Check permission - only admins can delete
-    if (!["super_admin", "org_admin"].includes(userData.role)) {
+    if (!["super_admin", "org_admin"].includes(roleName)) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
         { status: 403 }
@@ -259,7 +273,7 @@ export async function DELETE(
     }
 
     // Get edgeband first for audit
-    const { data: existing } = await supabase
+    const { data: existing } = await serviceClient
       .from("edgebands")
       .select("edgeband_id, name")
       .eq("id", id)
@@ -267,7 +281,7 @@ export async function DELETE(
       .single();
 
     // Delete edgeband
-    const { error } = await supabase
+    const { error } = await serviceClient
       .from("edgebands")
       .delete()
       .eq("id", id)

@@ -21,32 +21,39 @@ import type { CutPart } from "@/lib/schema";
 
 /**
  * Record a user correction
+ * Note: This is a learning feature and failures are non-critical.
+ * The function fails silently to avoid disrupting the user workflow.
  */
 export async function recordCorrection(
   correction: Omit<ParseCorrection, "id" | "createdAt">
 ): Promise<ParseCorrection | null> {
   const supabase = getClient();
   if (!supabase) {
-    console.warn("Cannot record correction: Supabase not available");
+    // Supabase not available (likely SSR or no session)
+    return null;
+  }
+
+  // Validate required fields - silently skip if missing
+  if (!correction.correctionType || !correction.correctedValue) {
     return null;
   }
 
   try {
     // Use any to bypass type checking since the table may not be in the generated types yet
     const insertData = {
-      organization_id: correction.organizationId,
-      user_id: correction.userId,
-      parse_job_id: correction.parseJobId,
-      cutlist_id: correction.cutlistId,
+      organization_id: correction.organizationId || null,
+      user_id: correction.userId || null,
+      parse_job_id: correction.parseJobId || null,
+      cutlist_id: correction.cutlistId || null,
       correction_type: correction.correctionType,
-      field_path: correction.fieldPath,
-      original_value: correction.originalValue,
+      field_path: correction.fieldPath || null,
+      original_value: correction.originalValue ?? null,
       corrected_value: correction.correctedValue,
-      original_part: correction.originalPart,
-      corrected_part: correction.correctedPart,
-      source_text: correction.sourceText,
-      source_line_number: correction.sourceLineNumber,
-      source_file_name: correction.sourceFileName,
+      original_part: correction.originalPart || null,
+      corrected_part: correction.correctedPart || null,
+      source_text: correction.sourceText || null,
+      source_line_number: correction.sourceLineNumber || null,
+      source_file_name: correction.sourceFileName || null,
       pattern_extracted: false,
     };
 
@@ -57,24 +64,49 @@ export async function recordCorrection(
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // Check for specific error types
+      if (error.code === "42P01") {
+        // Table doesn't exist - migration not run, silently skip
+        console.debug("Learning system not initialized (parse_corrections table missing)");
+        return null;
+      }
+      if (error.code === "42501" || error.message?.includes("policy")) {
+        // RLS policy error - user doesn't have permission, silently skip
+        console.debug("User not authorized to record corrections");
+        return null;
+      }
+      // Log other errors but don't throw - corrections are non-critical
+      console.warn("Failed to record correction:", error.message || error.code || "Unknown error");
+      return null;
+    }
+
+    if (!data) {
+      return null;
+    }
 
     // Analyze and potentially learn from the correction
     const analysis = analyzeCorrection(correction);
     if (analysis.autoLearn) {
-      await learnFromCorrection(correction, analysis);
-      
-      // Mark as pattern extracted
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase as any)
-        .from("parse_corrections")
-        .update({ pattern_extracted: true })
-        .eq("id", data.id);
+      try {
+        await learnFromCorrection(correction, analysis);
+        
+        // Mark as pattern extracted
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any)
+          .from("parse_corrections")
+          .update({ pattern_extracted: true })
+          .eq("id", data.id);
+      } catch {
+        // Learning failed but correction was recorded - that's okay
+      }
     }
 
     return mapDbCorrectionToCorrection(data);
   } catch (error) {
-    console.error("Failed to record correction:", error);
+    // Catch-all for unexpected errors - fail silently
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.warn("Correction recording skipped:", errorMessage);
     return null;
   }
 }

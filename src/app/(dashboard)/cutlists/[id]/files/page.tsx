@@ -25,6 +25,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { SpreadsheetPreview } from "@/components/preview/SpreadsheetPreview";
+import { PdfPreview } from "@/components/preview/PdfPreview";
 
 // =============================================================================
 // TYPES
@@ -84,7 +86,20 @@ function getFileIcon(mimeType: string) {
 function canPreviewFile(mimeType: string): boolean {
   return (
     mimeType.startsWith("image/") ||
-    mimeType === "application/pdf"
+    mimeType === "application/pdf" ||
+    isSpreadsheetFile(mimeType)
+  );
+}
+
+function isSpreadsheetFile(mimeType: string): boolean {
+  return (
+    mimeType === "text/csv" ||
+    mimeType === "text/plain" ||
+    mimeType === "application/vnd.ms-excel" ||
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType.includes("spreadsheet") ||
+    mimeType.includes("excel") ||
+    mimeType.includes("csv")
   );
 }
 
@@ -331,32 +346,63 @@ export default function CutlistFilesGalleryPage() {
                         style={{
                           transform: `scale(${zoom}) rotate(${rotation}deg)`,
                         }}
+                        onError={(e) => {
+                          // Image failed to load - show fallback
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          target.parentElement?.querySelector('.preview-error')?.classList.remove('hidden');
+                        }}
                       />
                     ) : currentFile.mime_type === "application/pdf" ? (
-                      <iframe
-                        src={`${currentFile.url}#view=FitH`}
-                        className="w-full h-full border-0 rounded-lg"
-                        title={currentFile.original_name}
+                      <PdfPreview
+                        url={currentFile.url}
+                        fileName={currentFile.original_name}
+                        fileId={currentFile.id}
+                        className="w-full h-full"
+                      />
+                    ) : isSpreadsheetFile(currentFile.mime_type) ? (
+                      <SpreadsheetPreview
+                        url={currentFile.url}
+                        mimeType={currentFile.mime_type}
+                        fileName={currentFile.original_name}
+                        className="w-full h-full"
                       />
                     ) : null
-                  ) : (
+                  ) : currentFile?.url ? (
                     <div className="flex flex-col items-center text-[var(--muted-foreground)]">
                       <FileIcon className="h-20 w-20 mb-4 opacity-50" />
                       <p className="font-medium">{currentFile?.original_name}</p>
-                      <p className="text-sm mt-1">Preview not available</p>
-                      {currentFile?.url && (
-                        <a
-                          href={currentFile.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-4"
-                        >
-                          <Button variant="outline" size="sm">
-                            <ExternalLink className="h-4 w-4 mr-2" />
-                            Open in new tab
-                          </Button>
-                        </a>
-                      )}
+                      <p className="text-sm mt-1">Preview not available for this file type</p>
+                      <a
+                        href={currentFile.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4"
+                      >
+                        <Button variant="outline" size="sm">
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Open in new tab
+                        </Button>
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center text-[var(--muted-foreground)]">
+                      <AlertCircle className="h-16 w-16 mb-4 text-amber-500 opacity-70" />
+                      <p className="font-medium">{currentFile?.original_name}</p>
+                      <p className="text-sm mt-1 text-amber-600">Unable to load file preview</p>
+                      <p className="text-xs mt-2 text-center max-w-xs">
+                        The file may have been moved or the link has expired. 
+                        Try refreshing the page.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-4"
+                        onClick={() => window.location.reload()}
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Refresh
+                      </Button>
                     </div>
                   )}
                 </div>

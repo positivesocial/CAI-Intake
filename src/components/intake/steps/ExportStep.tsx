@@ -78,6 +78,7 @@ export function ExportStep() {
     resetCutlist,
     saveCutlist,
     saveCutlistAsDraft,
+    markCutlistComplete,
     isSaving,
     lastSavedAt,
     savedCutlistId,
@@ -246,9 +247,36 @@ export function ExportStep() {
         }
         
         case "optimizer": {
-          // TODO: Implement sending to optimizer API
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          setExportStatus("Sent to CAI 2D Optimizer!");
+          // Send to CAI 2D Optimizer
+          setExportStatus("Optimizing cutting layouts...");
+          
+          const response = await fetch("/api/v1/optimize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              cutlistId: currentCutlist.doc_id,
+              parts: currentCutlist.parts,
+              materials: currentCutlist.materials,
+              jobName: currentCutlist.name,
+            }),
+          });
+          
+          if (!response.ok) {
+            throw new Error("Optimization failed");
+          }
+          
+          const result = await response.json();
+          
+          if (result.ok && result.result) {
+            const sheetsUsed = result.result.summary?.sheets_used ?? 0;
+            const efficiency = result.result.summary?.utilization_pct?.toFixed(1) ?? "0";
+            setExportStatus(`Optimized! ${sheetsUsed} sheets at ${efficiency}% efficiency`);
+            
+            // Optionally navigate to results view
+            // router.push(`/cutlists/${currentCutlist.doc_id}/optimize`);
+          } else {
+            throw new Error(result.error || "Optimization failed");
+          }
           break;
         }
         
@@ -265,6 +293,10 @@ export function ExportStep() {
           setExportStatus("Export completed!");
         }
       }
+      
+      // Mark cutlist as completed after successful export
+      await markCutlistComplete();
+      
     } catch (error) {
       console.error("Export error:", error);
       setExportStatus("Export failed. Please try again.");
@@ -273,10 +305,56 @@ export function ExportStep() {
     setTimeout(() => setExportStatus(null), 3000);
   };
 
-  const handleStartNew = () => {
+  const handleStartNew = async () => {
+    // If there are unsaved parts, offer to save as draft first
+    if (totalParts > 0 && !savedCutlistId) {
+      const shouldSave = window.confirm(
+        "You have unsaved parts. Would you like to save them as a draft before starting a new cutlist?\n\nClick 'OK' to save as draft, or 'Cancel' to discard."
+      );
+      if (shouldSave) {
+        const result = await saveCutlistAsDraft();
+        if (result.success) {
+          setExportStatus("Draft saved! Starting new cutlist...");
+          setTimeout(() => {
+            setExportStatus(null);
+            resetCutlist();
+          }, 1500);
+          return;
+        } else {
+          setSaveError(result.error || "Failed to save draft");
+          return;
+        }
+      }
+    }
+    
     if (window.confirm("Are you sure you want to start a new cutlist? This will clear all current parts.")) {
       resetCutlist();
     }
+  };
+
+  // Handle "Done" button - auto-save as draft if not saved
+  const handleDone = async () => {
+    setSaveError(null);
+    
+    // If there are parts but cutlist hasn't been saved yet, auto-save as draft
+    if (totalParts > 0 && !savedCutlistId) {
+      setExportStatus("Auto-saving as draft...");
+      const result = await saveCutlistAsDraft();
+      if (!result.success) {
+        setSaveError(result.error || "Failed to auto-save. Please save manually before leaving.");
+        setExportStatus(null);
+        return;
+      }
+      setExportStatus("Draft saved! Redirecting...");
+    } else if (savedCutlistId) {
+      // If already saved, mark as complete
+      await markCutlistComplete();
+    }
+    
+    // Small delay to show the status, then redirect
+    setTimeout(() => {
+      router.push("/cutlists");
+    }, 500);
   };
 
   return (
@@ -472,6 +550,12 @@ export function ExportStep() {
           <p className="text-sm text-[var(--muted-foreground)] mt-1">
             Your cutlist is ready. Save it, export it, or start a new one.
           </p>
+          {totalParts > 0 && !savedCutlistId && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center justify-center gap-1">
+              <CloudOff className="h-3 w-3" />
+              Unsaved - will be auto-saved as draft when you click Done
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -485,9 +569,14 @@ export function ExportStep() {
           </Button>
           <Button
             variant="primary"
-            onClick={() => router.push("/cutlists")}
+            onClick={handleDone}
+            disabled={isSaving}
           >
-            <Check className="h-4 w-4 mr-2" />
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4 mr-2" />
+            )}
             Done - View All Cutlists
           </Button>
         </div>

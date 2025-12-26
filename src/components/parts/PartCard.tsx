@@ -37,6 +37,13 @@ import {
 import { cn } from "@/lib/utils";
 import { UnifiedOpsPanel } from "./UnifiedOpsPanel";
 import type { OperationsData } from "@/components/operations";
+import {
+  getNameSuggestions,
+  operationsMatchSuggestion,
+  applySuggestionToOps,
+  formatSuggestionAsShortcode,
+  type NameSuggestion,
+} from "@/lib/utils/part-name-suggestions";
 
 // ============================================================
 // TYPES
@@ -74,21 +81,79 @@ interface PartCardProps {
 }
 
 // ============================================================
+// GHOST CHIP - Suggested operation
+// ============================================================
+
+function GhostChip({
+  suggestion,
+  onAccept,
+}: {
+  suggestion: NameSuggestion;
+  onAccept: () => void;
+}) {
+  const shortcode = formatSuggestionAsShortcode(suggestion.ops);
+  
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onAccept();
+      }}
+      className={cn(
+        "flex items-center gap-1 h-6 px-2 rounded-md",
+        "border border-dashed border-[var(--cai-teal)]/50",
+        "bg-[var(--cai-teal)]/5 hover:bg-[var(--cai-teal)]/10",
+        "text-[10px] text-[var(--cai-teal)] font-mono",
+        "transition-all hover:border-[var(--cai-teal)]",
+        "animate-pulse"
+      )}
+      title={`${suggestion.description} - Click to apply`}
+    >
+      <span className="opacity-60">+</span>
+      <span>{shortcode}</span>
+      <span className="text-[8px] opacity-60 ml-0.5">↵</span>
+    </button>
+  );
+}
+
+// ============================================================
 // OPS INDICATOR BUTTON
 // ============================================================
 
 function OpsIndicator({
   operations,
   onClick,
+  suggestion,
+  onAcceptSuggestion,
 }: {
   operations: OperationsData;
   onClick: () => void;
+  suggestion?: NameSuggestion | null;
+  onAcceptSuggestion?: () => void;
 }) {
   const edgingSideCount = Object.values(operations.edgebanding.sides).filter(Boolean).length;
   const grooveCount = operations.grooves.length;
   const holeCount = operations.holes.length;
   const cncCount = operations.cnc.length;
   const totalOps = edgingSideCount + grooveCount + holeCount + cncCount;
+
+  // Show ghost chip when no ops and there's a suggestion
+  if (totalOps === 0 && suggestion && onAcceptSuggestion) {
+    return (
+      <div className="flex items-center gap-1">
+        <GhostChip suggestion={suggestion} onAccept={onAcceptSuggestion} />
+        <button
+          type="button"
+          onClick={onClick}
+          className="p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)]"
+          title="Open operations panel"
+        >
+          <Settings2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
 
   if (totalOps === 0) {
     return (
@@ -215,16 +280,48 @@ export function PartCard({
 }: PartCardProps) {
   const [showOpsPanel, setShowOpsPanel] = React.useState(false);
   const [isExpanded, setIsExpanded] = React.useState(false);
+  const [dismissedSuggestion, setDismissedSuggestion] = React.useState(false);
 
   // Refs for keyboard navigation
   const labelRef = React.useRef<HTMLInputElement>(null);
   const lRef = React.useRef<HTMLInputElement>(null);
   const wRef = React.useRef<HTMLInputElement>(null);
 
+  // Get suggestion based on part name
+  const suggestion = React.useMemo(() => {
+    if (dismissedSuggestion) return null;
+    const s = getNameSuggestions(data.label);
+    // Don't show if already applied
+    if (s && operationsMatchSuggestion(data.operations, s.ops)) {
+      return null;
+    }
+    return s;
+  }, [data.label, data.operations, dismissedSuggestion]);
+
+  // Reset dismissed state when label changes significantly
+  React.useEffect(() => {
+    setDismissedSuggestion(false);
+  }, [data.label]);
+
+  // Handle accepting suggestion
+  const handleAcceptSuggestion = React.useCallback(() => {
+    if (!suggestion) return;
+    const newOps = applySuggestionToOps(
+      data.operations,
+      suggestion.ops,
+      data.operations.edgebanding?.edgeband_id
+    );
+    onChange({ operations: newOps });
+  }, [suggestion, data.operations, onChange]);
+
   // Handle Enter key to submit and move to next row
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      // If there's a suggestion and we're in the label field, accept it first
+      if (suggestion && e.currentTarget === labelRef.current) {
+        handleAcceptSuggestion();
+      }
       onSubmit?.();
     }
   };
@@ -246,12 +343,14 @@ export function PartCard({
             {showDragHandle ? (
               <GripVertical className="h-4 w-4 mx-auto text-[var(--muted-foreground)] cursor-grab" />
             ) : (
-              <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={() => onSelect?.()}
-                className="rounded border-[var(--border)] cursor-pointer"
-              />
+              <label className="inline-flex p-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => onSelect?.()}
+                  className="rounded border-[var(--border)]"
+                />
+              </label>
             )}
           </td>
 
@@ -317,7 +416,7 @@ export function PartCard({
               <SelectTrigger className="h-8 text-sm border-0 bg-transparent">
                 <SelectValue placeholder="Material" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" className="z-[200]">
                 {materials.map((m) => (
                   <SelectItem key={m.value} value={m.value}>
                     {m.label}
@@ -329,7 +428,12 @@ export function PartCard({
 
           {/* Operations */}
           <td className="px-1 py-1" onClick={(e) => e.stopPropagation()}>
-            <OpsIndicator operations={data.operations} onClick={() => setShowOpsPanel(true)} />
+            <OpsIndicator 
+              operations={data.operations} 
+              onClick={() => setShowOpsPanel(true)}
+              suggestion={suggestion}
+              onAcceptSuggestion={handleAcceptSuggestion}
+            />
           </td>
         </tr>
 
@@ -431,7 +535,7 @@ export function PartCard({
                 <SelectTrigger className="h-9 text-sm">
                   <SelectValue placeholder="Select material" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent position="popper" className="z-[200]">
                   {materials.map((m) => (
                     <SelectItem key={m.value} value={m.value}>
                       {m.label}
@@ -442,7 +546,12 @@ export function PartCard({
             </div>
 
             <div onClick={(e) => e.stopPropagation()}>
-              <OpsIndicator operations={data.operations} onClick={() => setShowOpsPanel(true)} />
+              <OpsIndicator 
+                operations={data.operations} 
+                onClick={() => setShowOpsPanel(true)}
+                suggestion={suggestion}
+                onAcceptSuggestion={handleAcceptSuggestion}
+              />
             </div>
           </div>
         </div>

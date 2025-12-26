@@ -90,30 +90,54 @@ export async function GET(request: NextRequest) {
     startOfWeek.setDate(now.getDate() - now.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
 
-    // Fetch team members with Prisma for relations
-    const members = await prisma.user.findMany({
-      where: { organizationId: dbUser.organizationId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        avatar: true,
-        isActive: true,
-        lastLoginAt: true,
-        role: { select: { name: true } },
-        _count: {
-          select: {
-            cutlists: {
-              where: { createdAt: { gte: startOfWeek } },
+    // OPTIMIZED: Single transaction for all queries
+    const [members, invitations, allRoles] = await prisma.$transaction([
+      // Fetch team members with Prisma for relations
+      prisma.user.findMany({
+        where: { organizationId: dbUser.organizationId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+          isActive: true,
+          lastLoginAt: true,
+          role: { select: { name: true } },
+          _count: {
+            select: {
+              cutlists: {
+                where: { createdAt: { gte: startOfWeek } },
+              },
             },
           },
         },
-      },
-      orderBy: [
-        { lastLoginAt: "desc" },
-        { name: "asc" },
-      ],
-    });
+        orderBy: [
+          { lastLoginAt: "desc" },
+          { name: "asc" },
+        ],
+      }),
+      // Fetch pending invitations
+      prisma.invitation.findMany({
+        where: {
+          organizationId: dbUser.organizationId,
+          acceptedAt: null,
+        },
+        select: {
+          id: true,
+          email: true,
+          roleId: true,
+          expiresAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      // Pre-fetch all roles (small table, fast)
+      prisma.role.findMany({
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    // Build role map
+    const roleMap = new Map(allRoles.map(r => [r.id, r.name]));
 
     // Format response
     const formattedMembers: TeamMember[] = members.map(m => ({
@@ -126,29 +150,6 @@ export async function GET(request: NextRequest) {
       cutlistsThisWeek: m._count.cutlists,
       avatar: m.avatar || undefined,
     }));
-
-    // Fetch pending invitations
-    const invitations = await prisma.invitation.findMany({
-      where: {
-        organizationId: dbUser.organizationId,
-        acceptedAt: null,
-      },
-      select: {
-        id: true,
-        email: true,
-        roleId: true,
-        expiresAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    // Get role names for invitations
-    const roleIds = invitations.map(i => i.roleId).filter(Boolean);
-    const roles = await prisma.role.findMany({
-      where: { id: { in: roleIds } },
-      select: { id: true, name: true },
-    });
-    const roleMap = new Map(roles.map(r => [r.id, r.name]));
 
     const formattedInvitations: Invitation[] = invitations.map(inv => ({
       id: inv.id,

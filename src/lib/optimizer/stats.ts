@@ -2,9 +2,10 @@
  * CAI Intake - Optimization Statistics
  * 
  * Utility functions for calculating optimization statistics.
+ * Supports both new API format and legacy format.
  */
 
-import type { OptimizeResult, NestingLayout } from "./cai2d-client";
+import type { OptimizeResult, NestingLayout, Sheet } from "./cai2d-client";
 
 // ============================================================
 // TYPES
@@ -50,29 +51,53 @@ export interface MaterialUsage {
 // ============================================================
 
 /**
- * Calculate comprehensive optimization statistics
+ * Calculate comprehensive optimization statistics from API result
  */
 export function calculateOptimizationStats(result: OptimizeResult): OptimizationStats {
-  const totalStockArea = result.layouts.reduce(
-    (sum, layout) => sum + layout.stockLength * layout.stockWidth,
-    0
-  );
+  // Handle new API format
+  if (result.result?.sheets) {
+    const sheets = result.result.sheets;
+    const summary = result.result.summary;
+    
+    const totalStockArea = sheets.reduce(
+      (sum, sheet) => sum + sheet.size.L * sheet.size.W,
+      0
+    );
+    
+    const totalUsedArea = sheets.reduce((sum, sheet) => {
+      const used = sheet.placements.reduce((pSum, p) => pSum + p.w * p.h, 0);
+      return sum + used;
+    }, 0);
+    
+    const totalPieces = sheets.reduce(
+      (sum, sheet) => sum + sheet.placements.length,
+      0
+    );
+    
+    return {
+      totalSheets: summary.sheets_used,
+      totalParts: totalPieces, // In new format, each placement is a piece
+      totalPieces,
+      totalStockArea,
+      totalUsedArea,
+      totalWasteArea: summary.waste_area,
+      overallEfficiency: summary.utilization_pct / 100,
+      sheetEfficiencies: sheets.map(s => s.efficiency / 100),
+      totalCost: undefined,
+      costPerPart: undefined,
+    };
+  }
   
-  const sheetEfficiencies = result.layouts.map(l => l.efficiency);
-  
+  // Legacy format not supported in new implementation
   return {
-    totalSheets: result.statistics.totalSheets,
-    totalParts: result.statistics.totalParts,
-    totalPieces: result.layouts.reduce((sum, l) => sum + l.parts.length, 0),
-    totalStockArea,
-    totalUsedArea: result.statistics.usedArea,
-    totalWasteArea: result.statistics.wasteArea,
-    overallEfficiency: result.statistics.overallEfficiency,
-    sheetEfficiencies,
-    totalCost: result.statistics.totalCost,
-    costPerPart: result.statistics.totalCost && result.statistics.totalParts > 0
-      ? result.statistics.totalCost / result.statistics.totalParts
-      : undefined,
+    totalSheets: 0,
+    totalParts: 0,
+    totalPieces: 0,
+    totalStockArea: 0,
+    totalUsedArea: 0,
+    totalWasteArea: 0,
+    overallEfficiency: 0,
+    sheetEfficiencies: [],
   };
 }
 
@@ -113,7 +138,7 @@ export function calculateMaterialUsage(
     );
     
     // Get stock sheet info
-    const stock = stockSheets?.get(materialId) ?? { length: 2800, width: 2070 };
+    const stock = stockSheets?.get(materialId) ?? { length: 2440, width: 1220 };
     const sheetArea = stock.length * stock.width;
     
     // Estimate sheets needed (assuming 75% efficiency)
@@ -135,7 +160,7 @@ export function calculateMaterialUsage(
 }
 
 /**
- * Calculate waste statistics
+ * Calculate waste statistics from API result
  */
 export function calculateWaste(result: OptimizeResult): {
   totalWaste: number;
@@ -143,41 +168,65 @@ export function calculateWaste(result: OptimizeResult): {
   wasteBySheet: Array<{ sheetIndex: number; waste: number; percentage: number }>;
   reusableOffcuts: Array<{ length: number; width: number; sheetIndex: number }>;
 } {
-  const wasteBySheet = result.layouts.map(layout => ({
-    sheetIndex: layout.sheetIndex,
-    waste: layout.wasteArea,
-    percentage: (layout.wasteArea / (layout.stockLength * layout.stockWidth)) * 100,
-  }));
-  
-  // Identify potentially reusable offcuts (pieces > 200mm in both dimensions)
-  const reusableOffcuts: Array<{ length: number; width: number; sheetIndex: number }> = [];
-  
-  // This is a simplified calculation - actual offcut identification
-  // would require analyzing the placed parts geometry
-  for (const layout of result.layouts) {
-    const wastePercentage = layout.wasteArea / (layout.stockLength * layout.stockWidth);
+  // Handle new API format
+  if (result.result?.sheets) {
+    const sheets = result.result.sheets;
+    const summary = result.result.summary;
     
-    // If waste is significant, estimate a single large offcut
-    if (wastePercentage > 0.2) {
-      // Rough estimate of offcut dimensions
-      const offcutLength = Math.sqrt(layout.wasteArea);
-      const offcutWidth = layout.wasteArea / offcutLength;
+    const wasteBySheet = sheets.map((sheet, idx) => {
+      const sheetArea = sheet.size.L * sheet.size.W;
+      const usedArea = sheet.placements.reduce((sum, p) => sum + p.w * p.h, 0);
+      const waste = sheetArea - usedArea;
+      return {
+        sheetIndex: idx,
+        waste,
+        percentage: (waste / sheetArea) * 100,
+      };
+    });
+    
+    const totalStockArea = sheets.reduce(
+      (sum, sheet) => sum + sheet.size.L * sheet.size.W,
+      0
+    );
+    
+    // Identify potentially reusable offcuts
+    const reusableOffcuts: Array<{ length: number; width: number; sheetIndex: number }> = [];
+    
+    for (let i = 0; i < sheets.length; i++) {
+      const sheet = sheets[i];
+      const sheetArea = sheet.size.L * sheet.size.W;
+      const usedArea = sheet.placements.reduce((sum, p) => sum + p.w * p.h, 0);
+      const wasteArea = sheetArea - usedArea;
+      const wastePercentage = wasteArea / sheetArea;
       
-      if (offcutLength >= 200 && offcutWidth >= 200) {
-        reusableOffcuts.push({
-          length: Math.round(offcutLength),
-          width: Math.round(offcutWidth),
-          sheetIndex: layout.sheetIndex,
-        });
+      if (wastePercentage > 0.2) {
+        const offcutLength = Math.sqrt(wasteArea);
+        const offcutWidth = wasteArea / offcutLength;
+        
+        if (offcutLength >= 200 && offcutWidth >= 200) {
+          reusableOffcuts.push({
+            length: Math.round(offcutLength),
+            width: Math.round(offcutWidth),
+            sheetIndex: i,
+          });
+        }
       }
     }
+    
+    return {
+      totalWaste: summary.waste_area,
+      wastePercentage: (summary.waste_area / totalStockArea) * 100,
+      wasteBySheet,
+      reusableOffcuts,
+    };
   }
   
+  // Legacy format not supported
   return {
-    totalWaste: result.statistics.wasteArea,
-    wastePercentage: (result.statistics.wasteArea / result.statistics.totalArea) * 100,
-    wasteBySheet,
-    reusableOffcuts,
+    totalWaste: 0,
+    wastePercentage: 0,
+    wasteBySheet: [],
+    reusableOffcuts: [],
   };
 }
 
@@ -211,7 +260,3 @@ export function formatCurrency(amount: number, currency: string = "USD"): string
     currency,
   }).format(amount);
 }
-
-
-
-

@@ -219,12 +219,14 @@ function PartRow({
     >
       {/* Checkbox */}
       <td className="w-10 px-2 py-2" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={() => {}}
-          className="rounded border-[var(--border)] cursor-pointer"
-        />
+        <label className="inline-flex p-1 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => {}}
+            className="rounded border-[var(--border)]"
+          />
+        </label>
       </td>
 
       {/* Label */}
@@ -288,13 +290,14 @@ function PartCardView({
     >
       {/* Top row: Checkbox + Label */}
       <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={() => {}}
-          className="rounded border-[var(--border)]"
-          onClick={(e) => e.stopPropagation()}
-        />
+        <label className="inline-flex p-1 -m-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => {}}
+            className="rounded border-[var(--border)]"
+          />
+        </label>
         <span className="font-medium text-sm flex-1">
           {part.label || part.part_id}
         </span>
@@ -702,13 +705,15 @@ export function StreamlinedPartsTable() {
                   <thead>
                     <tr className="bg-[var(--muted)]">
                       <th className="w-10 px-2 py-2">
-                        <input
-                          type="checkbox"
-                          checked={allSelected}
-                          ref={(el) => { if (el) el.indeterminate = someSelected; }}
-                          onChange={(e) => e.target.checked ? selectAllParts() : clearSelection()}
-                          className="rounded border-[var(--border)]"
-                        />
+                        <label className="inline-flex p-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                            onChange={(e) => e.target.checked ? selectAllParts() : clearSelection()}
+                            className="rounded border-[var(--border)]"
+                          />
+                        </label>
                       </th>
                       <th className="px-2 py-2 text-left text-xs font-medium">
                         <Button variant="ghost" size="sm" className="h-7 px-1" onClick={() => handleSort("label")}>

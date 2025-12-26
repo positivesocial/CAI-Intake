@@ -2,7 +2,16 @@
  * CAI Intake - Voice Parser
  * 
  * Parses spoken/dictated text into CutPart objects.
- * Handles spoken numbers, natural language patterns, and real-time parsing.
+ * Uses a SIMPLE, STRUCTURED format for high accuracy:
+ * 
+ * FORMAT: [QTY] [LENGTH] by [WIDTH] [OPERATIONS]
+ * 
+ * Examples:
+ * - "2 720 by 560" → 2 pcs, 720×560mm
+ * - "4 800 by 400 edges" → 4 pcs, 800×400, all edges banded
+ * - "600 by 300 two long groove" → 1 pc, 600×300, L1+L2 banded, has groove
+ * 
+ * This structured format is much more accurate than natural language.
  */
 
 import type { CutPart } from "@/lib/schema";
@@ -21,6 +30,11 @@ export interface VoiceParseResult {
   errors: string[];
   originalText: string;
   normalizedText: string;
+  /** Parsed operations for display */
+  parsedOps?: {
+    edges?: string[];
+    groove?: boolean;
+  };
 }
 
 export interface VoiceParserOptions {
@@ -29,6 +43,35 @@ export interface VoiceParserOptions {
   continuousMode?: boolean;
   language?: string;
 }
+
+// ============================================================
+// VOICE FORMAT HELP (for UI display)
+// ============================================================
+
+export const VOICE_FORMAT_HELP = {
+  format: "[QTY] [LENGTH] by [WIDTH] [OPERATIONS]",
+  examples: [
+    { spoken: "2 720 by 560", result: "2× 720×560mm" },
+    { spoken: "800 by 400 edges", result: "1× 800×400mm, all edges" },
+    { spoken: "4 600 by 300 two long", result: "4× 600×300mm, 2 long edges" },
+    { spoken: "500 by 200 groove", result: "1× 500×200mm, has groove" },
+    { spoken: "3 700 by 350 front edge white", result: "3× 700×350mm, front edge, white" },
+  ],
+  operations: {
+    "edges/all": "All 4 edges banded",
+    "two long/long edges": "Both long edges (L1, L2)",
+    "two short/short edges": "Both short edges (W1, W2)",
+    "front/one edge": "Front edge only (L1)",
+    "three edges": "Three edges (L1, L2, W1)",
+    "groove/grv": "Has groove on length",
+    "white/ply/black/mdf": "Material type",
+  },
+  tips: [
+    "Say 'next' between parts",
+    "Speak numbers clearly: 'seven twenty' = 720",
+    "Say 'done' when finished",
+  ],
+};
 
 // ============================================================
 // SPOKEN NUMBER PATTERNS
@@ -197,16 +240,38 @@ export function parseSpokenQuantity(text: string): number | null {
 }
 
 // ============================================================
+// EDGE BANDING PATTERNS (simple keywords)
+// ============================================================
+
+const EDGE_PATTERNS = {
+  all: [/\ball\s*edges?\b/i, /\bedges\b/i, /\bfour\s*edges?\b/i, /\b4\s*edges?\b/i],
+  twoLong: [/\btwo\s*long\b/i, /\blong\s*edges?\b/i, /\b2\s*long\b/i, /\bboth\s*long\b/i],
+  twoShort: [/\btwo\s*short\b/i, /\bshort\s*edges?\b/i, /\b2\s*short\b/i, /\bboth\s*short\b/i],
+  front: [/\bfront\s*edge?\b/i, /\bone\s*edge\b/i, /\b1\s*edge\b/i, /\bvisible\b/i],
+  threeEdges: [/\bthree\s*edges?\b/i, /\b3\s*edges?\b/i],
+};
+
+const GROOVE_PATTERNS = [
+  /\bgroove\b/i,
+  /\bgrv\b/i,
+  /\bback\s*panel\b/i,
+  /\bback\s*groove\b/i,
+  /\bdado\b/i,
+];
+
+// ============================================================
 // VOICE PARSER
 // ============================================================
 
 /**
  * Parse voice/dictation input into a CutPart
  * 
- * Handles patterns like:
- * - "Side panel seven twenty by five sixty quantity two"
- * - "Top shelf 800 by 400 three pieces"
- * - "Drawer front 450 x 200 grain length"
+ * SIMPLE FORMAT: [QTY] [LENGTH] by [WIDTH] [OPERATIONS]
+ * 
+ * Examples:
+ * - "2 720 by 560" → 2 pcs, 720×560mm
+ * - "800 by 400 edges" → 1 pc, 800×400, all edges
+ * - "4 600 by 300 two long groove" → 4 pcs, 600×300, L1+L2, has groove
  */
 export function parseVoiceInput(
   text: string,
@@ -220,7 +285,7 @@ export function parseVoiceInput(
   // Extract dimensions (required)
   const dimensions = parseSpokenDimensions(normalizedText);
   if (!dimensions) {
-    errors.push("Could not understand dimensions");
+    errors.push("Could not understand dimensions. Say: '[LENGTH] by [WIDTH]'");
     return {
       part: null,
       confidence: 0,
@@ -231,60 +296,118 @@ export function parseVoiceInput(
     };
   }
   
-  // Extract quantity
-  const qty = parseSpokenQuantity(normalizedText) ?? 1;
-  if (qty === 1 && !normalizedText.match(/\bone\b|\bsingle\b|\b1\b/)) {
-    warnings.push("No quantity detected, defaulting to 1");
-    confidence *= 0.9;
+  // Extract quantity (look at start of phrase)
+  let qty = 1;
+  const qtyMatch = normalizedText.match(/^(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+/i);
+  if (qtyMatch) {
+    const parsed = parseSpokenNumber(qtyMatch[1]);
+    if (parsed && parsed >= 1 && parsed <= 500) {
+      qty = parsed;
+      confidence = 0.95;
+    }
   }
   
-  // Extract grain/rotation
-  let grain = "none";
-  let allowRotation = true;
+  // Extract edge banding (simple keywords)
+  const edgeBanding = {
+    detected: false,
+    L1: false,
+    L2: false,
+    W1: false,
+    W2: false,
+    edges: [] as string[],
+    description: "",
+  };
   
-  if (/\bgrain\s*(?:along\s*)?length\b/i.test(normalizedText) || /\bGL\b/.test(normalizedText)) {
-    grain = "along_L";
-    allowRotation = false;
-  } else if (/\bgrain\s*(?:along\s*)?width\b/i.test(normalizedText) || /\bGW\b/.test(normalizedText)) {
-    grain = "along_W";
-    allowRotation = false;
-  } else if (/\bno\s*rotat(?:e|ion)\b/i.test(normalizedText) || /\bfixed\b/i.test(normalizedText)) {
-    allowRotation = false;
+  // Check edge patterns in order of specificity
+  if (EDGE_PATTERNS.all.some(p => p.test(normalizedText))) {
+    edgeBanding.detected = true;
+    edgeBanding.L1 = edgeBanding.L2 = edgeBanding.W1 = edgeBanding.W2 = true;
+    edgeBanding.edges = ["L1", "L2", "W1", "W2"];
+    edgeBanding.description = "all edges";
+  } else if (EDGE_PATTERNS.twoLong.some(p => p.test(normalizedText))) {
+    edgeBanding.detected = true;
+    edgeBanding.L1 = edgeBanding.L2 = true;
+    edgeBanding.edges = ["L1", "L2"];
+    edgeBanding.description = "2 long edges";
+  } else if (EDGE_PATTERNS.twoShort.some(p => p.test(normalizedText))) {
+    edgeBanding.detected = true;
+    edgeBanding.W1 = edgeBanding.W2 = true;
+    edgeBanding.edges = ["W1", "W2"];
+    edgeBanding.description = "2 short edges";
+  } else if (EDGE_PATTERNS.threeEdges.some(p => p.test(normalizedText))) {
+    edgeBanding.detected = true;
+    edgeBanding.L1 = edgeBanding.L2 = edgeBanding.W1 = true;
+    edgeBanding.edges = ["L1", "L2", "W1"];
+    edgeBanding.description = "3 edges";
+  } else if (EDGE_PATTERNS.front.some(p => p.test(normalizedText))) {
+    edgeBanding.detected = true;
+    edgeBanding.L1 = true;
+    edgeBanding.edges = ["L1"];
+    edgeBanding.description = "front edge";
   }
   
-  // Extract label (text before dimensions, cleaned)
-  let label: string | undefined;
-  const labelMatch = normalizedText.match(/^([a-zA-Z][a-zA-Z\s]{1,30})(?=\s*\d)/);
-  if (labelMatch) {
-    label = labelMatch[1].trim();
+  // Extract grooving
+  const grooving = {
+    detected: false,
+    GL: false,
+    GW: false,
+    description: "",
+  };
+  
+  if (GROOVE_PATTERNS.some(p => p.test(normalizedText))) {
+    grooving.detected = true;
+    // Default to groove on length unless "width" is mentioned
+    if (/\bwidth\b/i.test(normalizedText)) {
+      grooving.GW = true;
+      grooving.description = "groove on width";
+    } else {
+      grooving.GL = true;
+      grooving.description = "groove on length";
+    }
   }
   
-  // Extract material hints
-  let materialId = options.defaultMaterialId ?? "default";
-  if (/\bwhite\b/i.test(normalizedText)) materialId = "white-melamine";
-  else if (/\boak\b/i.test(normalizedText)) materialId = "oak";
-  else if (/\bwalnut\b/i.test(normalizedText)) materialId = "walnut";
-  else if (/\bmdf\b/i.test(normalizedText)) materialId = "mdf";
-  else if (/\bply(?:wood)?\b/i.test(normalizedText)) materialId = "plywood";
+  // Extract material (simple keywords)
+  let materialCode = "";
+  if (/\bwhite\b/i.test(normalizedText)) materialCode = "W";
+  else if (/\bply(?:wood)?\b/i.test(normalizedText)) materialCode = "Ply";
+  else if (/\bblack\b/i.test(normalizedText)) materialCode = "B";
+  else if (/\bmdf\b/i.test(normalizedText)) materialCode = "M";
+  else if (/\boak\b/i.test(normalizedText)) materialCode = "OAK";
   
-  // Extract thickness
+  const materialId = materialCode || options.defaultMaterialId || "";
+  
+  // Extract thickness (if mentioned)
   let thickness = options.defaultThickness ?? 18;
-  const thicknessMatch = normalizedText.match(/(\d+)\s*(?:mm|millimeter)/i);
+  const thicknessMatch = normalizedText.match(/(\d+)\s*(?:mm|mil)/i);
   if (thicknessMatch) {
     const t = parseInt(thicknessMatch[1], 10);
-    if (t >= 3 && t <= 100) thickness = t;
+    if (t >= 3 && t <= 50) thickness = t;
   }
   
   // Build part
   const part: CutPart = {
     part_id: generateId("P"),
-    label,
     qty,
     size: dimensions,
     thickness_mm: thickness,
     material_id: materialId,
-    grain: grain === "along_W" ? "along_L" : grain as "none" | "along_L",
-    allow_rotation: allowRotation,
+    grain: "none",
+    allow_rotation: true,
+    ops: edgeBanding.detected || grooving.detected ? {
+      edging: edgeBanding.detected ? {
+        edges: edgeBanding.edges.reduce((acc, e) => {
+          acc[e] = { apply: true };
+          return acc;
+        }, {} as Record<string, { apply: boolean }>),
+      } : undefined,
+      grooves: grooving.detected ? [{
+        side: grooving.GL ? "L1" as const : "W1" as const,
+        offset_mm: 0, // Default to edge
+        depth_mm: 8,
+        width_mm: 4,
+        notes: grooving.description,
+      }] : undefined,
+    } : undefined,
     audit: {
       source_method: "voice",
       parsed_text_snippet: normalizedText.substring(0, 100),
@@ -300,6 +423,10 @@ export function parseVoiceInput(
     errors,
     originalText: text,
     normalizedText,
+    parsedOps: {
+      edges: edgeBanding.edges.length > 0 ? edgeBanding.edges : undefined,
+      groove: grooving.detected,
+    },
   };
 }
 

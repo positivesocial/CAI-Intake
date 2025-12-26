@@ -405,3 +405,4 @@ export function getStageProgress(stage: OCRStage): number {
 }
 
 
+

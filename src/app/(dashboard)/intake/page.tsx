@@ -60,6 +60,22 @@ export default function IntakePage() {
   const [isLoadingCutlist, setIsLoadingCutlist] = React.useState(false);
   const [loadedCutlistId, setLoadedCutlistId] = React.useState<string | null>(null);
 
+  // Reset cutlist when starting fresh (no editId)
+  // Track if we've already reset for this session to avoid infinite resets
+  const hasResetRef = React.useRef(false);
+  
+  React.useEffect(() => {
+    // If no editId and we haven't reset yet, start fresh
+    if (!editId && !hasResetRef.current) {
+      resetCutlist();
+      hasResetRef.current = true;
+    }
+    // Reset the flag when editId changes (e.g., navigating away and back)
+    if (editId) {
+      hasResetRef.current = false;
+    }
+  }, [editId, resetCutlist]);
+
   // Load existing cutlist for editing
   React.useEffect(() => {
     if (editId && editId !== loadedCutlistId) {

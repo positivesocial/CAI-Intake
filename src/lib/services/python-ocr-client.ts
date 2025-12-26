@@ -79,12 +79,26 @@ export interface OCRResult {
   method: string;
   /** Extracted tables (if applicable) - 3D array: tables -> rows -> cells */
   tables?: string[][][];
+  /** Per-page text (if extracted with perPage option) */
+  pages?: PageText[];
   /** Processing metadata */
   metadata: OCRMetadata;
   /** Processing time in seconds */
   processingTime: number;
   /** Error message if failed */
   error?: string;
+}
+
+/**
+ * Per-page text extraction result
+ */
+export interface PageText {
+  /** Page number (1-indexed) */
+  pageNumber: number;
+  /** Text content of this page */
+  text: string;
+  /** Tables on this page */
+  tables?: string[][][];
 }
 
 /**
@@ -234,6 +248,128 @@ export class PythonOCRClient {
       denoise: true,
       enhance_contrast: true,
     });
+  }
+
+  /**
+   * Extract text from a PDF file with per-page results
+   * Returns text for each page separately for better chunking
+   */
+  async extractFromPDFByPage(
+    fileData: string,
+    fileName: string
+  ): Promise<OCRResult | null> {
+    // First, get the combined result
+    const result = await this.extractFromPDF(fileData, fileName);
+    
+    if (!result || !result.success) {
+      return result;
+    }
+    
+    // If service returned per-page data, use it
+    if (result.pages && result.pages.length > 0) {
+      return result;
+    }
+    
+    // Otherwise, try to split by page markers or fallback to proportional split
+    const pageCount = result.metadata?.pages || 1;
+    
+    if (pageCount <= 1) {
+      // Single page - return as-is with page wrapper
+      return {
+        ...result,
+        pages: [{ pageNumber: 1, text: result.text, tables: result.tables }],
+      };
+    }
+    
+    // Try to detect page breaks in the text
+    // Common patterns: form feed (\f), "Page X of Y", "--- Page X ---"
+    const pageBreakPatterns = [
+      /\f/g, // Form feed
+      /\n---\s*Page\s*\d+\s*---\n/gi,
+      /\n\s*Page\s+\d+\s+of\s+\d+\s*\n/gi,
+    ];
+    
+    let pages: PageText[] = [];
+    let textToSplit = result.text;
+    let foundBreaks = false;
+    
+    for (const pattern of pageBreakPatterns) {
+      const parts = textToSplit.split(pattern);
+      if (parts.length >= pageCount) {
+        pages = parts.slice(0, pageCount).map((text, i) => ({
+          pageNumber: i + 1,
+          text: text.trim(),
+        }));
+        foundBreaks = true;
+        break;
+      }
+    }
+    
+    // If no page breaks found, do smart split by row boundaries
+    if (!foundBreaks) {
+      // Split text into rows first
+      const rows = result.text.split(/\n/);
+      const totalRows = rows.length;
+      
+      // Detect header rows (usually first 1-2 rows containing column names)
+      let headerRows: string[] = [];
+      for (let i = 0; i < Math.min(3, rows.length); i++) {
+        const row = rows[i].toLowerCase();
+        // Check if this looks like a header row
+        if (row.includes('part') || row.includes('description') || row.includes('length') || 
+            row.includes('width') || row.includes('thick') || row.includes('qty') ||
+            row.includes('material') || row.includes('copies') || row.includes('label')) {
+          headerRows.push(rows[i]);
+        }
+      }
+      
+      // Calculate rows per page (excluding header from count)
+      const dataRows = rows.slice(headerRows.length);
+      const dataRowsPerPage = Math.ceil(dataRows.length / pageCount);
+      
+      pages = [];
+      
+      for (let i = 0; i < pageCount; i++) {
+        const startRow = i * dataRowsPerPage;
+        const endRow = Math.min(startRow + dataRowsPerPage, dataRows.length);
+        
+        // Get the data rows for this page
+        const pageDataRows = dataRows.slice(startRow, endRow);
+        
+        if (pageDataRows.length > 0) {
+          // Include header rows at the start of each page (so AI knows the columns)
+          const pageRows = [...headerRows, ...pageDataRows];
+          const pageText = pageRows.join("\n").trim();
+          
+          pages.push({
+            pageNumber: i + 1,
+            text: pageText,
+          });
+        }
+      }
+      
+      // If we got fewer pages than expected or empty pages, use single page
+      if (pages.length === 0 && result.text.trim().length > 0) {
+        pages.push({
+          pageNumber: 1,
+          text: result.text.trim(),
+        });
+      }
+      
+      logger.info("📄 [PythonOCR] Split text into pages by row boundaries", {
+        pageCount,
+        totalRows,
+        headerRowsDetected: headerRows.length,
+        dataRows: dataRows.length,
+        dataRowsPerPage,
+        actualPages: pages.length,
+      });
+    }
+    
+    return {
+      ...result,
+      pages,
+    };
   }
 
   /**

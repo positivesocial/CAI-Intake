@@ -184,6 +184,8 @@ export async function POST(request: NextRequest) {
               confidence: "balanced",
               defaultMaterialId: options?.default_material_id,
               defaultThicknessMm: options?.default_thickness_mm,
+              // Use pasted text prompt for better header/column detection
+              isPastedText: true,
             };
             const aiResult = await provider.parseText(content, aiOptions);
             

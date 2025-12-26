@@ -256,7 +256,8 @@ registerJobHandler("parse_file", async (payload: {
 // Optimization job handler
 registerJobHandler("optimize", async (payload: { 
   cutlistId: string;
-  options?: Record<string, unknown>;
+  machineSettings?: Record<string, unknown>;
+  runConfig?: Record<string, unknown>;
 }) => {
   const { submitOptimization } = await import("../optimizer/cai2d-client");
   
@@ -272,8 +273,11 @@ registerJobHandler("optimize", async (payload: {
   
   // Submit to optimizer
   return submitOptimization({
+    jobId: cutlist.id,
+    jobName: cutlist.name ?? undefined,
     parts: cutlist.parts,
-    options: payload.options,
+    machineSettings: payload.machineSettings as any,
+    runConfig: payload.runConfig as any,
   });
 });
 

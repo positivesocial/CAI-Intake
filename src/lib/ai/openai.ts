@@ -48,6 +48,7 @@ import {
   type AIPartResponse,
   validateAIPartResponse,
 } from "./prompts";
+import { logger } from "@/lib/logger";
 
 // ============================================================
 // OPENAI PROVIDER
@@ -83,14 +84,352 @@ export class OpenAIProvider implements AIProvider {
     return this.client;
   }
 
+  /**
+   * Estimate the number of data rows in text (for chunking decisions)
+   * Handles both line-separated and table-formatted text
+   */
+  private estimateRowCount(text: string): number {
+    // Method 1: Count newline-separated rows with dimensions
+    const lines = text.split("\n").filter(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.length < 5) return false;
+      return /\d{2,}/.test(trimmed);
+    });
+    
+    // Method 2: Count dimension-like patterns (e.g., "600 400" or "600x400")
+    const dimensionPatterns = text.match(/\b\d{2,4}\s+\d{2,4}\b/g) || [];
+    
+    // Method 3: Count individual 3-4 digit numbers (dimensions)
+    const allDimensions = text.match(/\b[1-9]\d{1,3}\b/g) || [];
+    const estimatedFromDimensions = Math.floor(allDimensions.length / 3);
+    
+    // Method 4: Count sequences that look like quantities
+    const quantities = text.match(/\b[1-9]\d?\s/g) || [];
+    
+    // Method 5: Check total text length
+    const estimatedFromLength = Math.floor(text.length / 70);
+    
+    // Use the highest reasonable estimate
+    const estimated = Math.max(
+      lines.length, 
+      dimensionPatterns.length, 
+      estimatedFromDimensions,
+      Math.floor(quantities.length / 2),
+      estimatedFromLength
+    );
+    
+    logger.info("🔢 [OpenAI] Row estimation", {
+      lines: lines.length,
+      dimPairs: dimensionPatterns.length,
+      allDims: allDimensions.length,
+      estimatedFromDims: estimatedFromDimensions,
+      quantities: quantities.length,
+      estimatedFromLength,
+      textLength: text.length,
+      USING: estimated,
+    });
+    
+    return estimated;
+  }
+
+  /**
+   * Split text into chunks for processing large documents
+   * Handles both line-separated text and single-line text (from OCR)
+   */
+  private chunkText(text: string, maxRowsPerChunk: number = 40): string[] {
+    const lines = text.split("\n");
+    
+    // Check if text has meaningful line breaks
+    const hasLineBreaks = lines.length > 5 && lines.filter(l => l.trim().length > 10).length > 5;
+    
+    if (hasLineBreaks) {
+      // Standard line-based chunking
+      const chunks: string[] = [];
+      let headerEndIndex = 0;
+      for (let i = 0; i < Math.min(5, lines.length); i++) {
+        if (/\d{3,}/.test(lines[i])) break;
+        headerEndIndex = i + 1;
+      }
+      const headerLines = lines.slice(0, headerEndIndex).join("\n");
+      const dataLines = lines.slice(headerEndIndex);
+      
+      for (let i = 0; i < dataLines.length; i += maxRowsPerChunk) {
+        const chunkLines = dataLines.slice(i, i + maxRowsPerChunk);
+        chunks.push(`${headerLines}\n${chunkLines.join("\n")}`);
+      }
+      
+      logger.debug("📄 [OpenAI] Using line-based chunking", {
+        totalLines: lines.length,
+        chunksCreated: chunks.length,
+      });
+      
+      return chunks.length > 0 ? chunks : [text];
+    }
+    
+    // For single-line text (OCR output), split by finding natural row boundaries
+    // Look for patterns like "Part #" or dimension sequences to split
+    
+    // Extract header (first ~200 chars before first dimension pattern)
+    const headerMatch = text.match(/^(.*?(?:Part|Description|Length|Width|Material|Thick)[^0-9]*)/i);
+    const header = headerMatch ? headerMatch[1].trim() : "";
+    const dataStart = header.length;
+    const dataText = text.substring(dataStart);
+    
+    // Find all row start positions by looking for row number patterns
+    // Typical pattern: "44 back 518 469" or part descriptions followed by dimensions
+    // Look for: number + word + 3-digit number (like "44 back 518")
+    const rowStartPattern = /(?:^|\s)(\d{1,3})\s+[a-zA-Z]{2,}\s+\d{2,4}\s+\d{2,4}/g;
+    const rowStarts: number[] = [0];
+    let match;
+    while ((match = rowStartPattern.exec(dataText)) !== null) {
+      rowStarts.push(match.index);
+    }
+    rowStarts.push(dataText.length);
+    
+    // If we found row boundaries, use them; otherwise fall back to character-based
+    const chunks: string[] = [];
+    
+    if (rowStarts.length > maxRowsPerChunk) {
+      // Group rows into chunks
+      for (let i = 0; i < rowStarts.length - 1; i += maxRowsPerChunk) {
+        const startIdx = rowStarts[i];
+        const endIdx = rowStarts[Math.min(i + maxRowsPerChunk, rowStarts.length - 1)];
+        const chunkData = dataText.substring(startIdx, endIdx).trim();
+        if (chunkData.length > 0) {
+          chunks.push(`${header}\n\n${chunkData}`);
+        }
+      }
+      
+      logger.info("📄 [OpenAI] Using row-boundary chunking", {
+        textLength: text.length,
+        rowsFound: rowStarts.length - 1,
+        chunksCreated: chunks.length,
+      });
+    } else {
+      // Fall back to simple character-based chunking
+      // For 147 parts in 9934 chars, each part is ~67 chars
+      // We want ~35 parts per chunk (safe for AI to process)
+      const CHARS_PER_CHUNK = 2400; // ~35 parts worth
+      const MIN_LAST_CHUNK = 800; // Minimum size for last chunk (otherwise merge with previous)
+      
+      let pos = 0;
+      while (pos < dataText.length) {
+        let endPos = Math.min(pos + CHARS_PER_CHUNK, dataText.length);
+        
+        // Don't cut in the middle of a number - find next space
+        if (endPos < dataText.length) {
+          // Look backwards for a safe split point (after a letter followed by space)
+          const searchStart = Math.max(pos, endPos - 100);
+          const searchRegion = dataText.substring(searchStart, endPos + 50);
+          // Find last occurrence of "letter space digit" (end of one row, start of next)
+          const matches = [...searchRegion.matchAll(/[a-zA-Z]\s+(?=\d)/g)];
+          if (matches.length > 0) {
+            const lastMatch = matches[matches.length - 1];
+            endPos = searchStart + (lastMatch.index ?? 0) + lastMatch[0].length;
+          }
+        }
+        
+        const chunkData = dataText.substring(pos, endPos).trim();
+        const remainingData = dataText.length - endPos;
+        
+        // If this would leave a tiny last chunk, extend this chunk to include all remaining
+        if (remainingData > 0 && remainingData < MIN_LAST_CHUNK) {
+          const extendedChunkData = dataText.substring(pos).trim();
+          if (extendedChunkData.length > 0) {
+            chunks.push(`${header}\n\n${extendedChunkData}`);
+          }
+          break; // We're done - absorbed the last bit
+        }
+        
+        if (chunkData.length > 0) {
+          chunks.push(`${header}\n\n${chunkData}`);
+        }
+        
+        pos = endPos; // Move to next position
+      }
+      
+      logger.info("📄 [OpenAI] Using character-based chunking (single-line text)", {
+        textLength: text.length,
+        headerLength: header.length,
+        charsPerChunk: CHARS_PER_CHUNK,
+        chunksCreated: chunks.length,
+        expectedParts: Math.ceil(dataText.length / 67),
+      });
+    }
+    
+    return chunks.length > 0 ? chunks : [text];
+  }
+
+  /**
+   * Parse text directly without chunking (for page-based processing)
+   * Each page is already a natural chunk, no need to further split
+   */
+  async parseTextDirect(text: string, options: ParseOptions): Promise<AIParseResult> {
+    const startTime = Date.now();
+    
+    try {
+      const client = this.getClient();
+      
+      logger.info("📄 [OpenAI] Direct parsing (page-based, no chunking)", {
+        textLength: text.length,
+      });
+      
+      // For continuation pages (no header), add context about expected format
+      const isLikelyContinuationPage = !text.toLowerCase().includes('part') && 
+                                        !text.toLowerCase().includes('description') &&
+                                        !text.toLowerCase().includes('length');
+      
+      const prompt = buildParsePrompt({
+        extractMetadata: options.extractMetadata,
+        isMessyData: options.isMessyData ?? this.looksMessy(text),
+        isPastedText: options.isPastedText ?? true,
+        templateId: options.templateId,
+        templateConfig: options.templateConfig ? {
+          fieldLayout: options.templateConfig.fieldLayout,
+        } : undefined,
+      });
+      
+      // Add extra instruction for continuation pages
+      const continuationHint = isLikelyContinuationPage 
+        ? "\n\nNOTE: This appears to be a continuation page from a multi-page document. The header row may not be present. Parse the data rows based on the pattern: numbers represent dimensions (length, width, thickness) and quantities. Extract all rows you can identify."
+        : "";
+
+      const response = await client.chat.completions.create({
+        model: GPT_MODEL,
+        messages: [
+          { role: "system", content: OPENAI_SYSTEM_PROMPT },
+          { role: "user", content: `${prompt}${continuationHint}\n\n---\n\nINPUT DATA:\n${text}\n\nIMPORTANT: Return a JSON object with a "parts" array containing ALL extracted parts. Example: {"parts": [{...}, {...}]}` },
+        ],
+        temperature: 0.1,
+        max_completion_tokens: MAX_COMPLETION_TOKENS,
+        response_format: { type: "json_object" },
+      });
+
+      const rawResponse = response.choices[0]?.message?.content || "";
+      
+      // Try to parse the response - handle multiple formats
+      let parts: AIPartResponse[] = [];
+      
+      try {
+        const parsed = JSON.parse(rawResponse);
+        
+        // Check for error response
+        if (parsed.error && typeof parsed.error === 'string') {
+          logger.warn("⚠️ [OpenAI] AI returned error for page", { error: parsed.error });
+          return {
+            success: false,
+            parts: [],
+            totalConfidence: 0,
+            rawResponse,
+            errors: [parsed.error],
+            processingTime: Date.now() - startTime,
+          };
+        }
+        
+        // Format 1: { parts: [...] }
+        if (parsed.parts && Array.isArray(parsed.parts)) {
+          parts = parsed.parts;
+        }
+        // Format 2: Direct array [...]
+        else if (Array.isArray(parsed)) {
+          parts = parsed;
+        }
+        // Format 3: Single part object with required fields (row, length, width)
+        else if (parsed.row !== undefined || (parsed.length !== undefined && parsed.width !== undefined)) {
+          parts = [parsed];
+        }
+        // Format 4: Object with numeric keys (like { "0": {...}, "1": {...} })
+        else if (typeof parsed === 'object') {
+          const numericKeys = Object.keys(parsed).filter(k => !isNaN(Number(k)));
+          if (numericKeys.length > 0) {
+            parts = numericKeys.map(k => parsed[k]).filter(p => p && typeof p === 'object');
+          }
+        }
+      } catch (e) {
+        // Try to extract JSON from markdown code blocks
+        const jsonMatch = rawResponse.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+          try {
+            const extracted = JSON.parse(jsonMatch[1].trim());
+            if (extracted.parts && Array.isArray(extracted.parts)) {
+              parts = extracted.parts;
+            } else if (Array.isArray(extracted)) {
+              parts = extracted;
+            }
+          } catch {}
+        }
+      }
+      
+      if (parts.length > 0) {
+        logger.info("✅ [OpenAI] Direct parsed successfully", {
+          partsCount: parts.length,
+          processingTimeMs: Date.now() - startTime,
+        });
+        return this.processResults(parts, rawResponse, startTime, options);
+      }
+      
+      logger.error("❌ [OpenAI] Direct parse failed - no parts extracted", {
+        rawResponsePreview: rawResponse.substring(0, 500),
+      });
+      
+      return {
+        success: false,
+        parts: [],
+        totalConfidence: 0,
+        rawResponse,
+        errors: ["Failed to parse AI response - no parts found"],
+        processingTime: Date.now() - startTime,
+      };
+      
+    } catch (error) {
+      logger.error("❌ [OpenAI] Direct parse error", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      return {
+        success: false,
+        parts: [],
+        totalConfidence: 0,
+        errors: [error instanceof Error ? error.message : "Unknown error occurred"],
+        processingTime: Date.now() - startTime,
+      };
+    }
+  }
+
   async parseText(text: string, options: ParseOptions): Promise<AIParseResult> {
     const startTime = Date.now();
     
     try {
       const client = this.getClient();
+      
+      // Skip chunking if explicitly requested (e.g., for page-based processing)
+      if ((options as any).skipChunking) {
+        return this.parseTextDirect(text, options);
+      }
+      
+      // Estimate row count to decide if chunking is needed
+      const estimatedRows = this.estimateRowCount(text);
+      const CHUNK_THRESHOLD = 50;
+      
+      // If document is large, use chunking strategy
+      if (estimatedRows > CHUNK_THRESHOLD) {
+        logger.info("📦 [OpenAI] Large document detected, using chunking strategy", {
+          estimatedRows,
+          threshold: CHUNK_THRESHOLD,
+          textLength: text.length,
+        });
+        return this.parseTextChunked(text, options, startTime);
+      }
+      
+      logger.info("📄 [OpenAI] Small document, using single-request parsing", {
+        estimatedRows,
+        threshold: CHUNK_THRESHOLD,
+        textLength: text.length,
+      });
+      
       const prompt = buildParsePrompt({
         extractMetadata: options.extractMetadata,
-        isMessyData: this.looksMessy(text),
+        isMessyData: options.isMessyData ?? this.looksMessy(text),
+        isPastedText: options.isPastedText ?? true,
         templateId: options.templateId,
         templateConfig: options.templateConfig ? {
           fieldLayout: options.templateConfig.fieldLayout,
@@ -101,7 +440,7 @@ export class OpenAIProvider implements AIProvider {
         model: GPT_MODEL,
         messages: [
           { role: "system", content: OPENAI_SYSTEM_PROMPT },
-          { role: "user", content: `${prompt}\n\n---\n\nINPUT DATA:\n${text}` },
+          { role: "user", content: `${prompt}\n\n---\n\nINPUT DATA:\n${text}\n\nRespond with JSON only.` },
         ],
         temperature: 0.1,
         max_completion_tokens: MAX_COMPLETION_TOKENS,
@@ -109,14 +448,27 @@ export class OpenAIProvider implements AIProvider {
       });
 
       const rawResponse = response.choices[0]?.message?.content || "";
+      
+      logger.debug("📥 [OpenAI] AI response received", {
+        responseLength: rawResponse.length,
+        preview: rawResponse.substring(0, 200),
+      });
+      
       const parsed = parseAIResponseJSON<{ parts: AIPartResponse[] }>(rawResponse);
       
       if (!parsed || !Array.isArray(parsed.parts)) {
         // Try parsing as direct array
         const directArray = parseAIResponseJSON<AIPartResponse[]>(rawResponse);
         if (directArray && Array.isArray(directArray)) {
+          logger.info("✅ [OpenAI] Parsed as direct array", { partsCount: directArray.length });
           return this.processResults(directArray, rawResponse, startTime, options);
         }
+        
+        logger.error("❌ [OpenAI] Failed to parse AI response", {
+          parsedType: typeof parsed,
+          hasParts: !!(parsed as any)?.parts,
+          rawResponsePreview: rawResponse.substring(0, 500),
+        });
         
         return {
           success: false,
@@ -128,9 +480,17 @@ export class OpenAIProvider implements AIProvider {
         };
       }
 
+      logger.info("✅ [OpenAI] Successfully parsed parts", {
+        partsCount: parsed.parts.length,
+        processingTimeMs: Date.now() - startTime,
+      });
+
       return this.processResults(parsed.parts, rawResponse, startTime, options);
       
     } catch (error) {
+      logger.error("❌ [OpenAI] parseText error", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
       return {
         success: false,
         parts: [],
@@ -139,6 +499,160 @@ export class OpenAIProvider implements AIProvider {
         processingTime: Date.now() - startTime,
       };
     }
+  }
+
+  /**
+   * Parse large text documents using chunking strategy
+   */
+  private async parseTextChunked(
+    text: string,
+    options: ParseOptions,
+    startTime: number
+  ): Promise<AIParseResult> {
+    const client = this.getClient();
+    const chunks = this.chunkText(text, 40);
+    
+    logger.info("🔄 [OpenAI] Processing chunks in parallel", {
+      chunkCount: chunks.length,
+      rowsPerChunk: 40,
+      totalTextLength: text.length,
+    });
+    
+    const prompt = buildParsePrompt({
+      extractMetadata: options.extractMetadata,
+      isMessyData: options.isMessyData ?? this.looksMessy(text),
+      isPastedText: options.isPastedText ?? true,
+      templateId: options.templateId,
+      templateConfig: options.templateConfig ? {
+        fieldLayout: options.templateConfig.fieldLayout,
+      } : undefined,
+    });
+
+    // Process chunks in parallel batches
+    const BATCH_SIZE = 3;
+    const allParts: AIPartResponse[] = [];
+    const allErrors: string[] = [];
+    let totalRawResponse = "";
+    
+    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+      const batch = chunks.slice(i, i + BATCH_SIZE);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(chunks.length / BATCH_SIZE);
+      
+      logger.info(`📦 [OpenAI] Processing batch ${batchNum}/${totalBatches}`, {
+        chunksInBatch: batch.length,
+        startChunk: i + 1,
+        endChunk: i + batch.length,
+        totalChunks: chunks.length,
+      });
+      
+      const batchResults = await Promise.allSettled(
+        batch.map(async (chunk, batchIndex) => {
+          const chunkIndex = i + batchIndex;
+          logger.debug(`🔨 [OpenAI] Processing chunk ${chunkIndex + 1}/${chunks.length}`);
+          
+          const response = await client.chat.completions.create({
+            model: GPT_MODEL,
+            messages: [
+              { role: "system", content: OPENAI_SYSTEM_PROMPT },
+              { 
+                role: "user", 
+                content: `${prompt}\n\nIMPORTANT: This is chunk ${chunkIndex + 1} of ${chunks.length} from a larger document. Parse ALL rows in this chunk.\n\n---\n\nINPUT DATA:\n${chunk}\n\nRespond with JSON only.`
+              },
+            ],
+            temperature: 0.1,
+            max_completion_tokens: MAX_COMPLETION_TOKENS,
+            response_format: { type: "json_object" },
+          });
+
+          return response.choices[0]?.message?.content || "";
+        })
+      );
+
+      // Process batch results
+      for (let idx = 0; idx < batchResults.length; idx++) {
+        const result = batchResults[idx];
+        const chunkNum = i + idx + 1;
+        
+        if (result.status === "fulfilled") {
+          const rawResponse = result.value;
+          totalRawResponse += rawResponse + "\n---\n";
+          
+          logger.debug(`📥 [OpenAI] Chunk ${chunkNum} raw response`, {
+            length: rawResponse.length,
+            preview: rawResponse.substring(0, 300),
+          });
+          
+          const parsed = parseAIResponseJSON<{ parts: AIPartResponse[] } | AIPartResponse[] | AIPartResponse>(rawResponse);
+          
+          // Handle multiple response formats:
+          // 1. { "parts": [...] } - standard format
+          // 2. [...] - direct array
+          // 3. { "row": ..., "label": ... } - single object (wrap in array)
+          // 4. { "error": "..." } - AI returned error message
+          let parts: AIPartResponse[] | null = null;
+          
+          if (Array.isArray(parsed)) {
+            parts = parsed;
+          } else if (parsed && typeof parsed === "object") {
+            if ("parts" in parsed && Array.isArray((parsed as any).parts)) {
+              parts = (parsed as any).parts;
+            } else if ("row" in parsed || "label" in parsed || "length" in parsed) {
+              // Single part object - wrap in array
+              parts = [parsed as AIPartResponse];
+              logger.debug(`📦 [OpenAI] Chunk ${chunkNum} returned single object, wrapped in array`);
+            } else if ("error" in parsed) {
+              // AI returned an error message
+              logger.warn(`⚠️ [OpenAI] Chunk ${chunkNum} AI returned error`, {
+                error: (parsed as any).error,
+              });
+              allErrors.push(`Chunk ${chunkNum}: AI error - ${(parsed as any).error}`);
+              continue;
+            }
+          }
+          
+          if (parts && Array.isArray(parts) && parts.length > 0) {
+            logger.info(`✅ [OpenAI] Chunk ${chunkNum} parsed successfully`, {
+              partsFound: parts.length,
+            });
+            allParts.push(...parts);
+          } else {
+            logger.error(`❌ [OpenAI] Chunk ${chunkNum} failed to parse`, {
+              parsedType: typeof parsed,
+              hasParts: !!(parsed as any)?.parts,
+              rawResponsePreview: rawResponse.substring(0, 500),
+            });
+            allErrors.push(`Chunk ${chunkNum}: Failed to parse response`);
+          }
+        } else {
+          const errorMsg = result.reason?.message || "Chunk processing failed";
+          logger.error(`❌ [OpenAI] Chunk ${chunkNum} request failed`, {
+            error: errorMsg,
+          });
+          allErrors.push(`Chunk ${chunkNum}: ${errorMsg}`);
+        }
+      }
+    }
+    
+    logger.info("✅ [OpenAI] Chunked parsing complete", {
+      totalPartsFound: allParts.length,
+      chunksProcessed: chunks.length,
+      errors: allErrors.length,
+      processingTimeMs: Date.now() - startTime,
+    });
+
+    if (allParts.length === 0) {
+      return {
+        success: false,
+        parts: [],
+        totalConfidence: 0,
+        rawResponse: totalRawResponse,
+        errors: allErrors.length > 0 ? allErrors : ["No parts extracted from any chunks"],
+        processingTime: Date.now() - startTime,
+      };
+    }
+
+    return this.processResults(allParts, totalRawResponse, startTime, options);
   }
 
   async parseImage(imageData: ArrayBuffer | string, options: ParseOptions): Promise<AIParseResult> {

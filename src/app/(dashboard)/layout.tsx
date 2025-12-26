@@ -16,9 +16,6 @@ import {
   Plus,
   Bell,
   Layers,
-  Cpu,
-  Code2,
-  Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +24,7 @@ import { useAuthStore } from "@/lib/auth/store";
 import { ROLE_DISPLAY_NAMES } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 import { SubscriptionProvider, useSubscription } from "@/lib/subscriptions/hooks";
+import { CommandPalette } from "@/components/ui/command-palette";
 
 const NAV_ITEMS = [
   {
@@ -49,29 +47,6 @@ const NAV_ITEMS = [
     label: "Materials",
     href: "/materials",
     icon: Layers,
-  },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: Settings,
-  },
-];
-
-const ADMIN_NAV_ITEMS = [
-  {
-    label: "Branding",
-    href: "/settings/branding",
-    icon: Palette,
-  },
-  {
-    label: "Operations",
-    href: "/settings/operations",
-    icon: Cpu,
-  },
-  {
-    label: "Shortcodes",
-    href: "/settings/shortcodes",
-    icon: Code2,
   },
 ];
 
@@ -159,6 +134,9 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
+      {/* Command Palette (⌘K) */}
+      <CommandPalette />
+
       {/* Top Navigation Bar */}
       <nav className="fixed top-0 left-0 right-0 h-16 bg-[var(--card)] border-b border-[var(--border)] z-50">
         <div className="h-full flex items-center justify-between px-4">
@@ -176,12 +154,13 @@ export default function DashboardLayout({
             </button>
             <Link href="/dashboard" className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-[var(--cai-teal)] flex items-center justify-center">
+                {/* Document/Grid icon - distinct from hamburger menu */}
                 <svg
                   viewBox="0 0 24 24"
                   className="w-5 h-5 text-white"
                   fill="currentColor"
                 >
-                  <path d="M3 4h18v2H3V4zm0 7h18v2H3v-2zm0 7h18v2H3v-2z" />
+                  <path d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z" />
                 </svg>
               </div>
               <span className="font-bold text-lg hidden sm:block">
@@ -257,17 +236,27 @@ export default function DashboardLayout({
                         </Badge>
                       )}
                     </div>
-                    <div className="p-2">
+                    <div className="p-2 space-y-1">
                       <Link
                         href="/settings"
                         className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--muted)] transition-colors"
                         onClick={() => setIsUserMenuOpen(false)}
                       >
                         <Settings className="h-4 w-4" />
-                        Settings
+                        Account Settings
                       </Link>
+                      <Link
+                        href="/help"
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--muted)] transition-colors"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <HelpCircle className="h-4 w-4" />
+                        Help & Support
+                      </Link>
+                    </div>
+                    <div className="p-2 border-t border-[var(--border)]">
                       <button
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--muted)] transition-colors text-left text-red-600"
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors text-left text-red-600"
                         onClick={handleLogout}
                       >
                         <LogOut className="h-4 w-4" />
@@ -317,37 +306,6 @@ export default function DashboardLayout({
                 </Link>
               );
             })}
-
-            {/* Admin Section - Visible to org admins and super admins */}
-            {user && (user.isSuperAdmin || user.role?.name === "org_admin") && (
-              <>
-                <div className="pt-4 pb-2">
-                  <p className="px-3 text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">
-                    Admin
-                  </p>
-                </div>
-                {ADMIN_NAV_ITEMS.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setIsSidebarOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
-                        isActive
-                          ? "bg-[var(--cai-teal)]/10 text-[var(--cai-teal)]"
-                          : "hover:bg-[var(--muted)] text-[var(--foreground)]"
-                      )}
-                    >
-                      <Icon className="h-5 w-5" />
-                      <span className="font-medium">{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </>
-            )}
 
             {/* Platform Admin Section - Only visible to super admins */}
             {isSuperAdmin() && (
