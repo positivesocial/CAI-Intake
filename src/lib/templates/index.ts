@@ -26,7 +26,7 @@ export {
   classifyDocument,
   detectExcelTemplate,
   detectPDFTemplate,
-  detectTemplateQR,
+  detectTemplateFromQR,
   isValidTemplate,
   getProcessingRecommendation,
   isBlankTemplate,

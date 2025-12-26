@@ -11,7 +11,7 @@
  */
 
 import * as XLSX from "xlsx";
-import { detectTemplateQR, type QRDetectionResult } from "@/lib/ai/template-ocr";
+import { detectTemplateQR as scanTemplateQR, type QRDetectionResult } from "@/lib/ai/template-ocr";
 import { logger } from "@/lib/logger";
 
 // ============================================================
@@ -306,11 +306,11 @@ export async function detectPDFTemplate(
 /**
  * Detect template from QR code in image
  */
-export async function detectTemplateQR(
+export async function detectTemplateFromQR(
   imageBuffer: ArrayBuffer
 ): Promise<TemplateDetectionResult> {
   try {
-    const qrResult = await detectTemplateQR(imageBuffer);
+    const qrResult = await scanTemplateQR(imageBuffer);
     
     if (qrResult && qrResult.templateId) {
       return {
@@ -441,7 +441,7 @@ export async function classifyDocument(
     const buffer = await file.arrayBuffer();
     
     // Try QR detection first
-    const qrResult = await detectTemplateQR(buffer);
+    const qrResult = await detectTemplateFromQR(buffer);
     if (qrResult.type !== DocType.GENERIC) {
       return qrResult;
     }
