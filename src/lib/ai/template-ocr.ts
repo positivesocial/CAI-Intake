@@ -1,109 +1,138 @@
 /**
- * CAI Intake - Template OCR with QR Code Detection
+ * CAI Intake - Template OCR Parser
  * 
- * Detects QR codes in scanned templates and uses template-specific
- * prompts to achieve near-100% accuracy for known templates.
+ * Optimized for deterministic parsing of CAI branded templates.
+ * 
+ * Template ID format: CAI-{org_id}-v{version}
+ * - org_id identifies the organization
+ * - version tracks shortcode/config changes
+ * 
+ * Since templates have deterministic column layouts based on org config,
+ * OCR should achieve near 100% accuracy.
  */
 
 import jsQR from "jsqr";
-import type { TemplateOCRConfig } from "./provider";
+import { parseTemplateId, type ParsedTemplateId } from "@/lib/templates/org-template-generator";
 
 // ============================================================
 // TYPES
 // ============================================================
 
+export interface TemplateColumn {
+  key: string;           // Column key (e.g., "label", "L", "edge")
+  label: string;         // Column header text
+  type: "text" | "number" | "code" | "shortcode";
+  required?: boolean;
+  shortcodes?: string[]; // Valid shortcode values for this column
+}
+
+export interface OrgTemplateConfig {
+  org_id: string;
+  org_name: string;
+  version: string;
+  columns: TemplateColumn[];
+  shortcodes: {
+    edgebanding?: string[];
+    grooving?: string[];
+    drilling?: string[];
+    cnc?: string[];
+  };
+}
+
 export interface QRDetectionResult {
   found: boolean;
   templateId?: string;
-  templateVersion?: string;
-  templateConfig?: TemplateOCRConfig;
+  parsed?: ParsedTemplateId;
+  orgConfig?: OrgTemplateConfig;
   rawData?: string;
+  error?: string;
 }
 
-export interface TemplateRegistry {
-  [templateId: string]: TemplateOCRConfig;
+export interface TemplateParseResult {
+  success: boolean;
+  templateId: string;
+  orgId: string;
+  version: string;
+  projectInfo?: {
+    projectName?: string;
+    projectCode?: string;
+    customerName?: string;
+    phone?: string;
+    email?: string;
+    sectionArea?: string;
+    page?: number;
+    totalPages?: number;
+  };
+  parts: ParsedTemplatePart[];
+  errors: string[];
+  confidence: number;
+}
+
+export interface ParsedTemplatePart {
+  rowNumber: number;
+  label?: string;
+  length?: number;
+  width?: number;
+  thickness?: number;
+  quantity?: number;
+  material?: string;
+  edge?: string;
+  groove?: string;
+  drill?: string;
+  cnc?: string;
+  notes?: string;
+  confidence: number;
 }
 
 // ============================================================
-// TEMPLATE REGISTRY
+// TEMPLATE CONFIG CACHE
 // ============================================================
 
 /**
- * Registry of known templates with their configurations
- * In production, this would be loaded from a database
+ * In-memory cache of org template configs
+ * In production, this would be fetched from database by org_id + version
  */
-const templateRegistry: TemplateRegistry = {
-  "cai-standard-v1": {
-    templateId: "cai-standard-v1",
-    version: "1.0",
-    fieldLayout: {
-      partName: { region: { x: 20, y: 100, width: 200, height: 30 }, expectedFormat: "text" },
-      length: { region: { x: 230, y: 100, width: 80, height: 30 }, expectedFormat: "number" },
-      width: { region: { x: 320, y: 100, width: 80, height: 30 }, expectedFormat: "number" },
-      quantity: { region: { x: 410, y: 100, width: 60, height: 30 }, expectedFormat: "number" },
-      material: { region: { x: 480, y: 100, width: 150, height: 30 }, expectedFormat: "text" },
-      thickness: { region: { x: 640, y: 100, width: 60, height: 30 }, expectedFormat: "number" },
-      grain: { region: { x: 710, y: 100, width: 80, height: 30 }, expectedFormat: "select" },
-      edging: { region: { x: 800, y: 100, width: 100, height: 30 }, expectedFormat: "text" },
-      notes: { region: { x: 910, y: 100, width: 200, height: 30 }, expectedFormat: "text" },
-    },
-    trainedPrompt: `This is a CAI Standard Cutlist Template v1.0.
-    
-The form has a table structure with the following columns (left to right):
-1. # (row number) - IGNORE this column
-2. Part Name - text label for the part
-3. L (mm) - length dimension in millimeters
-4. W (mm) - width dimension in millimeters  
-5. Qty - quantity (number)
-6. Material - material name/code
-7. Thk - thickness in mm (usually 16, 18, 19, or 25)
-8. Grain - grain direction (None, GL, GW, or blank)
-9. EB - edge banding notation (L1, L2, W1, W2, "4" for all, or blank)
-10. Notes - additional notes
+const templateConfigCache = new Map<string, OrgTemplateConfig>();
 
-IMPORTANT:
-- Read each filled row carefully
-- Numbers may be handwritten - 1 and 7 can look similar
-- Empty rows should be skipped
-- The form may have multiple pages
-- Confidence should be 0.95+ for clearly filled fields`,
-  },
+/**
+ * Register/cache an org's template config
+ */
+export function registerOrgTemplateConfig(config: OrgTemplateConfig): void {
+  const key = `${config.org_id}-v${config.version}`;
+  templateConfigCache.set(key, config);
+}
+
+/**
+ * Get org template config by org_id and version
+ * In production, this would query the database
+ */
+export async function getOrgTemplateConfig(
+  orgId: string, 
+  version: string
+): Promise<OrgTemplateConfig | null> {
+  const key = `${orgId}-v${version}`;
   
-  "cai-simple-v1": {
-    templateId: "cai-simple-v1",
-    version: "1.0",
-    fieldLayout: {
-      partName: { region: { x: 20, y: 100, width: 200, height: 30 }, expectedFormat: "text" },
-      dimensions: { region: { x: 230, y: 100, width: 120, height: 30 }, expectedFormat: "LxW" },
-      quantity: { region: { x: 360, y: 100, width: 60, height: 30 }, expectedFormat: "number" },
-      notes: { region: { x: 430, y: 100, width: 200, height: 30 }, expectedFormat: "text" },
-    },
-    trainedPrompt: `This is a CAI Simple Cutlist Template v1.0.
-
-The form has a simplified table with:
-1. Part Name
-2. Dimensions (LxW format like "720x560")
-3. Qty
-4. Notes
-
-All parts are assumed to be:
-- 18mm thickness
-- White melamine material
-- No grain restriction (can rotate)
-- No edge banding
-
-Parse each row that has dimensions filled in.`,
-  },
-};
+  // Check cache
+  if (templateConfigCache.has(key)) {
+    return templateConfigCache.get(key)!;
+  }
+  
+  // TODO: In production, fetch from database
+  // const config = await prisma.templateConfig.findFirst({
+  //   where: { org_id: orgId, version }
+  // });
+  
+  return null;
+}
 
 // ============================================================
 // QR CODE DETECTION
 // ============================================================
 
 /**
- * Detect QR code in an image and return template info if found
+ * Detect QR code in an image and parse template ID
  */
-export async function detectQRCode(imageData: ArrayBuffer): Promise<QRDetectionResult> {
+export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetectionResult> {
   try {
     // Create image from buffer
     const blob = new Blob([imageData]);
@@ -114,7 +143,7 @@ export async function detectQRCode(imageData: ArrayBuffer): Promise<QRDetectionR
     const ctx = canvas.getContext("2d");
     
     if (!ctx) {
-      return { found: false };
+      return { found: false, error: "Could not create canvas context" };
     }
     
     ctx.drawImage(imageBitmap, 0, 0);
@@ -127,61 +156,40 @@ export async function detectQRCode(imageData: ArrayBuffer): Promise<QRDetectionR
       return { found: false };
     }
     
-    // Parse QR code data
-    const qrData = code.data;
+    const qrData = code.data.trim();
     
-    // Expected format: "CAI-TEMPLATE:templateId:version"
-    // or JSON: {"type":"cai-template","id":"..","version":".."}
-    let templateId: string | undefined;
-    let templateVersion: string | undefined;
+    // Parse the template ID: CAI-{org_id}-v{version}
+    const parsed = parseTemplateId(qrData);
     
-    if (qrData.startsWith("CAI-TEMPLATE:")) {
-      const parts = qrData.split(":");
-      templateId = parts[1];
-      templateVersion = parts[2];
-    } else if (qrData.startsWith("{")) {
-      try {
-        const parsed = JSON.parse(qrData);
-        if (parsed.type === "cai-template") {
-          templateId = parsed.id;
-          templateVersion = parsed.version;
-        }
-      } catch {
-        // Not valid JSON, check if it's a known template ID directly
-        if (templateRegistry[qrData]) {
-          templateId = qrData;
-        }
-      }
-    } else if (templateRegistry[qrData]) {
-      // Direct template ID
-      templateId = qrData;
-    }
-    
-    if (templateId && templateRegistry[templateId]) {
+    if (!parsed.isCAI || !parsed.orgId || !parsed.version) {
       return {
         found: true,
-        templateId,
-        templateVersion: templateVersion || templateRegistry[templateId].version,
-        templateConfig: templateRegistry[templateId],
         rawData: qrData,
+        error: "QR code found but not a valid CAI template ID",
       };
     }
     
+    // Look up org config
+    const orgConfig = await getOrgTemplateConfig(parsed.orgId, parsed.version);
+    
     return {
       found: true,
+      templateId: qrData,
+      parsed,
+      orgConfig: orgConfig || undefined,
       rawData: qrData,
     };
     
   } catch (error) {
     console.warn("QR code detection failed:", error);
-    return { found: false };
+    return { found: false, error: String(error) };
   }
 }
 
 /**
  * Detect QR code from a base64 image string
  */
-export async function detectQRCodeFromBase64(base64Data: string): Promise<QRDetectionResult> {
+export async function detectTemplateQRFromBase64(base64Data: string): Promise<QRDetectionResult> {
   try {
     // Remove data URL prefix if present
     const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, "");
@@ -193,87 +201,333 @@ export async function detectQRCodeFromBase64(base64Data: string): Promise<QRDete
       bytes[i] = binaryString.charCodeAt(i);
     }
     
-    return detectQRCode(bytes.buffer);
+    return detectTemplateQR(bytes.buffer);
   } catch (error) {
     console.warn("QR code detection from base64 failed:", error);
-    return { found: false };
+    return { found: false, error: String(error) };
   }
 }
 
 // ============================================================
-// TEMPLATE MANAGEMENT
+// DETERMINISTIC TEMPLATE PARSER
 // ============================================================
 
 /**
- * Get a template configuration by ID
+ * Build optimized prompt for deterministic template parsing
+ * This prompt tells the AI exactly what columns to expect
  */
-export function getTemplateConfig(templateId: string): TemplateOCRConfig | undefined {
-  return templateRegistry[templateId];
-}
-
-/**
- * Register a new template configuration
- */
-export function registerTemplate(config: TemplateOCRConfig): void {
-  templateRegistry[config.templateId] = config;
-}
-
-/**
- * Get all registered template IDs
- */
-export function getRegisteredTemplateIds(): string[] {
-  return Object.keys(templateRegistry);
-}
-
-/**
- * Generate QR code data for a template
- */
-export function generateTemplateQRData(templateId: string, version?: string): string {
-  const config = templateRegistry[templateId];
-  if (!config) {
-    return `CAI-TEMPLATE:${templateId}:${version || "1.0"}`;
-  }
-  
-  return JSON.stringify({
-    type: "cai-template",
-    id: templateId,
-    version: version || config.version,
-  });
-}
-
-// ============================================================
-// TEMPLATE PROMPT BUILDER
-// ============================================================
-
-/**
- * Build an optimized prompt for a specific template
- */
-export function buildTemplatePrompt(templateId: string): string | undefined {
-  const config = templateRegistry[templateId];
-  if (!config?.trainedPrompt) {
-    return undefined;
-  }
-  
-  return config.trainedPrompt;
-}
-
-/**
- * Get field layout description for AI prompt
- */
-export function getFieldLayoutDescription(templateId: string): string {
-  const config = templateRegistry[templateId];
-  if (!config?.fieldLayout) {
-    return "";
-  }
-  
-  const fields = Object.entries(config.fieldLayout)
-    .map(([name, layout]) => `- ${name}: ${layout.expectedFormat}`)
+export function buildDeterministicParsePrompt(config: OrgTemplateConfig): string {
+  const columnList = config.columns
+    .map((col, i) => `${i + 1}. ${col.label} (${col.key}) - ${col.type}${col.required ? " [REQUIRED]" : ""}`)
     .join("\n");
   
-  return `Expected fields:\n${fields}`;
+  let shortcodeGuide = "";
+  
+  if (config.shortcodes.edgebanding?.length) {
+    shortcodeGuide += `\nEdgebanding codes: ${config.shortcodes.edgebanding.join(", ")}`;
+  }
+  if (config.shortcodes.grooving?.length) {
+    shortcodeGuide += `\nGrooving codes: ${config.shortcodes.grooving.join(", ")}`;
+  }
+  if (config.shortcodes.drilling?.length) {
+    shortcodeGuide += `\nDrilling codes: ${config.shortcodes.drilling.join(", ")}`;
+  }
+  if (config.shortcodes.cnc?.length) {
+    shortcodeGuide += `\nCNC codes: ${config.shortcodes.cnc.join(", ")}`;
+  }
+  
+  return `
+You are parsing a CAI Intake branded cutlist template.
+
+TEMPLATE INFO:
+- Organization: ${config.org_name}
+- Template Version: ${config.version}
+- This is a DETERMINISTIC template with known column layout
+
+COLUMNS (in exact order, left to right):
+${columnList}
+
+${shortcodeGuide ? `VALID SHORTCODES:${shortcodeGuide}` : ""}
+
+PROJECT INFORMATION FIELDS (at top of form):
+- Project Name
+- Project Code (IMPORTANT for multi-page matching)
+- Customer Name
+- Phone
+- Customer Email
+- Section/Area
+- Page ___ of ___ (IMPORTANT for multi-page ordering)
+
+EXTRACTION RULES:
+1. The first column (#) is the row number - use it to track row position
+2. Read each filled row in order from row 1 onwards
+3. Empty rows should be SKIPPED
+4. Numbers may be handwritten - be careful with 1/7, 6/0, 5/S confusion
+5. Shortcodes MUST match the valid codes listed above exactly
+6. If a field is unclear, set confidence lower for that part
+7. Extract project info from the header section
+
+OUTPUT FORMAT:
+Return JSON with:
+{
+  "projectInfo": {
+    "projectName": string | null,
+    "projectCode": string | null,
+    "customerName": string | null,
+    "phone": string | null,
+    "email": string | null,
+    "sectionArea": string | null,
+    "page": number | null,
+    "totalPages": number | null
+  },
+  "parts": [
+    {
+      "rowNumber": 1,
+      "label": "Part A",
+      "length": 720,
+      "width": 560,
+      "thickness": 18,
+      "quantity": 2,
+      "material": "MDF",
+      "edge": "2L",
+      "groove": null,
+      "drill": null,
+      "cnc": null,
+      "notes": "Kitchen base",
+      "confidence": 0.95
+    }
+  ]
 }
 
+CONFIDENCE SCORING:
+- 0.95-1.0: Clearly printed/written, no ambiguity
+- 0.80-0.94: Minor ambiguity but confident interpretation
+- 0.60-0.79: Some uncertainty, may need verification
+- Below 0.60: Low confidence, likely needs manual review
 
+Parse ALL filled rows. Do not truncate or summarize.
+`.trim();
+}
 
+/**
+ * Parse a template image with deterministic column extraction
+ */
+export async function parseTemplateImage(
+  imageBase64: string,
+  mimeType: string,
+  templateId: string,
+  aiParseFunction: (text: string, prompt: string) => Promise<unknown>
+): Promise<TemplateParseResult> {
+  const parsed = parseTemplateId(templateId);
+  
+  if (!parsed.isCAI || !parsed.orgId || !parsed.version) {
+    return {
+      success: false,
+      templateId,
+      orgId: "",
+      version: "",
+      parts: [],
+      errors: ["Invalid template ID format"],
+      confidence: 0,
+    };
+  }
+  
+  // Get org config
+  const orgConfig = await getOrgTemplateConfig(parsed.orgId, parsed.version);
+  
+  if (!orgConfig) {
+    // Fall back to default config if org config not found
+    console.warn(`Org config not found for ${parsed.orgId} v${parsed.version}, using defaults`);
+  }
+  
+  // Build deterministic prompt
+  const prompt = orgConfig 
+    ? buildDeterministicParsePrompt(orgConfig)
+    : buildDefaultParsePrompt(parsed.orgId, parsed.version);
+  
+  try {
+    // Call AI with image and deterministic prompt
+    const result = await aiParseFunction(imageBase64, prompt);
+    
+    // Parse AI response
+    const parseResponse = result as {
+      projectInfo?: TemplateParseResult["projectInfo"];
+      parts?: ParsedTemplatePart[];
+    };
+    
+    const parts = parseResponse.parts || [];
+    const avgConfidence = parts.length > 0
+      ? parts.reduce((sum, p) => sum + (p.confidence || 0.8), 0) / parts.length
+      : 0;
+    
+    return {
+      success: true,
+      templateId,
+      orgId: parsed.orgId,
+      version: parsed.version,
+      projectInfo: parseResponse.projectInfo,
+      parts,
+      errors: [],
+      confidence: avgConfidence,
+    };
+    
+  } catch (error) {
+    return {
+      success: false,
+      templateId,
+      orgId: parsed.orgId,
+      version: parsed.version,
+      parts: [],
+      errors: [String(error)],
+      confidence: 0,
+    };
+  }
+}
 
+/**
+ * Default parse prompt when org config is not found
+ */
+function buildDefaultParsePrompt(orgId: string, version: string): string {
+  return `
+You are parsing a CAI Intake branded cutlist template.
 
+Template ID indicates:
+- Organization: ${orgId}
+- Version: ${version}
+
+Since I don't have the specific template configuration, extract based on the visible columns.
+
+EXPECTED COLUMNS (typical layout):
+1. # - Row number
+2. Part Name - text label
+3. L(mm) - length in millimeters
+4. W(mm) - width in millimeters
+5. Thk - thickness
+6. Qty - quantity
+7. Material - material name/code
+8. Edge (code) - edgebanding shortcode
+9. Groove (GL/GW) - grooving shortcode  
+10. Drill (code) - drilling shortcode
+11. CNC (code) - CNC operation shortcode
+12. Notes - additional notes
+
+COMMON SHORTCODES:
+- Edgebanding: L, W, 2L, 2W, LW, 2L2W, None
+- Grooving: L, W, 2L, 2W, blank
+- Drilling: H2, SP4, HD
+- CNC: RADIUS, PROFILE, CUTOUT
+
+PROJECT INFORMATION (header section):
+- Project Name, Project Code
+- Customer Name, Phone, Email
+- Section/Area
+- Page ___ of ___
+
+OUTPUT FORMAT:
+{
+  "projectInfo": { ... },
+  "parts": [
+    {
+      "rowNumber": number,
+      "label": string,
+      "length": number,
+      "width": number,
+      "thickness": number,
+      "quantity": number,
+      "material": string,
+      "edge": string | null,
+      "groove": string | null,
+      "drill": string | null,
+      "cnc": string | null,
+      "notes": string | null,
+      "confidence": number (0-1)
+    }
+  ]
+}
+
+Parse ALL filled rows. Skip empty rows.
+`.trim();
+}
+
+// ============================================================
+// MULTI-PAGE MERGING
+// ============================================================
+
+/**
+ * Merge parts from multiple pages of the same template
+ * Uses project code to match pages and page numbers to order them
+ */
+export function mergeTemplatePages(
+  results: TemplateParseResult[]
+): TemplateParseResult {
+  if (results.length === 0) {
+    return {
+      success: false,
+      templateId: "",
+      orgId: "",
+      version: "",
+      parts: [],
+      errors: ["No pages to merge"],
+      confidence: 0,
+    };
+  }
+  
+  if (results.length === 1) {
+    return results[0];
+  }
+  
+  // Group by project code
+  const projectCode = results[0].projectInfo?.projectCode;
+  
+  // Sort by page number
+  const sorted = [...results].sort((a, b) => {
+    const pageA = a.projectInfo?.page || 0;
+    const pageB = b.projectInfo?.page || 0;
+    return pageA - pageB;
+  });
+  
+  // Merge parts with adjusted row numbers
+  let allParts: ParsedTemplatePart[] = [];
+  let rowOffset = 0;
+  
+  for (const result of sorted) {
+    const adjustedParts = result.parts.map(part => ({
+      ...part,
+      rowNumber: part.rowNumber + rowOffset,
+    }));
+    allParts = allParts.concat(adjustedParts);
+    rowOffset = allParts.length;
+  }
+  
+  // Calculate average confidence
+  const avgConfidence = allParts.length > 0
+    ? allParts.reduce((sum, p) => sum + p.confidence, 0) / allParts.length
+    : 0;
+  
+  // Collect all errors
+  const allErrors = sorted.flatMap(r => r.errors);
+  
+  return {
+    success: sorted.every(r => r.success),
+    templateId: sorted[0].templateId,
+    orgId: sorted[0].orgId,
+    version: sorted[0].version,
+    projectInfo: {
+      ...sorted[0].projectInfo,
+      page: 1,
+      totalPages: sorted.length,
+    },
+    parts: allParts,
+    errors: allErrors,
+    confidence: avgConfidence,
+  };
+}
+
+// ============================================================
+// EXPORTS
+// ============================================================
+
+export {
+  parseTemplateId,
+  type ParsedTemplateId,
+};
