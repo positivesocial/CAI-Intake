@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import BulkTrainingUpload from "@/components/training/BulkTrainingUpload";
+import AddExampleModal from "@/components/training/AddExampleModal";
 import { useAuthStore } from "@/lib/auth/store";
 
 // ============================================================
@@ -96,6 +97,7 @@ export default function TrainingDashboard() {
   const [examples, setExamples] = useState<TrainingExample[]>([]);
   const [weakAreas, setWeakAreas] = useState<WeakArea[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   // Handle hydration
   useEffect(() => {
@@ -213,12 +215,19 @@ export default function TrainingDashboard() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Button variant="primary">
+          <Button variant="primary" onClick={() => setShowAddModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Example
           </Button>
         </div>
       </div>
+
+      {/* Add Example Modal */}
+      <AddExampleModal
+        open={showAddModal}
+        onOpenChange={setShowAddModal}
+        onSuccess={fetchData}
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
