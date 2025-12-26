@@ -102,8 +102,10 @@ export interface GeneratedTemplate {
   org_id: string;
   /** Generated HTML content */
   html: string;
-  /** QR code data (JSON string) */
+  /** QR code data - MINIMAL (just template ID for robust scanning) */
   qr_data: string;
+  /** Full template metadata JSON (stored server-side for lookup) */
+  template_metadata: string;
   /** Shortcodes hash (for versioning) */
   shortcodes_hash: string;
   /** Generated timestamp */
@@ -114,21 +116,34 @@ export interface GeneratedTemplate {
 // QR CODE DATA GENERATION
 // ============================================================
 
+/**
+ * QR Code Strategy:
+ * - MINIMAL data for robust scanning (works with poor photos)
+ * - Just the template ID string (e.g., "CAI-1.0-a7f3b2c1")
+ * - Full template config looked up server-side by ID
+ * - High error correction (Level H) allows CAI logo in center
+ */
+
 export interface TemplateQRData {
-  type: "cai-template";
-  id: string;              // Template ID (displayed under QR)
-  org: string;             // Organization ID
-  v: string;               // Version
-  schema: "cutlist/v2";
-  cols: string[];          // Column order for deterministic parsing
-  caps: {
-    eb: boolean;           // Edgebanding
-    grv: boolean;          // Grooving
-    drill: boolean;        // Drilling
-    cnc: boolean;          // CNC operations
-    notes: boolean;        // Notes
+  /** The minimal QR code content - just the template ID */
+  qr_content: string;
+  /** Full template metadata (stored server-side, not in QR) */
+  full_metadata: {
+    type: "cai-template";
+    id: string;
+    org: string;
+    v: string;
+    schema: "cutlist/v2";
+    cols: string[];
+    caps: {
+      eb: boolean;
+      grv: boolean;
+      drill: boolean;
+      cnc: boolean;
+      notes: boolean;
+    };
+    sc_hash?: string;
   };
-  sc_hash?: string;        // Shortcodes hash for validation
 }
 
 function generateQRData(config: OrgTemplateConfig, templateId: string, version: string, shortcodesHash: string): TemplateQRData {
@@ -151,20 +166,25 @@ function generateQRData(config: OrgTemplateConfig, templateId: string, version: 
   }
   
   return {
-    type: "cai-template",
-    id: templateId,
-    org: config.branding.org_id,
-    v: version,
-    schema: "cutlist/v2",
-    cols,
-    caps: {
-      eb: config.includeEdgebanding !== false,
-      grv: !!config.includeGrooves,
-      drill: !!config.includeDrilling,
-      cnc: !!config.includeCNC,
-      notes: config.includeNotes !== false,
+    // MINIMAL QR content - just the template ID for robust scanning
+    qr_content: templateId,
+    // Full metadata stored separately (looked up by ID when parsing)
+    full_metadata: {
+      type: "cai-template",
+      id: templateId,
+      org: config.branding.org_id,
+      v: version,
+      schema: "cutlist/v2",
+      cols,
+      caps: {
+        eb: config.includeEdgebanding !== false,
+        grv: !!config.includeGrooves,
+        drill: !!config.includeDrilling,
+        cnc: !!config.includeCNC,
+        notes: config.includeNotes !== false,
+      },
+      sc_hash: shortcodesHash || undefined,
     },
-    sc_hash: shortcodesHash || undefined,
   };
 }
 
@@ -431,9 +451,10 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     columns.push({ key: "notes", label: "Notes", width: "auto" });
   }
   
-  // Generate QR data
+  // Generate QR data - MINIMAL content for robust scanning
   const qrDataObj = generateQRData(config, templateId, version, shortcodesHash);
-  const qrDataStr = JSON.stringify(qrDataObj);
+  const qrContent = qrDataObj.qr_content; // Just the template ID string
+  const fullMetadata = JSON.stringify(qrDataObj.full_metadata); // Stored separately
   
   // Generate fill-in guide
   const fillInGuide = generateFillInGuide(config, primaryColor);
@@ -501,13 +522,14 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     }
     
     .qr-code-container {
-      width: 60px;
-      height: 60px;
+      width: 70px;
+      height: 70px;
       border: 1px solid #ccc;
       display: flex;
       align-items: center;
       justify-content: center;
       background: white;
+      border-radius: 4px;
     }
     
     .template-id {
@@ -837,10 +859,11 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     <!-- Left: QR + Branding -->
     <div class="header-left">
       <div class="qr-section">
-        <div class="qr-code-container" id="qr-placeholder" data-qr="${encodeURIComponent(qrDataStr)}">
-          <svg viewBox="0 0 60 60" style="width:100%;height:100%">
-            <rect fill="#f5f5f5" width="60" height="60"/>
-            <text x="30" y="30" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="#999">QR</text>
+        <div class="qr-code-container" id="qr-placeholder" data-qr="${encodeURIComponent(qrContent)}">
+          <!-- Placeholder SVG - replaced by QR code with logo -->
+          <svg viewBox="0 0 70 70" style="width:100%;height:100%">
+            <rect fill="#f5f5f5" width="70" height="70"/>
+            <text x="35" y="35" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="#999">QR</text>
           </svg>
         </div>
         <div class="template-id">${templateId}</div>
@@ -942,7 +965,7 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   <!-- Print Button (hidden when printing) -->
   <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
   
-  <!-- QR Code Generation -->
+  <!-- QR Code Generation with CAI Logo -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -950,14 +973,60 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       if (qrPlaceholder && typeof QRCode !== 'undefined') {
         const qrData = decodeURIComponent(qrPlaceholder.dataset.qr);
         qrPlaceholder.innerHTML = '';
-        new QRCode(qrPlaceholder, {
+        
+        // Create QR with HIGH error correction (30% can be obscured for logo)
+        const qr = new QRCode(qrPlaceholder, {
           text: qrData,
-          width: 60,
-          height: 60,
+          width: 70,
+          height: 70,
           colorDark: '#000000',
           colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.M
+          correctLevel: QRCode.CorrectLevel.H  // High = 30% error recovery
         });
+        
+        // Add CAI funnel logo to center after QR renders
+        setTimeout(function() {
+          const canvas = qrPlaceholder.querySelector('canvas');
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            const size = canvas.width;
+            const logoSize = size * 0.22; // Logo takes ~22% of QR (within 30% limit)
+            const logoX = (size - logoSize) / 2;
+            const logoY = (size - logoSize) / 2;
+            
+            // White circle background for logo
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, logoSize/2 + 2, 0, 2 * Math.PI);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            
+            // Draw CAI funnel logo (simplified geometric version)
+            ctx.fillStyle = '#6B21A8'; // Purple brand color
+            ctx.beginPath();
+            // Funnel shape - wide at top, narrow at bottom
+            const cx = size / 2;
+            const cy = size / 2;
+            const w = logoSize * 0.7;
+            const h = logoSize * 0.8;
+            // Top wide part
+            ctx.moveTo(cx - w/2, cy - h/2);
+            ctx.lineTo(cx + w/2, cy - h/2);
+            // Right slope to narrow
+            ctx.lineTo(cx + w/6, cy + h/4);
+            // Bottom spout
+            ctx.lineTo(cx + w/6, cy + h/2);
+            ctx.lineTo(cx - w/6, cy + h/2);
+            ctx.lineTo(cx - w/6, cy + h/4);
+            // Left slope back up
+            ctx.closePath();
+            ctx.fill();
+            
+            // Small circle at bottom of funnel (drip)
+            ctx.beginPath();
+            ctx.arc(cx, cy + h/2 + 3, 2, 0, 2 * Math.PI);
+            ctx.fill();
+          }
+        }, 100);
       }
     });
   </script>
@@ -970,7 +1039,8 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     version,
     org_id: config.branding.org_id,
     html,
-    qr_data: qrDataStr,
+    qr_data: qrContent,           // Minimal - just template ID for robust scanning
+    template_metadata: fullMetadata, // Full config for server-side lookup
     shortcodes_hash: shortcodesHash,
     generated_at: new Date().toISOString(),
   };
