@@ -8,7 +8,7 @@
  * - Template versioning validation
  */
 
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { 
   mergeTemplatePages, 

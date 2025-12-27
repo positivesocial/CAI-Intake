@@ -118,7 +118,7 @@ export async function getOrgTemplateConfig(
   }
   
   // Dynamically import prisma to avoid client-side bundling issues
-  const { prisma } = await import("@/lib/prisma");
+  const { prisma } = await import("@/lib/db");
   
   try {
     // Fetch organization
