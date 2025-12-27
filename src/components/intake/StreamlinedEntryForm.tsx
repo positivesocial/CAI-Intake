@@ -15,10 +15,18 @@
  */
 
 import * as React from "react";
-import { Plus, Trash2, ArrowDown, Keyboard, LayoutGrid, LayoutList, Copy, Check, Settings2 } from "lucide-react";
+import { Plus, Trash2, ArrowDown, Keyboard, LayoutGrid, LayoutList, Copy, Check, Settings2, RotateCcw, Lock, ChevronDown, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 import { useIntakeStore } from "@/lib/store";
 import { generateId } from "@/lib/utils";
 import { PartCard, type PartCardData } from "@/components/parts/PartCard";
@@ -283,6 +291,22 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
       }));
     };
 
+    // Apply bulk material change to selected rows
+    const applyBulkMaterial = (materialId: string) => {
+      setRows(prev => prev.map(row => {
+        if (!selectedRowIds.has(row.id)) return row;
+        return { ...row, material_id: materialId };
+      }));
+    };
+
+    // Apply bulk rotation change to selected rows
+    const applyBulkRotation = (allowRotation: boolean) => {
+      setRows(prev => prev.map(row => {
+        if (!selectedRowIds.has(row.id)) return row;
+        return { ...row, allow_rotation: allowRotation };
+      }));
+    };
+
     const addSelectedRowsToParts = () => {
       let addedCount = 0;
       rows.forEach((row, index) => {
@@ -474,11 +498,53 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
         <CardContent className="p-0">
           {/* Toolbar */}
           {selectedRowIds.size > 0 && (
-            <div className="flex items-center gap-2 p-2 border-b border-[var(--border)] bg-[var(--cai-teal)]/5">
+            <div className="flex items-center gap-2 p-2 border-b border-[var(--border)] bg-[var(--cai-teal)]/5 flex-wrap">
               <Badge variant="outline" className="bg-[var(--cai-teal)]/10 text-[var(--cai-teal)]">
                 {selectedRowIds.size} selected
               </Badge>
               <div className="flex-1" />
+              
+              {/* Material Bulk Action */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 px-2">
+                    <Layers className="h-4 w-4 mr-1" />
+                    Material
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto">
+                  <DropdownMenuLabel className="text-xs">Set Material</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {materialOptions.map((m) => (
+                    <DropdownMenuItem key={m.value} onClick={() => applyBulkMaterial(m.value)}>
+                      {m.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Rotation Bulk Action */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 px-2">
+                    <RotateCcw className="h-4 w-4 mr-1" />
+                    Rotation
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => applyBulkRotation(true)}>
+                    <RotateCcw className="h-4 w-4 mr-2 text-green-600" />
+                    Allow rotation
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => applyBulkRotation(false)}>
+                    <Lock className="h-4 w-4 mr-2 text-amber-600" />
+                    Lock rotation
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <Button variant="ghost" size="sm" onClick={() => setShowBulkOpsPanel(true)} className="h-8 px-2 text-[var(--cai-teal)]">
                 <Settings2 className="h-4 w-4 mr-1" /> Bulk Ops
               </Button>
