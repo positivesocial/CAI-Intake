@@ -414,6 +414,7 @@ export function checkAutoAccept(
 
 /**
  * Log template parsing audit for training feedback
+ * Uses the existing ParsingAccuracyLog model schema
  */
 export async function logTemplateParseAudit(
   audit: Omit<TemplateParseAudit, "id" | "createdAt">
@@ -422,13 +423,14 @@ export async function logTemplateParseAudit(
     const record = await prisma.parsingAccuracyLog.create({
       data: {
         id: `tpa_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        organizationId: audit.organizationId,
-        provider: "template",
-        documentType: "cai_template",
-        documentDifficulty: audit.averageConfidence >= 0.95 ? "easy" : audit.averageConfidence >= 0.8 ? "medium" : "hard",
-        partsExtracted: audit.totalParts,
+        provider: "template", // Identifies this as template-based parsing
+        sourceType: "cai_template",
+        totalParts: audit.totalParts,
+        correctParts: audit.autoAccepted ? audit.totalParts : Math.floor(audit.totalParts * audit.averageConfidence),
         accuracy: audit.averageConfidence,
-        fieldAccuracies: {
+        clientTemplateUsed: true, // CAI templates are always "client templates"
+        // Store additional info in the parseJobId field as JSON-encoded metadata
+        parseJobId: JSON.stringify({
           templateId: audit.templateId,
           version: audit.version,
           projectCode: audit.projectCode,
@@ -436,8 +438,9 @@ export async function logTemplateParseAudit(
           autoAccepted: audit.autoAccepted,
           humanCorrected: audit.humanCorrected,
           correctionCount: audit.correctionCount,
-        },
-        processingTimeMs: audit.processingTimeMs,
+          organizationId: audit.organizationId,
+          processingTimeMs: audit.processingTimeMs,
+        }),
       },
     });
     
@@ -461,25 +464,55 @@ export async function logTemplateParseAudit(
 
 /**
  * Update audit record when human makes corrections
+ * Updates the correctParts count and recalculates accuracy
  */
 export async function logHumanCorrections(
   auditId: string,
   correctionCount: number
 ): Promise<void> {
   try {
+    // First, get the current record to update the metadata
+    const current = await prisma.parsingAccuracyLog.findUnique({
+      where: { id: auditId },
+      select: { parseJobId: true, totalParts: true, correctParts: true },
+    });
+    
+    if (!current) {
+      logger.warn("[TemplateParseService] Audit record not found for corrections", { auditId });
+      return;
+    }
+    
+    // Parse existing metadata and update it
+    let metadata: Record<string, unknown> = {};
+    try {
+      if (current.parseJobId) {
+        metadata = JSON.parse(current.parseJobId);
+      }
+    } catch {
+      // If parsing fails, start fresh
+    }
+    
+    metadata.humanCorrected = true;
+    metadata.correctionCount = correctionCount;
+    
+    // Update correctParts based on corrections
+    const newCorrectParts = Math.max(0, current.totalParts - correctionCount);
+    const newAccuracy = current.totalParts > 0 ? newCorrectParts / current.totalParts : 0;
+    
     await prisma.parsingAccuracyLog.update({
       where: { id: auditId },
       data: {
-        fieldAccuracies: {
-          humanCorrected: true,
-          correctionCount,
-        },
+        parseJobId: JSON.stringify(metadata),
+        correctParts: newCorrectParts,
+        accuracy: newAccuracy,
       },
     });
     
     logger.info("[TemplateParseService] Human corrections logged", {
       auditId,
       correctionCount,
+      newCorrectParts,
+      newAccuracy,
     });
   } catch (error) {
     logger.error("[TemplateParseService] Failed to log corrections", {
