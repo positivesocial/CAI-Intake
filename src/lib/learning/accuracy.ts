@@ -6,6 +6,7 @@
  */
 
 import { getClient } from "@/lib/supabase/client";
+import { prisma } from "@/lib/db";
 import type { CutPart } from "@/lib/schema";
 
 // ============================================================
@@ -391,40 +392,52 @@ function levenshteinDistance(a: string, b: string): number {
 export async function logParsingAccuracy(
   entry: Omit<AccuracyLogEntry, "id" | "createdAt">
 ): Promise<AccuracyLogEntry | null> {
-  const supabase = getClient();
-  if (!supabase) return null;
-
   try {
-    const insertData = {
-      organization_id: entry.organizationId,
-      parse_job_id: entry.parseJobId,
-      provider: entry.provider,
-      source_type: entry.sourceType,
-      total_parts: entry.totalParts,
-      correct_parts: entry.correctParts,
-      accuracy: entry.accuracy,
-      dimension_accuracy: entry.dimensionAccuracy,
-      material_accuracy: entry.materialAccuracy,
-      edging_accuracy: entry.edgingAccuracy,
-      grooving_accuracy: entry.groovingAccuracy,
-      quantity_accuracy: entry.quantityAccuracy,
-      label_accuracy: entry.labelAccuracy,
-      few_shot_examples_used: entry.fewShotExamplesUsed,
-      patterns_applied: entry.patternsApplied,
-      client_template_used: entry.clientTemplateUsed,
-      document_difficulty: entry.documentDifficulty,
-      client_name: entry.clientName,
+    const record = await prisma.parsingAccuracyLog.create({
+      data: {
+        organizationId: entry.organizationId,
+        parseJobId: entry.parseJobId,
+        provider: entry.provider,
+        sourceType: entry.sourceType,
+        totalParts: entry.totalParts,
+        correctParts: entry.correctParts,
+        accuracy: entry.accuracy,
+        dimensionAccuracy: entry.dimensionAccuracy,
+        materialAccuracy: entry.materialAccuracy,
+        edgingAccuracy: entry.edgingAccuracy,
+        groovingAccuracy: entry.groovingAccuracy,
+        quantityAccuracy: entry.quantityAccuracy,
+        labelAccuracy: entry.labelAccuracy,
+        fewShotExamplesUsed: entry.fewShotExamplesUsed,
+        patternsApplied: entry.patternsApplied,
+        clientTemplateUsed: entry.clientTemplateUsed,
+        documentDifficulty: entry.documentDifficulty,
+        clientName: entry.clientName,
+      },
+    });
+
+    return {
+      id: record.id,
+      organizationId: record.organizationId ?? undefined,
+      parseJobId: record.parseJobId ?? undefined,
+      provider: record.provider as AccuracyLogEntry["provider"],
+      sourceType: record.sourceType as AccuracyLogEntry["sourceType"],
+      totalParts: record.totalParts,
+      correctParts: record.correctParts,
+      accuracy: record.accuracy,
+      dimensionAccuracy: record.dimensionAccuracy ?? undefined,
+      materialAccuracy: record.materialAccuracy ?? undefined,
+      edgingAccuracy: record.edgingAccuracy ?? undefined,
+      groovingAccuracy: record.groovingAccuracy ?? undefined,
+      quantityAccuracy: record.quantityAccuracy ?? undefined,
+      labelAccuracy: record.labelAccuracy ?? undefined,
+      fewShotExamplesUsed: record.fewShotExamplesUsed,
+      patternsApplied: record.patternsApplied,
+      clientTemplateUsed: record.clientTemplateUsed,
+      documentDifficulty: record.documentDifficulty ?? undefined,
+      clientName: record.clientName ?? undefined,
+      createdAt: record.createdAt,
     };
-
-    const { data, error } = await supabase
-      .from("parsing_accuracy_logs")
-      .insert(insertData)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    return mapDbLogToEntry(data);
   } catch (error) {
     console.error("Failed to log parsing accuracy:", error);
     return null;
