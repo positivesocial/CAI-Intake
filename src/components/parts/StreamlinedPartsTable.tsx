@@ -29,6 +29,7 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
+  Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 import { useIntakeStore } from "@/lib/store";
 import type { CutPart } from "@/lib/schema";
 import { cn } from "@/lib/utils";
@@ -253,6 +262,19 @@ function PartRow({
         <Badge variant="outline" className="font-normal text-xs">
           {materials.find(m => m.value === part.material_id)?.label?.split(" (")[0] || part.material_id}
         </Badge>
+      </td>
+
+      {/* Rotation */}
+      <td className="px-2 py-2 text-center">
+        {part.allow_rotation ? (
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" title="Can rotate">
+            <RotateCcw className="h-3.5 w-3.5" />
+          </span>
+        ) : (
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Fixed orientation">
+            <Lock className="h-3.5 w-3.5" />
+          </span>
+        )}
       </td>
 
       {/* Operations */}
@@ -545,6 +567,26 @@ export function StreamlinedPartsTable() {
     return merged;
   };
 
+  // Apply bulk material change to all selected parts
+  const handleBulkMaterial = (materialId: string) => {
+    selectedPartIds.forEach(partId => {
+      const part = parts.find(p => p.part_id === partId);
+      if (part) {
+        updatePart(partId, { ...part, material_id: materialId });
+      }
+    });
+  };
+
+  // Apply bulk rotation change to all selected parts
+  const handleBulkRotation = (allowRotation: boolean) => {
+    selectedPartIds.forEach(partId => {
+      const part = parts.find(p => p.part_id === partId);
+      if (part) {
+        updatePart(partId, { ...part, allow_rotation: allowRotation });
+      }
+    });
+  };
+
   // Calculate totals
   const totalPieces = parts.reduce((sum, p) => sum + p.qty, 0);
   const totalArea = parts.reduce((sum, p) => sum + p.qty * p.size.L * p.size.W, 0);
@@ -600,6 +642,47 @@ export function StreamlinedPartsTable() {
               {/* Selection Actions */}
               {hasSelection ? (
                 <>
+                  {/* Material Bulk Action */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 px-2">
+                        <Package className="h-4 w-4 mr-1" />
+                        Material
+                        <ChevronDown className="h-3 w-3 ml-1" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                      <DropdownMenuLabel className="text-xs">Set Material</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {materialOptions.map((m) => (
+                        <DropdownMenuItem key={m.value} onClick={() => handleBulkMaterial(m.value)}>
+                          {m.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Rotation Bulk Action */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 px-2">
+                        <RotateCcw className="h-4 w-4 mr-1" />
+                        Rotation
+                        <ChevronDown className="h-3 w-3 ml-1" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem onClick={() => handleBulkRotation(true)}>
+                        <RotateCcw className="h-4 w-4 mr-2 text-green-600" />
+                        Allow rotation
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleBulkRotation(false)}>
+                        <Lock className="h-4 w-4 mr-2 text-amber-600" />
+                        Lock rotation
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -738,6 +821,9 @@ export function StreamlinedPartsTable() {
                           Material
                           <ArrowUpDown className={cn("ml-1 h-3 w-3", sortField === "material_id" && "text-[var(--cai-teal)]")} />
                         </Button>
+                      </th>
+                      <th className="w-12 px-2 py-2 text-center text-xs font-medium" title="Can Rotate">
+                        Rot
                       </th>
                       <th className="px-2 py-2 text-center text-xs font-medium text-teal-600">
                         Ops
