@@ -783,7 +783,7 @@ export async function POST(request: NextRequest) {
       
       // Register for multi-page merging
       const pageRegistration = registerTemplatePage(
-        userData?.organization_id || "unknown",
+        qrDetectionResult.parsed.orgId || "unknown",
         user.id,
         detectedTemplateId,
         uploadedFileId || crypto.randomUUID(),
@@ -810,9 +810,10 @@ export async function POST(request: NextRequest) {
       };
       
       // Log audit (async, don't wait)
-      if (userData?.organization_id) {
+      const orgIdForAudit = qrDetectionResult.parsed.orgId;
+      if (orgIdForAudit) {
         logTemplateParseAudit({
-          organizationId: userData.organization_id,
+          organizationId: orgIdForAudit,
           userId: user.id,
           templateId: detectedTemplateId,
           version: qrDetectionResult.parsed.version || "1.0",
