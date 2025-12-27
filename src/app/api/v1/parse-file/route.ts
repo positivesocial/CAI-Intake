@@ -1144,7 +1144,41 @@ async function processPDF(
         const batchResults = await Promise.allSettled(
           batch.map(async (page: any) => {
             if (!page.text || page.text.length < 50) {
-              return { pageNumber: page.pageNumber, parts: [], skipped: true };
+              return { pageNumber: page.pageNumber, parts: [], skipped: true, reason: "too short" };
+            }
+            
+            // Skip fill-in guide, reference, and header-only pages (not parts data)
+            const pageTextUpper = page.text.toUpperCase();
+            const isFillInGuide = pageTextUpper.includes("FILL-IN GUIDE") || 
+                                  pageTextUpper.includes("FILL IN GUIDE") ||
+                                  pageTextUpper.includes("BEST OCR TIPS") ||
+                                  pageTextUpper.includes("SHORTCODE REFERENCE");
+            const isTemplateHeader = pageTextUpper.includes("PROJECT INFORMATION") &&
+                                     !pageTextUpper.match(/\d{3,}\s*[×xX]\s*\d{3,}/); // No dimension data
+            const isMaterialsRefOnly = pageTextUpper.includes("MATERIALS REFERENCE") &&
+                                       !pageTextUpper.match(/\d{3,}\s*[×xX]\s*\d{3,}/);
+            
+            if (isFillInGuide) {
+              logger.info(`📥 [ParseFile] 📝 Skipping fill-in guide page ${page.pageNumber}`, { requestId });
+              return { pageNumber: page.pageNumber, parts: [], skipped: true, reason: "fill-in guide" };
+            }
+            if (isTemplateHeader) {
+              logger.info(`📥 [ParseFile] 📋 Skipping header-only page ${page.pageNumber}`, { requestId });
+              return { pageNumber: page.pageNumber, parts: [], skipped: true, reason: "header only" };
+            }
+            if (isMaterialsRefOnly) {
+              logger.info(`📥 [ParseFile] 📦 Skipping materials reference page ${page.pageNumber}`, { requestId });
+              return { pageNumber: page.pageNumber, parts: [], skipped: true, reason: "materials ref" };
+            }
+            
+            // Check if page appears to be a blank template (has row structure but no data)
+            // Blank templates have headers like "Part Name", "L(mm)", "W(mm)" but no actual values
+            const hasBlankRows = pageTextUpper.includes("PART NAME") && 
+                                 pageTextUpper.includes("L(MM)") &&
+                                 !pageTextUpper.match(/\b\d{3,}\b.*\b\d{3,}\b/); // No dimension pairs
+            if (hasBlankRows && detectedTemplateId) {
+              logger.info(`📥 [ParseFile] 📄 Skipping blank template page ${page.pageNumber}`, { requestId });
+              return { pageNumber: page.pageNumber, parts: [], skipped: true, reason: "blank template" };
             }
             
             // Use parseTextDirect to avoid double-chunking (pages are already chunked)
@@ -1177,15 +1211,45 @@ async function processPDF(
         }
       }
       
+      // Track what was skipped for better messaging
+      const skippedReasons: Record<string, number> = {};
+      for (const result of batchResults) {
+        if (result.status === "fulfilled" && result.value.skipped && result.value.reason) {
+          skippedReasons[result.value.reason] = (skippedReasons[result.value.reason] || 0) + 1;
+        }
+      }
+      
       logger.info("📥 [ParseFile] AI text parsing completed (page-based)", {
         requestId,
         source: bestResult.source,
         pageCount,
         partsFound: allParts.length,
         errors: allErrors.length,
+        skippedPages: Object.keys(skippedReasons).length > 0 ? skippedReasons : undefined,
         aiTimeMs: Date.now() - aiStartTime,
         totalPdfTimeMs: Date.now() - pdfStartTime,
       });
+      
+      // If no parts found and it's a detected template, provide helpful message
+      if (allParts.length === 0 && detectedTemplateId) {
+        const allPagesSkipped = Object.values(skippedReasons).reduce((a, b) => a + b, 0) === pageCount;
+        if (allPagesSkipped || skippedReasons["blank template"] || skippedReasons["fill-in guide"]) {
+          return {
+            success: false,
+            parts: [],
+            totalConfidence: 0,
+            errors: [
+              "This appears to be a blank CAI template PDF. Templates are designed to be:\n\n" +
+              "1️⃣ PRINTED out on paper\n" +
+              "2️⃣ FILLED IN by hand with your parts data\n" +
+              "3️⃣ PHOTOGRAPHED or SCANNED\n" +
+              "4️⃣ UPLOADED as an IMAGE (JPG/PNG)\n\n" +
+              "💡 Tip: For best OCR accuracy, use BLOCK LETTERS when filling in the template."
+            ],
+            processingTime: Date.now() - aiStartTime,
+          };
+        }
+      }
       
       return {
         success: allParts.length > 0,
