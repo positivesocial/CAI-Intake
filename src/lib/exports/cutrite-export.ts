@@ -98,8 +98,9 @@ export function generateCutRiteExport(
     // Parts
     lines.push('      <Parts>');
     for (const part of parts) {
-      const grainDir = part.grain === "along_L" ? "LENGTH" : 
-                       part.grain === "along_W" ? "WIDTH" : "NONE";
+      // Grain direction - derive from allow_rotation
+      // If part can't rotate, assume grain along LENGTH (most common)
+      const grainDir = part.allow_rotation === false ? "LENGTH" : "NONE";
       
       lines.push('        <Part>');
       lines.push(`          <ID>${escapeXml(part.part_id)}</ID>`);

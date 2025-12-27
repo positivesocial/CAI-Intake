@@ -103,10 +103,10 @@ export function generateOptimikExport(
     // Grain direction
     if (opts.includeGrain) {
       // Optimik grain codes: 0 = no grain, 1 = along length, 2 = along width
-      const grainCode = part.grain === "along_L" ? "1" : 
-                        part.grain === "along_W" ? "2" : "0";
+      // Derive from allow_rotation: if can't rotate, grain is along length (1)
+      const grainCode = part.allow_rotation === false ? "1" : "0";
       cells.push(grainCode);
-      cells.push(part.allow_rotation ? "1" : "0");
+      cells.push(part.allow_rotation !== false ? "1" : "0");
     }
     
     // Edge banding (1 = apply, 0 = no edge)

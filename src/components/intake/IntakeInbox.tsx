@@ -326,13 +326,15 @@ function InboxPartPreview({
 }) {
   // Convert part ops to preview data
   const previewData: PartPreviewData = React.useMemo(() => {
+    // Show grain lines when part cannot rotate (respects material grain)
+    const showGrain = part.allow_rotation === false || part.grain === "along_L";
     return convertOpsToPreview(
       part.size.L,
       part.size.W,
-      part.grain,
+      showGrain ? "along_L" : "none",
       part.ops
     );
-  }, [part.size.L, part.size.W, part.grain, part.ops]);
+  }, [part.size.L, part.size.W, part.grain, part.allow_rotation, part.ops]);
 
   return (
     <PartPreviewSvg
@@ -1363,7 +1365,7 @@ export function IntakeInbox() {
     selectedIds.forEach((id) => {
       updatePartWithCorrection(id, { 
         allow_rotation: allow,
-        grain: allow ? "none" : "along_L",
+        // grain is deprecated - parts inherit grain from material
       });
     });
   };

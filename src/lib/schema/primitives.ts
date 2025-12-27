@@ -38,8 +38,13 @@ export type EdgeId = z.infer<typeof EdgeIdSchema>;
 
 /**
  * Grain orientation mode
- * - "none" = no grain (can rotate freely)
- * - "along_L" = grain runs along L dimension
+ * @deprecated For PARTS, use `allow_rotation` boolean instead. 
+ * Grain is now a MATERIAL property - parts inherit grain from their material.
+ * If allow_rotation=false, the part respects the material's grain direction.
+ * 
+ * Legacy values (for backwards compatibility):
+ * - "none" = no grain constraint (allow_rotation=true)
+ * - "along_L" = grain runs along L dimension (allow_rotation=false)
  */
 export const GrainModeSchema = z.enum(["none", "along_L"]);
 export type GrainMode = z.infer<typeof GrainModeSchema>;

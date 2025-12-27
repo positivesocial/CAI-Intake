@@ -574,7 +574,7 @@ export function PartCard({
 
               {/* Rotation */}
               <div>
-                <label className="text-xs text-[var(--muted-foreground)]">Grain/Rotation</label>
+                <label className="text-xs text-[var(--muted-foreground)]">Can Rotate</label>
                 <button
                   type="button"
                   onClick={(e) => {

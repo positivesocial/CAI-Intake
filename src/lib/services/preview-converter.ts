@@ -579,16 +579,21 @@ export function convertEdgingToPreview(
 
 /**
  * Create preview data from minimal part info
+ * Shows grain lines when part cannot rotate (respects material grain)
  */
 export function createPreviewFromPart(part: {
   size: { L: number; W: number };
   grain?: string;
+  allow_rotation?: boolean;
   ops?: PartOps;
 }): PartPreviewData {
+  // If allow_rotation is false, show grain lines
+  // For backwards compatibility, also check grain field
+  const showGrain = part.allow_rotation === false || part.grain === "along_L";
   return convertOpsToPreview(
     part.size.L,
     part.size.W,
-    part.grain,
+    showGrain ? "along_L" : "none",
     part.ops
   );
 }

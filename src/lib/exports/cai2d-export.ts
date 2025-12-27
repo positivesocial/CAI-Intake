@@ -99,8 +99,9 @@ export function generateCai2dExport(
           length: convertUnit(p.size.L, "mm", targetUnit),
           width: convertUnit(p.size.W, "mm", targetUnit),
           quantity: p.qty,
-          grain: p.grain !== "none" ? p.grain : undefined,
-          canRotate: p.allow_rotation,
+          // Derive grain from allow_rotation: if can't rotate, grain is along_L
+          grain: p.allow_rotation === false ? "along_L" : undefined,
+          canRotate: p.allow_rotation !== false,
           group: p.group_id,
           priority: 0,
           

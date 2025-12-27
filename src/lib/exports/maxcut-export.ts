@@ -79,8 +79,9 @@ export function generateMaxcutExport(
     const material = cutlist.materials?.find(m => m.material_id === part.material_id);
     const materialName = material?.name ?? part.material_id;
     
-    // Grain direction: L, W, or empty
-    const grainCode = part.grain === "along_L" ? "L" : part.grain === "along_W" ? "W" : "";
+    // Grain direction: L, W, or empty - derive from allow_rotation
+    // If part can't rotate, assume grain along L (most common)
+    const grainCode = part.allow_rotation === false ? "L" : "";
     
     // Dimensions
     const length = convertUnit(part.size.L, "mm", targetUnit);
