@@ -60,13 +60,19 @@ const OPTIONAL_FIELDS: (keyof ColumnMapping)[] = [
   "qty",
   "thickness_mm",
   "material",
-  "grain",
+  "allow_rotation",
   "group_id",
   "notes",
+];
+const OPS_FIELDS: (keyof ColumnMapping)[] = [
+  "edge",
   "edging_L1",
   "edging_L2",
   "edging_W1",
   "edging_W2",
+  "groove",
+  "drill",
+  "cnc",
 ];
 
 const FIELD_LABELS: Record<keyof ColumnMapping, string> = {
@@ -76,13 +82,18 @@ const FIELD_LABELS: Record<keyof ColumnMapping, string> = {
   W: "Width (W)",
   thickness_mm: "Thickness",
   material: "Material",
-  grain: "Grain Direction",
+  grain: "Grain (deprecated)",
+  allow_rotation: "Can Rotate",
   group_id: "Group ID",
   notes: "Notes",
+  edge: "Edge (all)",
   edging_L1: "Edge L1",
   edging_L2: "Edge L2",
   edging_W1: "Edge W1",
   edging_W2: "Edge W2",
+  groove: "Groove",
+  drill: "Drilling",
+  cnc: "CNC/Routing",
 };
 
 interface ExcelImportDialogProps {
@@ -503,9 +514,26 @@ export function ExcelImportDialog({
                 <div>
                   <h4 className="text-sm font-medium mb-3">Optional Fields</h4>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {OPTIONAL_FIELDS.filter(
-                      (f) => isAdvancedMode || !f.startsWith("edging")
-                    ).map((field) => (
+                    {OPTIONAL_FIELDS.map((field) => (
+                      <SimpleSelect
+                        key={field}
+                        label={FIELD_LABELS[field]}
+                        options={columnOptions}
+                        value={mapping[field]?.toString() ?? ""}
+                        onChange={(e) => handleMappingChange(field, e.target.value)}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Operations mappings */}
+                <div>
+                  <h4 className="text-sm font-medium mb-3">Operations (Shortcodes)</h4>
+                  <p className="text-xs text-[var(--muted-foreground)] mb-3">
+                    Map columns containing operation shortcodes (e.g., "L1L2" for edges, "BP" for back panel groove)
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {OPS_FIELDS.map((field) => (
                       <SimpleSelect
                         key={field}
                         label={FIELD_LABELS[field]}

@@ -20,13 +20,23 @@ export interface ColumnMapping {
   W?: number | string;
   thickness_mm?: number | string;
   material?: number | string;
+  /** @deprecated Use allow_rotation instead - grain is a material property */
   grain?: number | string;
+  /** Whether the part can be rotated during optimization */
+  allow_rotation?: number | string;
   group_id?: number | string;
   notes?: number | string;
+  // Edge operations (single column with all edges, e.g., "L1L2W1")
+  edge?: number | string;
+  // Individual edge columns (alternative format)
   edging_L1?: number | string;
   edging_L2?: number | string;
   edging_W1?: number | string;
   edging_W2?: number | string;
+  // Operations columns
+  groove?: number | string;
+  drill?: number | string;
+  cnc?: number | string;
 }
 
 /**
@@ -339,17 +349,25 @@ export function autoDetectMapping(headers: string[]): ColumnMapping {
   const patterns: Record<keyof ColumnMapping, RegExp[]> = {
     label: [/^(label|name|part|description|desc)$/i, /part.*name/i],
     qty: [/^(qty|quantity|count|pcs|pieces?)$/i, /^q$/i],
-    L: [/^(l|length|len|long)$/i],
-    W: [/^(w|width|wid|short)$/i],
+    L: [/^(l|length|len|long)$/i, /l\s*\(?mm\)?/i],
+    W: [/^(w|width|wid|short)$/i, /w\s*\(?mm\)?/i],
     thickness_mm: [/^(t|thk|thickness|thck)$/i, /^(mm)$/i],
     material: [/^(mat|material|board|stock)$/i],
-    grain: [/^(grain|gr|direction|dir)$/i, /^(gl)$/i],
+    grain: [/^(grain|gr|direction|dir)$/i, /^(gl)$/i],  // Deprecated but still detected
+    allow_rotation: [/^(rot|rotate|rotation|can.*rot|allow.*rot)$/i, /^r$/i],
     group_id: [/^(group|grp|cabinet|cab|assembly)$/i],
     notes: [/^(note|notes|comment|comments|remark)$/i],
+    // Combined edge column
+    edge: [/^(edge|edges|edging|eb|edgeband)$/i, /edge.*\(.*code\)/i],
+    // Individual edge columns
     edging_L1: [/^(eb.*l1|edge.*l1|l1.*edge|band.*l1)$/i, /^l1$/i],
     edging_L2: [/^(eb.*l2|edge.*l2|l2.*edge|band.*l2)$/i, /^l2$/i],
     edging_W1: [/^(eb.*w1|edge.*w1|w1.*edge|band.*w1)$/i, /^w1$/i],
     edging_W2: [/^(eb.*w2|edge.*w2|w2.*edge|band.*w2)$/i, /^w2$/i],
+    // Operations columns
+    groove: [/^(groove|grooves|grv|dado|rabbet)$/i],
+    drill: [/^(drill|drilling|holes?|bore)$/i],
+    cnc: [/^(cnc|routing|route|machine|machining)$/i],
   };
 
   headers.forEach((header, index) => {

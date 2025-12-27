@@ -1255,7 +1255,8 @@ export function generateOrgExcelTemplateXLSX(config: OrgTemplateConfig): ArrayBu
   // ============================================
   // SHEET 2: Parts List
   // ============================================
-  const headers: string[] = ["#", "Part Name", "L(mm)", "W(mm)", "Thk", "Qty", "Material"];
+  // Rot = Rotation allowed (Y/N) - parts inherit grain from material
+  const headers: string[] = ["#", "Part Name", "L(mm)", "W(mm)", "Thk", "Qty", "Material", "Rot"];
   if (config.includeEdgebanding !== false) headers.push("Edge");
   if (config.includeGrooves) headers.push("Groove");
   if (config.includeDrilling) headers.push("Drill");
@@ -1291,6 +1292,7 @@ export function generateOrgExcelTemplateXLSX(config: OrgTemplateConfig): ArrayBu
     { wch: 5 },   // Thk
     { wch: 5 },   // Qty
     { wch: 12 },  // Material
+    { wch: 4 },   // Rot (Y/N)
     { wch: 8 },   // Edge
     { wch: 8 },   // Groove
     { wch: 8 },   // Drill
@@ -1311,6 +1313,10 @@ export function generateOrgExcelTemplateXLSX(config: OrgTemplateConfig): ArrayBu
       ["• Use BLOCK LETTERS for best accuracy"],
       ["• Take a clear, well-lit photo"],
       ["• Ensure QR code is visible"],
+      [],
+      ["🔄 ROTATION COLUMN (Rot)"],
+      ["Y", "Part CAN be rotated during optimization (default)"],
+      ["N", "Part CANNOT be rotated (e.g., has grain direction)"],
       [],
     ];
     
@@ -1415,7 +1421,7 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
   const includeFillInGuide = config.includeFillInGuide !== false;
   const includeMaterialsRef = config.includeMaterialsRef !== false;
   
-  // Build headers
+  // Build headers - Rot = Rotation allowed (Y/N) - parts inherit grain from material
   const headers: string[] = [
     "#",
     "Part Name",
@@ -1424,6 +1430,7 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
     "Thk",
     "Qty",
     "Material",
+    "Rot",  // Y/N - can this part be rotated during optimization?
   ];
   
   if (config.includeEdgebanding !== false) {
@@ -1608,8 +1615,8 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
     cell(`Page __ of __`, "String", "Footer"),
   ]));
   
-  // Column widths for Parts sheet
-  const colWidths = [30, 120, 50, 50, 35, 35, 70];
+  // Column widths for Parts sheet (includes Rot column after Material)
+  const colWidths = [30, 120, 50, 50, 35, 35, 70, 30]; // # PartName L W Thk Qty Mat Rot
   if (config.includeEdgebanding !== false) colWidths.push(50);
   if (config.includeGrooves) colWidths.push(55);
   if (config.includeDrilling) colWidths.push(50);
@@ -1866,8 +1873,8 @@ export function generateOrgCSVTemplate(config: OrgTemplateConfig): string {
   const orgName = config.branding.name || "Organization";
   const rows = config.rows || 35;
   
-  // Build headers
-  const headers: string[] = ["#", "Part Name", "L(mm)", "W(mm)", "Thk", "Qty", "Material"];
+  // Build headers - Rot = Rotation allowed (Y/N) - parts inherit grain from material
+  const headers: string[] = ["#", "Part Name", "L(mm)", "W(mm)", "Thk", "Qty", "Material", "Rot"];
   if (config.includeEdgebanding !== false) headers.push("Edge");
   if (config.includeGrooves) headers.push("Groove");
   if (config.includeDrilling) headers.push("Drill");
