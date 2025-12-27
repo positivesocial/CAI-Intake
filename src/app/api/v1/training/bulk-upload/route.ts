@@ -12,6 +12,35 @@ import { prisma } from "@/lib/db";
 import { OpenAIProvider, AnthropicProvider, type AIProvider } from "@/lib/ai";
 import type { CutPart } from "@/lib/schema";
 
+// Helper function to handle pdf-parse with various export styles
+async function parsePDFWithFallback(buffer: Buffer): Promise<{ text: string } | null> {
+  try {
+    const pdfParseModule = await import("pdf-parse");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = pdfParseModule as any;
+    
+    if (mod.PDFParse && typeof mod.PDFParse === "function") {
+      try {
+        return await new mod.PDFParse(buffer);
+      } catch {
+        return await mod.PDFParse(buffer);
+      }
+    } else if (mod.default && typeof mod.default === "function") {
+      try {
+        return await mod.default(buffer);
+      } catch {
+        return await new mod.default(buffer);
+      }
+    } else if (typeof mod === "function") {
+      return await mod(buffer);
+    }
+    return null;
+  } catch (error) {
+    console.error("pdf-parse error:", error);
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -219,19 +248,17 @@ async function extractTextFromPDF(file: File): Promise<string> {
     }
     
     // Fall back to pdf-parse
-    const pdfParse = await import("pdf-parse").then(m => m.default);
-    const data = await pdfParse(buffer);
-    return data.text;
+    const pdfData = await parsePDFWithFallback(buffer);
+    return pdfData?.text || "";
   } catch (error) {
     console.error("PDF extraction error:", error);
     
     // Fall back to pdf-parse
     try {
-      const pdfParse = await import("pdf-parse").then(m => m.default);
       const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      const data = await pdfParse(buffer);
-      return data.text;
+      const buf = Buffer.from(arrayBuffer);
+      const pdfData = await parsePDFWithFallback(buf);
+      return pdfData?.text || "";
     } catch (fallbackError) {
       console.error("PDF-parse fallback error:", fallbackError);
       return "";
