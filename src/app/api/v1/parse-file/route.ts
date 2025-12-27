@@ -1490,8 +1490,11 @@ async function convertPdfToImagesAndParse(
     // Dynamic import of pdfjs-dist for server-side rendering
     const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
     
+    // Convert Buffer to Uint8Array as required by pdfjs-dist
+    const pdfData = new Uint8Array(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength);
+    
     // Load the PDF document
-    const loadingTask = pdfjsLib.getDocument({ data: pdfBuffer });
+    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
     const pdfDoc = await loadingTask.promise;
     const numPages = pdfDoc.numPages;
     
