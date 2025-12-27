@@ -1136,6 +1136,7 @@ async function processPDF(
       const BATCH_SIZE = Math.min(pages.length, 10);
       const allParts: any[] = [];
       const allErrors: string[] = [];
+      const skippedReasons: Record<string, number> = {}; // Track skipped pages
       
       for (let i = 0; i < pages.length; i += BATCH_SIZE) {
         const batch = pages.slice(i, i + BATCH_SIZE);
@@ -1199,6 +1200,11 @@ async function processPDF(
         
         for (const result of batchResults) {
           if (result.status === "fulfilled") {
+            // Track skipped pages for messaging
+            if (result.value.skipped && result.value.reason) {
+              skippedReasons[result.value.reason] = (skippedReasons[result.value.reason] || 0) + 1;
+            }
+            
             if (result.value.parts && result.value.parts.length > 0) {
               allParts.push(...result.value.parts);
               logger.info(`📥 [ParseFile] ✅ Page ${result.value.pageNumber} parsed: ${result.value.parts.length} parts`, {
@@ -1212,14 +1218,6 @@ async function processPDF(
           } else {
             allErrors.push(`Page parsing failed: ${result.reason}`);
           }
-        }
-      }
-      
-      // Track what was skipped for better messaging
-      const skippedReasons: Record<string, number> = {};
-      for (const result of batchResults) {
-        if (result.status === "fulfilled" && result.value.skipped && result.value.reason) {
-          skippedReasons[result.value.reason] = (skippedReasons[result.value.reason] || 0) + 1;
         }
       }
       
