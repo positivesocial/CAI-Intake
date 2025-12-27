@@ -288,5 +288,304 @@ export function getParsingStrategy(format: SourceFormatHint): "deterministic" | 
   }
 }
 
+// ============================================================
+// AUTO PARSER MODE DETECTION
+// ============================================================
+
+export type ParserModeRecommendation = "pattern" | "ai";
+
+export interface ParserModeAnalysis {
+  /** Recommended parser mode */
+  recommended: ParserModeRecommendation;
+  /** Confidence in the recommendation (0-1) */
+  confidence: number;
+  /** Reasons for the recommendation */
+  reasons: string[];
+  /** Detected format hint */
+  formatHint: SourceFormatHint;
+  /** Metrics used for decision */
+  metrics: {
+    structuralScore: number;      // How structured the text is (0-1)
+    dimensionPatternScore: number; // How many dimension patterns found (0-1)
+    naturalLanguageScore: number;  // How much natural language prose (0-1)
+    consistencyScore: number;      // Line-to-line consistency (0-1)
+    lineCount: number;
+    avgTokensPerLine: number;
+  };
+}
+
+// Patterns that indicate natural language / AI-needed text
+const NATURAL_LANGUAGE_PATTERNS = [
+  /\b(i need|please|also|and then|make sure|don't forget)\b/i,
+  /\b(with|including|except|but not|however)\b/i,
+  /\b(edge\s*band|edging|groove|drill|hole|cnc)\s+(on|for|at|along)\b/i,
+  /\b(same|similar|like the|as before)\b/i,
+  /\b(white|oak|maple|cherry|walnut|melamine|plywood|mdf)\s+(board|panel|sheet|material)/i,
+  /[.!?]\s+[A-Z]/,  // Sentence endings followed by new sentences
+  /\b(cabinet|drawer|shelf|door|panel|side|top|bottom|back)\s+(for|of|in)\b/i,
+];
+
+// Patterns that indicate structured/tabular data
+const STRUCTURED_PATTERNS = [
+  /^\s*\d+\s*[.,]\s*\d+/m,           // Decimal numbers at line start
+  /^\s*[A-Z]+-?\d+/m,                 // Part IDs like "P-001"
+  /\t.*\t.*\t/,                       // Multiple tabs
+  /,.*,.*,/,                          // Multiple commas
+  /\|\s*.*\s*\|/,                     // Pipe delimiters
+  /^\s*[-|+]+\s*$/m,                  // Table borders
+];
+
+// Dimension patterns (good for regex parsing)
+const DIMENSION_PATTERNS = [
+  /\d+\s*[x×X]\s*\d+/g,               // 720x560
+  /\d+\s*mm?\s*[x×X]\s*\d+\s*mm?/gi,  // 720mm x 560mm
+  /\d+\s*['"]?\s*[x×X]\s*\d+\s*['"]?/g, // With inches
+  /[LW]\s*[:=]?\s*\d+/gi,             // L:720 or L=720
+  /\b\d{2,4}\s+\d{2,4}\s+\d{1,2}\b/g, // Space-separated: 720 560 18
+];
+
+/**
+ * Analyze text and recommend the best parser mode
+ */
+export function analyzeTextForParserMode(text: string): ParserModeAnalysis {
+  const trimmed = text.trim();
+  const lines = trimmed.split("\n").filter(l => l.trim());
+  const reasons: string[] = [];
+  
+  if (!trimmed || lines.length === 0) {
+    return {
+      recommended: "pattern",
+      confidence: 0.5,
+      reasons: ["Empty or minimal text"],
+      formatHint: "free_form",
+      metrics: {
+        structuralScore: 0,
+        dimensionPatternScore: 0,
+        naturalLanguageScore: 0,
+        consistencyScore: 0,
+        lineCount: 0,
+        avgTokensPerLine: 0,
+      },
+    };
+  }
+
+  // Get format detection result
+  const formatResult = detectFormat(trimmed);
+  
+  // Calculate metrics
+  const metrics = calculateMetrics(trimmed, lines);
+  
+  // Decision logic
+  let patternScore = 0;
+  let aiScore = 0;
+  
+  // 1. Format detection score
+  if (formatResult.format !== "free_form" && formatResult.confidence >= 0.7) {
+    patternScore += 30;
+    reasons.push(`Detected ${formatResult.format} format`);
+  } else if (formatResult.format === "free_form") {
+    aiScore += 20;
+    reasons.push("Free-form text detected");
+  }
+  
+  // 2. Structural consistency
+  if (metrics.consistencyScore >= 0.8) {
+    patternScore += 25;
+    reasons.push("Highly consistent structure");
+  } else if (metrics.consistencyScore >= 0.6) {
+    patternScore += 15;
+  } else if (metrics.consistencyScore < 0.4) {
+    aiScore += 15;
+    reasons.push("Inconsistent structure");
+  }
+  
+  // 3. Dimension patterns
+  if (metrics.dimensionPatternScore >= 0.7) {
+    patternScore += 20;
+    reasons.push("Clear dimension patterns found");
+  } else if (metrics.dimensionPatternScore >= 0.4) {
+    patternScore += 10;
+  } else if (metrics.dimensionPatternScore < 0.2) {
+    aiScore += 10;
+    reasons.push("Few standard dimension patterns");
+  }
+  
+  // 4. Natural language indicators
+  if (metrics.naturalLanguageScore >= 0.5) {
+    aiScore += 30;
+    reasons.push("Contains natural language descriptions");
+  } else if (metrics.naturalLanguageScore >= 0.2) {
+    aiScore += 15;
+  }
+  
+  // 5. Structural score (delimiters, consistency)
+  if (metrics.structuralScore >= 0.7) {
+    patternScore += 20;
+    reasons.push("Tabular/structured data detected");
+  } else if (metrics.structuralScore < 0.3) {
+    aiScore += 15;
+    reasons.push("Unstructured format");
+  }
+  
+  // 6. Line count and complexity
+  if (lines.length >= 10 && metrics.consistencyScore >= 0.7) {
+    patternScore += 10;
+    reasons.push("Large structured dataset");
+  }
+  
+  // 7. Token density - high tokens per line often means prose
+  if (metrics.avgTokensPerLine > 15) {
+    aiScore += 15;
+    reasons.push("Complex lines suggest prose");
+  } else if (metrics.avgTokensPerLine < 8 && lines.length > 2) {
+    patternScore += 10;
+    reasons.push("Concise lines suggest structured data");
+  }
+  
+  // Determine recommendation
+  const totalScore = patternScore + aiScore;
+  const recommended: ParserModeRecommendation = patternScore >= aiScore ? "pattern" : "ai";
+  const confidence = totalScore > 0 
+    ? Math.min(0.95, Math.abs(patternScore - aiScore) / totalScore + 0.5)
+    : 0.5;
+  
+  // Add final reason
+  if (recommended === "pattern") {
+    reasons.push("Pattern-based parsing recommended for structured data");
+  } else {
+    reasons.push("AI parsing recommended for better interpretation");
+  }
+  
+  return {
+    recommended,
+    confidence,
+    reasons,
+    formatHint: formatResult.format,
+    metrics,
+  };
+}
+
+/**
+ * Calculate text metrics for parser mode decision
+ */
+function calculateMetrics(text: string, lines: string[]): ParserModeAnalysis["metrics"] {
+  // Structural score - based on delimiters and consistency
+  let structuralScore = 0;
+  
+  // Check for structured patterns
+  const structuredMatches = STRUCTURED_PATTERNS.filter(p => p.test(text)).length;
+  structuralScore += Math.min(0.4, structuredMatches * 0.1);
+  
+  // Check delimiter consistency
+  const tabCounts = lines.map(l => (l.match(/\t/g) || []).length);
+  const commaCounts = lines.map(l => (l.match(/,/g) || []).length);
+  const avgTabs = tabCounts.reduce((a, b) => a + b, 0) / lines.length;
+  const avgCommas = commaCounts.reduce((a, b) => a + b, 0) / lines.length;
+  
+  if (avgTabs >= 2 || avgCommas >= 2) {
+    const tabVariance = tabCounts.reduce((sum, c) => sum + Math.abs(c - avgTabs), 0) / lines.length;
+    const commaVariance = commaCounts.reduce((sum, c) => sum + Math.abs(c - avgCommas), 0) / lines.length;
+    const bestVariance = Math.min(tabVariance, commaVariance);
+    structuralScore += Math.max(0, 0.6 - bestVariance * 0.2);
+  }
+  
+  // Dimension pattern score
+  let dimensionMatches = 0;
+  for (const pattern of DIMENSION_PATTERNS) {
+    const matches = text.match(pattern) || [];
+    dimensionMatches += matches.length;
+  }
+  const dimensionPatternScore = Math.min(1, dimensionMatches / Math.max(1, lines.length));
+  
+  // Natural language score
+  let naturalLanguageMatches = 0;
+  for (const pattern of NATURAL_LANGUAGE_PATTERNS) {
+    if (pattern.test(text)) {
+      naturalLanguageMatches++;
+    }
+  }
+  const naturalLanguageScore = Math.min(1, naturalLanguageMatches / 4);
+  
+  // Consistency score - how similar are the lines?
+  let consistencyScore = 0;
+  if (lines.length >= 2) {
+    const lineLengths = lines.map(l => l.length);
+    const avgLength = lineLengths.reduce((a, b) => a + b, 0) / lines.length;
+    const lengthVariance = lineLengths.reduce((sum, l) => sum + Math.pow(l - avgLength, 2), 0) / lines.length;
+    const cv = Math.sqrt(lengthVariance) / avgLength; // Coefficient of variation
+    consistencyScore = Math.max(0, 1 - cv * 0.5);
+    
+    // Also check for similar structure (word/token count)
+    const tokenCounts = lines.map(l => l.split(/\s+/).length);
+    const avgTokens = tokenCounts.reduce((a, b) => a + b, 0) / lines.length;
+    const tokenVariance = tokenCounts.reduce((sum, c) => sum + Math.abs(c - avgTokens), 0) / lines.length;
+    if (tokenVariance < 2) {
+      consistencyScore += 0.2;
+    }
+    consistencyScore = Math.min(1, consistencyScore);
+  }
+  
+  // Average tokens per line
+  const totalTokens = lines.reduce((sum, l) => sum + l.split(/\s+/).length, 0);
+  const avgTokensPerLine = totalTokens / Math.max(1, lines.length);
+  
+  return {
+    structuralScore: Math.min(1, structuralScore),
+    dimensionPatternScore,
+    naturalLanguageScore,
+    consistencyScore,
+    lineCount: lines.length,
+    avgTokensPerLine,
+  };
+}
+
+/**
+ * Quick check if text should definitely use AI (for complex cases)
+ */
+export function shouldForceAI(text: string): boolean {
+  // Very short text with no clear structure
+  const lines = text.trim().split("\n").filter(l => l.trim());
+  if (lines.length === 1 && lines[0].length > 50) {
+    // Single long line - likely prose
+    return true;
+  }
+  
+  // Contains clear natural language requests
+  if (/\b(please|i need|can you|make me)\b/i.test(text)) {
+    return true;
+  }
+  
+  // Contains complex operation descriptions in prose
+  if (/\b(with|including)\s+.*(edge|groove|drill|hole|cnc)\b/i.test(text)) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Quick check if text should definitely use pattern parser
+ */
+export function shouldForcePattern(text: string): boolean {
+  const formatResult = detectFormat(text);
+  
+  // Known software format with high confidence
+  if (formatResult.confidence >= 0.9 && formatResult.format !== "free_form") {
+    return true;
+  }
+  
+  // Clear tabular structure
+  const lines = text.trim().split("\n").filter(l => l.trim());
+  if (lines.length >= 5) {
+    const tabCounts = lines.map(l => (l.match(/\t/g) || []).length);
+    const allSameTabs = tabCounts.every(c => c === tabCounts[0] && c >= 3);
+    if (allSameTabs) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 
 
