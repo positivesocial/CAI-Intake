@@ -313,6 +313,9 @@ function formatSidesCode(sides: string[]): string {
 
 /**
  * Hook to fetch operation types on mount
+ * 
+ * Returns clean new names only - no backwards compatibility.
+ * UI components use these to populate dropdowns and selectors.
  */
 export function useOperationTypes() {
   const store = useOperationTypesStore();
@@ -327,28 +330,36 @@ export function useOperationTypes() {
   }
 
   return {
-    grooveOperations: store.grooveOperations,
-    drillingOperations: store.drillingOperations,
-    cncOperations: store.cncOperations,
-    edgebandOperations: store.edgebandOperations,
+    // Operation lists - new names only
+    grooves: store.grooveOperations,
+    drilling: store.drillingOperations,
+    cnc: store.cncOperations,
+    edgebandOps: store.edgebandOperations,
     edgebandMaterials: store.edgebandMaterials,
+    
+    // Loading state
     isLoading:
       store.isLoadingGrooveOps ||
       store.isLoadingDrillingOps ||
       store.isLoadingCncOps ||
       store.isLoadingEdgebandOps ||
       store.isLoadingEdgebands,
-    errors: {
-      grooveOps: store.grooveOpsError,
-      drillingOps: store.drillingOpsError,
-      cncOps: store.cncOpsError,
-      edgebandOps: store.edgebandOpsError,
-      edgebands: store.edgebandsError,
-    },
+    
+    // Error state  
+    hasError:
+      !!store.grooveOpsError ||
+      !!store.drillingOpsError ||
+      !!store.cncOpsError ||
+      !!store.edgebandOpsError ||
+      !!store.edgebandsError,
+    
+    // Actions
     refetch: store.fetchAllOperations,
-    getGrooveOpByCode: store.getGrooveOpByCode,
-    getDrillingOpByCode: store.getDrillingOpByCode,
-    getCncOpByCode: store.getCncOpByCode,
+    
+    // Selectors
+    getGrooveByCode: store.getGrooveOpByCode,
+    getDrillingByCode: store.getDrillingOpByCode,
+    getCncByCode: store.getCncOpByCode,
     getEdgebandOpByCode: store.getEdgebandOpByCode,
     getEdgebandById: store.getEdgebandById,
   };

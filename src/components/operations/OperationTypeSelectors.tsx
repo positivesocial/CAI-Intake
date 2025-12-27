@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useOperationTypes, type EdgebandMaterial } from "@/lib/stores/operation-types-store";
-import type { GrooveType, HoleType, CncOperationType } from "@/lib/schema";
+import type { GrooveOperation, DrillingOperation, CncOperation } from "@/lib/operations/types";
 import {
   formatEdgebandShortcode,
   formatGrooveShortcode,
@@ -211,15 +211,15 @@ export function GrooveTypeSelector({
   compact = false,
   className,
 }: GrooveTypeSelectorProps) {
-  const { grooveTypes, isLoading } = useOperationTypes();
+  const { grooves, isLoading } = useOperationTypes();
 
-  const addGroove = (type: GrooveType) => {
+  const addGroove = (op: GrooveOperation) => {
     onChange([
       ...value,
       {
-        type_code: type.code,
-        width_mm: type.default_width_mm || 4,
-        depth_mm: type.default_depth_mm || 8,
+        type_code: op.code,
+        width_mm: op.widthMm || 4,
+        depth_mm: op.depthMm || 8,
         side: "W1",
       },
     ]);
@@ -263,8 +263,8 @@ export function GrooveTypeSelector({
               <Select
                 value=""
                 onValueChange={(code) => {
-                  const type = grooveTypes.find((t) => t.code === code);
-                  if (type) addGroove(type);
+                  const op = grooves.find((g) => g.code === code);
+                  if (op) addGroove(op);
                 }}
               >
                 <SelectTrigger className="h-7 w-28 text-xs">
@@ -272,9 +272,9 @@ export function GrooveTypeSelector({
                   Add
                 </SelectTrigger>
                 <SelectContent>
-                  {grooveTypes.map((t) => (
-                    <SelectItem key={t.id} value={t.code}>
-                      {t.code} - {t.name}
+                  {grooves.map((g) => (
+                    <SelectItem key={g.id} value={g.code}>
+                      {g.code} - {g.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -408,8 +408,8 @@ export function GrooveTypeSelector({
       <Select
         value=""
         onValueChange={(code) => {
-          const type = grooveTypes.find((t) => t.code === code);
-          if (type) addGroove(type);
+          const op = grooves.find((g) => g.code === code);
+          if (op) addGroove(op);
         }}
       >
         <SelectTrigger className="h-7 text-xs">
@@ -417,9 +417,9 @@ export function GrooveTypeSelector({
           Add Groove
         </SelectTrigger>
         <SelectContent>
-          {grooveTypes.map((t) => (
-            <SelectItem key={t.id} value={t.code}>
-              {t.code} - {t.name}
+          {grooves.map((g) => (
+            <SelectItem key={g.id} value={g.code}>
+              {g.code} - {g.name}
             </SelectItem>
           ))}
         </SelectContent>
@@ -450,10 +450,10 @@ export function HoleTypeSelector({
   compact = false,
   className,
 }: HoleTypeSelectorProps) {
-  const { holeTypes, isLoading } = useOperationTypes();
+  const { drilling, isLoading } = useOperationTypes();
 
-  const addHole = (type: HoleType) => {
-    onChange([...value, { type_code: type.code, face: "F" }]);
+  const addHole = (op: DrillingOperation) => {
+    onChange([...value, { type_code: op.code, face: "F" }]);
   };
 
   const removeHole = (index: number) => {
@@ -492,8 +492,8 @@ export function HoleTypeSelector({
               <Select
                 value=""
                 onValueChange={(code) => {
-                  const type = holeTypes.find((t) => t.code === code);
-                  if (type) addHole(type);
+                  const op = drilling.find((d) => d.code === code);
+                  if (op) addHole(op);
                 }}
               >
                 <SelectTrigger className="h-7 w-28 text-xs">
@@ -501,9 +501,9 @@ export function HoleTypeSelector({
                   Add
                 </SelectTrigger>
                 <SelectContent>
-                  {holeTypes.map((t) => (
-                    <SelectItem key={t.id} value={t.code}>
-                      {t.code} - {t.name}
+                  {drilling.map((d) => (
+                    <SelectItem key={d.id} value={d.code}>
+                      {d.code} - {d.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -616,8 +616,8 @@ export function HoleTypeSelector({
       <Select
         value=""
         onValueChange={(code) => {
-          const type = holeTypes.find((t) => t.code === code);
-          if (type) addHole(type);
+          const op = drilling.find((d) => d.code === code);
+          if (op) addHole(op);
         }}
       >
         <SelectTrigger className="h-7 text-xs">
@@ -625,9 +625,9 @@ export function HoleTypeSelector({
           Add Hole
         </SelectTrigger>
         <SelectContent>
-          {holeTypes.map((t) => (
-            <SelectItem key={t.id} value={t.code}>
-              {t.code} - {t.name}
+          {drilling.map((d) => (
+            <SelectItem key={d.id} value={d.code}>
+              {d.code} - {d.name}
             </SelectItem>
           ))}
         </SelectContent>
@@ -657,10 +657,10 @@ export function CncTypeSelector({
   compact = false,
   className,
 }: CncTypeSelectorProps) {
-  const { cncTypes, isLoading } = useOperationTypes();
+  const { cnc, isLoading } = useOperationTypes();
 
-  const addCnc = (type: CncOperationType) => {
-    onChange([...value, { type_code: type.code }]);
+  const addCnc = (op: CncOperation) => {
+    onChange([...value, { type_code: op.code }]);
   };
 
   const removeCnc = (index: number) => {
@@ -695,8 +695,8 @@ export function CncTypeSelector({
               <Select
                 value=""
                 onValueChange={(code) => {
-                  const type = cncTypes.find((t) => t.code === code);
-                  if (type) addCnc(type);
+                  const op = cnc.find((c) => c.code === code);
+                  if (op) addCnc(op);
                 }}
               >
                 <SelectTrigger className="h-7 w-28 text-xs">
@@ -704,9 +704,9 @@ export function CncTypeSelector({
                   Add
                 </SelectTrigger>
                 <SelectContent>
-                  {cncTypes.map((t) => (
-                    <SelectItem key={t.id} value={t.code}>
-                      {t.code} - {t.name}
+                  {cnc.map((c) => (
+                    <SelectItem key={c.id} value={c.code}>
+                      {c.code} - {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -771,8 +771,8 @@ export function CncTypeSelector({
       <Select
         value=""
         onValueChange={(code) => {
-          const type = cncTypes.find((t) => t.code === code);
-          if (type) addCnc(type);
+          const op = cnc.find((c) => c.code === code);
+          if (op) addCnc(op);
         }}
       >
         <SelectTrigger className="h-7 text-xs">
@@ -780,9 +780,9 @@ export function CncTypeSelector({
           Add CNC
         </SelectTrigger>
         <SelectContent>
-          {cncTypes.map((t) => (
-            <SelectItem key={t.id} value={t.code}>
-              {t.code} - {t.name}
+          {cnc.map((c) => (
+            <SelectItem key={c.id} value={c.code}>
+              {c.code} - {c.name}
             </SelectItem>
           ))}
         </SelectContent>

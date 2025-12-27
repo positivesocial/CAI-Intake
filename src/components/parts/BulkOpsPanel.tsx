@@ -205,18 +205,18 @@ function CncTypeToggle({
 
 function simplifiedToOperationsData(
   simplified: SimplifiedOps,
-  grooveTypes: { code: string; default_width_mm?: number | null; default_depth_mm?: number | null }[]
+  grooveOps: { code: string; widthMm?: number | null; depthMm?: number | null }[]
 ): OperationsData {
   // Convert grooves: generate entries for each active side
-  const grooveType = grooveTypes.find(g => g.code === simplified.grooves.groove_type_id);
+  const grooveOp = grooveOps.find(g => g.code === simplified.grooves.groove_type_id);
   const grooves = simplified.grooves.groove_type_id
     ? Object.entries(simplified.grooves.sides)
         .filter(([, active]) => active)
         .map(([side]) => ({
           type_code: simplified.grooves.groove_type_id!,
           side,
-          width_mm: grooveType?.default_width_mm || 4,
-          depth_mm: grooveType?.default_depth_mm || 8,
+          width_mm: grooveOp?.widthMm || 4,
+          depth_mm: grooveOp?.depthMm || 8,
         }))
     : [];
 
@@ -254,9 +254,9 @@ export function BulkOpsPanel({
 }: BulkOpsPanelProps) {
   const {
     edgebandMaterials,
-    grooveTypes,
-    holeTypes,
-    cncTypes,
+    grooves,
+    drilling,
+    cnc,
   } = useOperationTypes();
 
   const [localOps, setLocalOps] = React.useState<SimplifiedOps>(emptySimplifiedOps);
@@ -320,7 +320,7 @@ export function BulkOpsPanel({
   };
 
   const handleApply = () => {
-    const opsData = simplifiedToOperationsData(localOps, grooveTypes);
+    const opsData = simplifiedToOperationsData(localOps, grooves);
     onApply(opsData, mode);
     onOpenChange(false);
   };
@@ -506,14 +506,14 @@ export function BulkOpsPanel({
                       <SelectValue placeholder="Select groove type..." />
                     </SelectTrigger>
                     <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
-                      {grooveTypes.map((g) => (
+                      {grooves.map((g) => (
                         <SelectItem key={g.id} value={g.code}>
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-amber-600 font-bold">{g.code}</span>
                             <span className="text-[var(--muted-foreground)]">{g.name}</span>
-                            {g.default_width_mm && g.default_depth_mm && (
+                            {g.widthMm && g.depthMm && (
                               <span className="text-xs text-[var(--muted-foreground)]">
-                                ({g.default_width_mm}×{g.default_depth_mm}mm)
+                                ({g.widthMm}×{g.depthMm}mm)
                               </span>
                             )}
                           </div>
@@ -603,11 +603,11 @@ export function BulkOpsPanel({
                       <SelectValue placeholder="Select hole pattern..." />
                     </SelectTrigger>
                     <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
-                      {holeTypes.map((h) => (
-                        <SelectItem key={h.id} value={h.code}>
+                      {drilling.map((d) => (
+                        <SelectItem key={d.id} value={d.code}>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-purple-600 font-bold">{h.code}</span>
-                            <span className="text-[var(--muted-foreground)]">{h.name}</span>
+                            <span className="font-mono text-purple-600 font-bold">{d.code}</span>
+                            <span className="text-[var(--muted-foreground)]">{d.name}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -663,7 +663,7 @@ export function BulkOpsPanel({
               <AccordionContent className="px-4 pb-4 space-y-4">
                 <Label className="text-xs text-[var(--muted-foreground)]">Select Operations</Label>
                 <div className="grid grid-cols-2 gap-2">
-                  {cncTypes.map((c) => (
+                  {cnc.map((c) => (
                     <CncTypeToggle
                       key={c.id}
                       code={c.code}
@@ -673,7 +673,7 @@ export function BulkOpsPanel({
                     />
                   ))}
                 </div>
-                {cncTypes.length === 0 && (
+                {cnc.length === 0 && (
                   <p className="text-sm text-[var(--muted-foreground)] text-center py-4">
                     No CNC operation types configured
                   </p>
