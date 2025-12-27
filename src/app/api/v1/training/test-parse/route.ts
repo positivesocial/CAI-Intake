@@ -303,8 +303,8 @@ function findDifferences(parsed: CutPart, truth: CutPart): string[] {
   }
 
   // Check edging
-  const parsedEdges = getEdgeArray(parsed.ops?.edging);
-  const truthEdges = getEdgeArray(truth.ops?.edging);
+  const parsedEdges = getEdgeArray(parsed.ops);
+  const truthEdges = getEdgeArray(truth.ops);
   if (parsedEdges.sort().join(",") !== truthEdges.sort().join(",")) {
     diff.push(`Edges: [${parsedEdges.join(",")}] vs [${truthEdges.join(",")}]`);
   }
@@ -312,13 +312,14 @@ function findDifferences(parsed: CutPart, truth: CutPart): string[] {
   return diff;
 }
 
-function getEdgeArray(edging: CutPart["ops"]["edging"] | undefined): string[] {
-  if (!edging) return [];
+function getEdgeArray(edging: CutPart["ops"] | undefined): string[] {
+  if (!edging?.edging?.edges) return [];
   const edges: string[] = [];
-  if (edging.L1) edges.push("L1");
-  if (edging.L2) edges.push("L2");
-  if (edging.W1) edges.push("W1");
-  if (edging.W2) edges.push("W2");
+  const e = edging.edging.edges;
+  if (e.L1?.apply) edges.push("L1");
+  if (e.L2?.apply) edges.push("L2");
+  if (e.W1?.apply) edges.push("W1");
+  if (e.W2?.apply) edges.push("W2");
   return edges;
 }
 
