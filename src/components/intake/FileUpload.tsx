@@ -29,6 +29,7 @@ import {
   Trash2,
   Clock,
   Package,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -342,6 +343,38 @@ export function FileUpload() {
   // Remove a file from the queue
   const removeFile = (id: string) => {
     setFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  // Retry a failed file
+  const retryFile = (id: string) => {
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.id === id
+          ? { ...f, status: "queued" as ProcessingStatus, error: undefined, progress: 0, parsedItems: 0 }
+          : f
+      )
+    );
+    // Decrement failed count since we're retrying
+    setBatchStats((prev) => ({
+      ...prev,
+      failedFiles: Math.max(0, prev.failedFiles - 1),
+    }));
+  };
+
+  // Retry all failed files
+  const retryAllFailed = () => {
+    const failedCount = files.filter((f) => f.status === "error").length;
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.status === "error"
+          ? { ...f, status: "queued" as ProcessingStatus, error: undefined, progress: 0, parsedItems: 0 }
+          : f
+      )
+    );
+    setBatchStats((prev) => ({
+      ...prev,
+      failedFiles: Math.max(0, prev.failedFiles - failedCount),
+    }));
   };
 
   // Clear all completed/error files
@@ -857,6 +890,18 @@ export function FileUpload() {
               </Button>
             )}
             
+            {batchStats.failedFiles > 0 && !isProcessing && (
+              <Button
+                onClick={retryAllFailed}
+                variant="outline"
+                size="sm"
+                className="gap-2 text-[var(--cai-teal)] border-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/10"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retry Failed ({batchStats.failedFiles})
+              </Button>
+            )}
+            
             {completedCount > 0 && !isProcessing && (
               <Button
                 onClick={clearCompleted}
@@ -1091,7 +1136,18 @@ export function FileUpload() {
                       <CheckCircle className="h-5 w-5 text-green-600" />
                     )}
                     {uploadedFile.status === "error" && (
-                      <AlertCircle className="h-5 w-5 text-red-600" />
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-[var(--cai-teal)] hover:text-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/10"
+                          onClick={() => retryFile(uploadedFile.id)}
+                          title="Retry"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                        <AlertCircle className="h-5 w-5 text-red-600" />
+                      </>
                     )}
                     {(isQueued || uploadedFile.status === "complete" || uploadedFile.status === "error") && (
                       <Button
