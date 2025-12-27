@@ -15,6 +15,7 @@
  */
 
 import { generateId } from "@/lib/utils";
+import QRCode from "qrcode";
 
 // ============================================================
 // TYPES
@@ -186,6 +187,63 @@ function generateQRData(config: OrgTemplateConfig, templateId: string, version: 
       sc_hash: shortcodesHash || undefined,
     },
   };
+}
+
+// ============================================================
+// QR CODE SVG GENERATION
+// ============================================================
+
+/**
+ * Generate a QR code SVG with CAI logo in the center
+ */
+function generateQRCodeSVG(content: string, primaryColor: string, size: number = 55): string {
+  try {
+    // Create QR code with high error correction (allows logo in center)
+    const qr = QRCode.create(content, {
+      errorCorrectionLevel: "H", // High - 30% error correction
+    });
+    
+    const modules = qr.modules;
+    const moduleCount = modules.size;
+    const cellSize = size / moduleCount;
+    
+    let svg = `<svg viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">`;
+    svg += `<rect fill="white" width="${size}" height="${size}"/>`;
+    
+    // Draw QR code modules
+    for (let row = 0; row < moduleCount; row++) {
+      for (let col = 0; col < moduleCount; col++) {
+        if (modules.get(row, col)) {
+          svg += `<rect x="${col * cellSize}" y="${row * cellSize}" width="${cellSize}" height="${cellSize}" fill="black"/>`;
+        }
+      }
+    }
+    
+    // Add CAI funnel logo in center
+    const logoSize = size * 0.2;
+    const cx = size / 2;
+    const cy = size / 2;
+    
+    // White circle background
+    svg += `<circle cx="${cx}" cy="${cy}" r="${logoSize / 2 + 1}" fill="white"/>`;
+    
+    // Purple funnel
+    const w = logoSize * 0.65;
+    const h = logoSize * 0.75;
+    svg += `<path d="M${cx - w / 2} ${cy - h / 2} L${cx + w / 2} ${cy - h / 2} L${cx + w / 6} ${cy + h / 4} L${cx + w / 6} ${cy + h / 2} L${cx - w / 6} ${cy + h / 2} L${cx - w / 6} ${cy + h / 4} Z" fill="${primaryColor}"/>`;
+    svg += `<circle cx="${cx}" cy="${cy + h / 2 + 2}" r="1.5" fill="${primaryColor}"/>`;
+    
+    svg += "</svg>";
+    
+    return svg;
+  } catch (error) {
+    console.error("QR code generation failed:", error);
+    // Return a fallback with just the text
+    return `<svg viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
+      <rect fill="white" width="${size}" height="${size}" stroke="#ccc" stroke-width="1"/>
+      <text x="${size / 2}" y="${size / 2}" font-size="6" text-anchor="middle" fill="#666">${content}</text>
+    </svg>`;
+  }
 }
 
 // ============================================================
@@ -485,6 +543,9 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   const qrDataObj = generateQRData(config, templateId, version, shortcodesHash);
   const qrContent = qrDataObj.qr_content; // Just the template ID string
   const fullMetadata = JSON.stringify(qrDataObj.full_metadata); // Stored separately
+  
+  // Generate QR code SVG directly (no CDN dependency)
+  const qrCodeSVG = generateQRCodeSVG(qrContent, primaryColor, 55);
   
   // Generate fill-in guide
   const fillInGuide = generateFillInGuide(config, primaryColor);
@@ -889,8 +950,8 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     <!-- Left: QR + Branding -->
     <div class="header-left">
       <div class="qr-section">
-        <div class="qr-code-container" id="qr-placeholder">
-          <!-- QR code will be generated here -->
+        <div class="qr-code-container">
+          ${qrCodeSVG}
         </div>
         <div class="template-id">${templateId}</div>
       </div>
@@ -977,66 +1038,6 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   
   <!-- Print Button -->
   <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
-  
-  <!-- QR Code Generation -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-  <script>
-    (function() {
-      var qrContainer = document.getElementById('qr-placeholder');
-      if (!qrContainer) return;
-      
-      var qrData = "${qrContent}";
-      
-      // Try using qrcode-generator library
-      if (typeof qrcode !== 'undefined') {
-        try {
-          var qr = qrcode(0, 'H'); // Type 0 = auto, H = high error correction
-          qr.addData(qrData);
-          qr.make();
-          
-          // Generate SVG for better print quality
-          var size = 55;
-          var modules = qr.getModuleCount();
-          var cellSize = size / modules;
-          
-          var svg = '<svg viewBox="0 0 ' + size + ' ' + size + '" xmlns="http://www.w3.org/2000/svg">';
-          svg += '<rect fill="white" width="' + size + '" height="' + size + '"/>';
-          
-          for (var row = 0; row < modules; row++) {
-            for (var col = 0; col < modules; col++) {
-              if (qr.isDark(row, col)) {
-                svg += '<rect x="' + (col * cellSize) + '" y="' + (row * cellSize) + '" width="' + cellSize + '" height="' + cellSize + '" fill="black"/>';
-              }
-            }
-          }
-          
-          // Add CAI funnel logo in center
-          var logoSize = size * 0.2;
-          var cx = size / 2;
-          var cy = size / 2;
-          
-          // White circle background
-          svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + (logoSize/2 + 1) + '" fill="white"/>';
-          
-          // Purple funnel
-          var w = logoSize * 0.65;
-          var h = logoSize * 0.75;
-          svg += '<path d="M' + (cx - w/2) + ' ' + (cy - h/2) + ' L' + (cx + w/2) + ' ' + (cy - h/2) + ' L' + (cx + w/6) + ' ' + (cy + h/4) + ' L' + (cx + w/6) + ' ' + (cy + h/2) + ' L' + (cx - w/6) + ' ' + (cy + h/2) + ' L' + (cx - w/6) + ' ' + (cy + h/4) + ' Z" fill="${primaryColor}"/>';
-          svg += '<circle cx="' + cx + '" cy="' + (cy + h/2 + 2) + '" r="1.5" fill="${primaryColor}"/>';
-          
-          svg += '</svg>';
-          
-          qrContainer.innerHTML = svg;
-        } catch(e) {
-          console.error('QR generation failed:', e);
-          qrContainer.innerHTML = '<div style="font-size:8px;color:#999;text-align:center;padding:15px;">' + qrData + '</div>';
-        }
-      } else {
-        // Fallback: show template ID as text
-        qrContainer.innerHTML = '<div style="font-size:7px;color:#666;text-align:center;padding:10px;word-break:break-all;">' + qrData + '</div>';
-      }
-    })();
-  </script>
 </body>
 </html>
 `;

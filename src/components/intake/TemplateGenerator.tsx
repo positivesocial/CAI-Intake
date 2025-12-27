@@ -20,6 +20,7 @@ import { SimpleSelect } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIntakeStore } from "@/lib/store";
+import { useAuthStore } from "@/lib/auth/store";
 import { cn } from "@/lib/utils";
 import { generateId } from "@/lib/utils";
 import {
@@ -29,6 +30,7 @@ import {
   type OrgTemplateConfig,
   type OpsShortcode,
   type GeneratedTemplate,
+  type OrganizationBranding,
 } from "@/lib/templates/org-template-generator";
 
 type TemplateType = "pdf" | "excel";
@@ -45,8 +47,21 @@ interface TemplateConfig {
   version: string;
 }
 
+interface OrgBranding {
+  logo_url?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  company_name?: string;
+  company_tagline?: string;
+  contact_info?: {
+    phone?: string;
+    email?: string;
+  };
+}
+
 export function TemplateGenerator() {
   const { currentCutlist } = useIntakeStore();
+  const { user } = useAuthStore();
 
   const [config, setConfig] = React.useState<TemplateConfig>({
     name: "Smart Cutlist Template",
@@ -65,6 +80,30 @@ export function TemplateGenerator() {
   const [generatedTemplate, setGeneratedTemplate] = React.useState<GeneratedTemplate | null>(null);
   const [orgShortcodes, setOrgShortcodes] = React.useState<OpsShortcode[]>([]);
   const [shortcodesLoading, setShortcodesLoading] = React.useState(true);
+  const [orgBranding, setOrgBranding] = React.useState<OrgBranding | null>(null);
+  const [brandingLoading, setBrandingLoading] = React.useState(true);
+
+  // Fetch org branding from API on mount
+  React.useEffect(() => {
+    async function loadBranding() {
+      try {
+        const res = await fetch("/api/v1/organizations/branding", {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.branding) {
+            setOrgBranding(data.branding);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load org branding:", error);
+      } finally {
+        setBrandingLoading(false);
+      }
+    }
+    loadBranding();
+  }, []);
 
   // Fetch org shortcodes from API on mount
   React.useEffect(() => {
@@ -153,16 +192,23 @@ export function TemplateGenerator() {
 
   // Template ID format: CAI-{org_id}-v{version}
   // Identifies: 1) CAI template, 2) Which org, 3) Version (tracks shortcode changes)
-  const orgId = "org-demo"; // TODO: Get from auth context
+  const orgId = user?.organizationId || "demo";
   const templateId = `CAI-${orgId}-v${config.version}`;
+  
+  // Get organization name from branding or user context
+  const orgName = orgBranding?.company_name || user?.organization?.name || "Your Organization";
 
   // Build org template config from current cutlist
   const orgTemplateConfig: OrgTemplateConfig = React.useMemo(() => ({
     branding: {
-      org_id: orgId, // From auth context
-      name: "Your Organization", // TODO: Get from org settings
-      primary_color: "#6B21A8", // Purple (Cabinet AI style)
-      secondary_color: "#4C1D95",
+      org_id: orgId,
+      name: orgName,
+      logo_url: orgBranding?.logo_url,
+      primary_color: orgBranding?.primary_color || "#6B21A8",
+      secondary_color: orgBranding?.secondary_color || "#4C1D95",
+      contact_info: orgBranding?.contact_info?.phone || orgBranding?.contact_info?.email
+        ? `${orgBranding.contact_info.phone || ""} ${orgBranding.contact_info.email || ""}`.trim()
+        : undefined,
     },
     title: config.name,
     version: config.version,
@@ -186,7 +232,7 @@ export function TemplateGenerator() {
     })),
     shortcodes: filteredShortcodes,
     shortcodesHash,
-  }), [config, currentCutlist.materials, currentCutlist.edgebands, filteredShortcodes, shortcodesHash]);
+  }), [config, currentCutlist.materials, currentCutlist.edgebands, filteredShortcodes, shortcodesHash, orgId, orgName, orgBranding]);
 
   const handleCopyTemplateId = () => {
     navigator.clipboard.writeText(templateId);
@@ -427,18 +473,18 @@ export function TemplateGenerator() {
             {/* Live Preview Card */}
             <div className="border border-[var(--border)] rounded-lg overflow-hidden bg-white dark:bg-gray-900">
               {/* Header with QR and branding */}
-              <div className="bg-purple-800 text-white px-4 py-2 flex items-center justify-between">
+              <div className="text-white px-4 py-2 flex items-center justify-between" style={{ backgroundColor: orgBranding?.primary_color || "#6B21A8" }}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white rounded flex items-center justify-center">
                     <QrCode className="h-7 w-7 text-gray-800" />
                   </div>
                   <div>
-                    <p className="font-bold text-sm uppercase tracking-wide">Your Organization</p>
+                    <p className="font-bold text-sm uppercase tracking-wide">{orgName}</p>
                     <p className="text-xs opacity-80">{config.name} v{config.version}</p>
                   </div>
                 </div>
                 <div className="text-right text-xs">
-                  <p className="font-mono text-purple-200">{templateId}</p>
+                  <p className="font-mono" style={{ opacity: 0.7 }}>{templateId}</p>
                 </div>
               </div>
               
@@ -471,12 +517,12 @@ export function TemplateGenerator() {
                   <table className="w-full text-[10px] border-collapse">
                     <thead>
                       <tr>
-                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">#</th>
-                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">Part Name</th>
-                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">L</th>
-                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">W</th>
-                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">Qty</th>
-                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-800 text-white">Mat</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 text-white" style={{ backgroundColor: orgBranding?.primary_color || "#6B21A8" }}>#</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 text-white" style={{ backgroundColor: orgBranding?.primary_color || "#6B21A8" }}>Part Name</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 text-white" style={{ backgroundColor: orgBranding?.primary_color || "#6B21A8" }}>L</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 text-white" style={{ backgroundColor: orgBranding?.primary_color || "#6B21A8" }}>W</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 text-white" style={{ backgroundColor: orgBranding?.primary_color || "#6B21A8" }}>Qty</th>
+                        <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 text-white" style={{ backgroundColor: orgBranding?.primary_color || "#6B21A8" }}>Mat</th>
                         {config.includeEdging && (
                           <th className="border border-gray-300 dark:border-gray-600 px-1 py-0.5 bg-purple-200 text-purple-800">Edge</th>
                         )}
