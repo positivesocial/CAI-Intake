@@ -1487,62 +1487,54 @@ async function convertPdfToImagesAndParse(
   const startTime = Date.now();
   
   try {
-    // Dynamic import of pdfjs-dist for server-side rendering
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    // Use pdf-img-convert for reliable Node.js PDF to image conversion
+    const pdfConverter = await import("pdf-img-convert");
     
-    // Convert Buffer to Uint8Array as required by pdfjs-dist
-    const pdfData = new Uint8Array(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength);
+    // Convert PDF buffer to array of image buffers (PNG format)
+    const imagePages = await pdfConverter.convert(pdfBuffer, {
+      width: 2048, // Good resolution for OCR
+      height: 2048,
+      page_numbers: Array.from({ length: 10 }, (_, i) => i + 1), // First 10 pages
+    }) as Uint8Array[];
     
-    // Load the PDF document
-    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
-    const pdfDoc = await loadingTask.promise;
-    const numPages = pdfDoc.numPages;
-    
-    logger.info("📥 [ParseFile] 🖼️ Converting PDF to images", {
+    logger.info("📥 [ParseFile] 🖼️ PDF converted to images", {
       requestId,
       numPages,
       fileName,
     });
     
-    // Limit pages to prevent excessive processing
-    const maxPages = Math.min(numPages, 10);
+    if (numPages === 0) {
+      return {
+        success: false,
+        parts: [],
+        totalConfidence: 0,
+        errors: ["Could not extract any pages from PDF"],
+        processingTimeMs: Date.now() - startTime,
+      };
+    }
+    
     const allParts: Array<{ part_id: string; label?: string; size: { L: number; W: number }; qty: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string; audit: { source_method: string; confidence: number; human_verified: boolean } }> = [];
     const errors: string[] = [];
     let totalConfidence = 0;
     let successfulPages = 0;
     
-    // Process each page
-    for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+    // Process each page image
+    for (let pageIdx = 0; pageIdx < numPages; pageIdx++) {
+      const pageNum = pageIdx + 1;
       try {
-        const page = await pdfDoc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 2.0 }); // 2x scale for better quality
+        const imageData = imagePages[pageIdx];
         
-        // Create canvas using node-canvas
-        const { createCanvas } = await import("canvas");
-        const canvas = createCanvas(viewport.width, viewport.height);
-        const context = canvas.getContext("2d");
-        
-        // Render PDF page to canvas
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const renderContext: any = {
-          canvasContext: context,
-          viewport,
-        };
-        await page.render(renderContext).promise;
-        
-        // Convert canvas to PNG buffer
-        const pngBuffer = canvas.toBuffer("image/png");
-        
-        // Optimize image size with sharp
-        const optimizedBuffer = await sharp(pngBuffer)
+        // Convert Uint8Array to Buffer and optimize with sharp
+        const imageBuffer = Buffer.from(imageData);
+        const optimizedBuffer = await sharp(imageBuffer)
           .resize(2048, 2048, { fit: "inside", withoutEnlargement: true })
           .png({ quality: 80 })
           .toBuffer();
         
-        logger.info("📥 [ParseFile] 🖼️ Page converted to image", {
+        logger.info("📥 [ParseFile] 🖼️ Processing page image", {
           requestId,
           pageNum,
-          originalSize: pngBuffer.length,
+          originalSize: imageBuffer.length,
           optimizedSize: optimizedBuffer.length,
         });
         
