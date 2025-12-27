@@ -1285,6 +1285,42 @@ async function processPDF(
     file.name.toLowerCase().includes("smart") ||
     file.name.toLowerCase().includes("cai");
   
+  // If not a blank template, try PDF-to-image fallback with AI vision
+  if (!isLikelyBlankTemplate) {
+    logger.info("📥 [ParseFile] 🖼️ Text extraction failed, trying PDF-to-image fallback", {
+      requestId,
+      fileName: file.name,
+    });
+    
+    try {
+      const pdfToImageResult = await convertPdfToImagesAndParse(
+        Buffer.from(pdfBuffer),
+        provider,
+        parseOptions,
+        requestId,
+        file.name
+      );
+      
+      if (pdfToImageResult.success && pdfToImageResult.parts.length > 0) {
+        logger.info("📥 [ParseFile] ✅ PDF-to-image fallback succeeded", {
+          requestId,
+          partsFound: pdfToImageResult.parts.length,
+          processingTimeMs: Date.now() - pdfStartTime,
+        });
+        
+        return {
+          ...pdfToImageResult,
+          processingTimeMs: Date.now() - pdfStartTime,
+        };
+      }
+    } catch (error) {
+      logger.warn("📥 [ParseFile] ⚠️ PDF-to-image fallback failed", {
+        requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  
   logger.error("📥 [ParseFile] ❌ Could not extract text from PDF", {
     requestId,
     fileName: file.name,
@@ -1317,4 +1353,150 @@ async function processPDF(
     errors: [errorMessage],
     processingTimeMs: Date.now() - pdfStartTime,
   };
+}
+
+/**
+ * Convert PDF pages to images and parse them using AI vision
+ * This is a fallback for scanned/image-based PDFs where text extraction fails
+ */
+async function convertPdfToImagesAndParse(
+  pdfBuffer: Buffer,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  provider: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parseOptions: any,
+  requestId: string,
+  fileName: string
+): Promise<{
+  success: boolean;
+  parts: Array<{ part_id: string; label?: string; size: { L: number; W: number }; qty: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string; audit: { source_method: string; confidence: number; human_verified: boolean } }>;
+  totalConfidence: number;
+  errors: string[];
+  processingTimeMs: number;
+}> {
+  const startTime = Date.now();
+  
+  try {
+    // Dynamic import of pdfjs-dist for server-side rendering
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    
+    // Load the PDF document
+    const loadingTask = pdfjsLib.getDocument({ data: pdfBuffer });
+    const pdfDoc = await loadingTask.promise;
+    const numPages = pdfDoc.numPages;
+    
+    logger.info("📥 [ParseFile] 🖼️ Converting PDF to images", {
+      requestId,
+      numPages,
+      fileName,
+    });
+    
+    // Limit pages to prevent excessive processing
+    const maxPages = Math.min(numPages, 10);
+    const allParts: Array<{ part_id: string; label?: string; size: { L: number; W: number }; qty: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string; audit: { source_method: string; confidence: number; human_verified: boolean } }> = [];
+    const errors: string[] = [];
+    let totalConfidence = 0;
+    let successfulPages = 0;
+    
+    // Process each page
+    for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 2.0 }); // 2x scale for better quality
+        
+        // Create canvas using node-canvas
+        const { createCanvas } = await import("canvas");
+        const canvas = createCanvas(viewport.width, viewport.height);
+        const context = canvas.getContext("2d");
+        
+        // Render PDF page to canvas
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const renderContext: any = {
+          canvasContext: context,
+          viewport,
+        };
+        await page.render(renderContext).promise;
+        
+        // Convert canvas to PNG buffer
+        const pngBuffer = canvas.toBuffer("image/png");
+        
+        // Optimize image size with sharp
+        const optimizedBuffer = await sharp(pngBuffer)
+          .resize(2048, 2048, { fit: "inside", withoutEnlargement: true })
+          .png({ quality: 80 })
+          .toBuffer();
+        
+        logger.info("📥 [ParseFile] 🖼️ Page converted to image", {
+          requestId,
+          pageNum,
+          originalSize: pngBuffer.length,
+          optimizedSize: optimizedBuffer.length,
+        });
+        
+        // Parse the image using AI vision
+        const base64Image = optimizedBuffer.toString("base64");
+        const mimeType = "image/png";
+        
+        const parseResult = await provider.parseImage(
+          base64Image,
+          mimeType,
+          parseOptions
+        );
+        
+        if (parseResult.parts && parseResult.parts.length > 0) {
+          // Add page info to audit
+          const partsWithAudit = parseResult.parts.map((p: { part_id?: string; label?: string; size?: { L: number; W: number }; qty?: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string }) => ({
+            ...p,
+            part_id: p.part_id || `P-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            audit: {
+              source_method: "pdf_vision",
+              confidence: parseResult.confidence ?? 0.7,
+              human_verified: false,
+              source_page: pageNum,
+            },
+          }));
+          
+          allParts.push(...partsWithAudit);
+          totalConfidence += parseResult.confidence ?? 0.7;
+          successfulPages++;
+          
+          logger.info("📥 [ParseFile] ✅ Page parsed successfully", {
+            requestId,
+            pageNum,
+            partsFound: parseResult.parts.length,
+          });
+        }
+      } catch (pageError) {
+        logger.warn("📥 [ParseFile] ⚠️ Failed to process page", {
+          requestId,
+          pageNum,
+          error: pageError instanceof Error ? pageError.message : String(pageError),
+        });
+        errors.push(`Page ${pageNum}: ${pageError instanceof Error ? pageError.message : "Failed to process"}`);
+      }
+    }
+    
+    const avgConfidence = successfulPages > 0 ? totalConfidence / successfulPages : 0;
+    
+    return {
+      success: allParts.length > 0,
+      parts: allParts,
+      totalConfidence: avgConfidence,
+      errors,
+      processingTimeMs: Date.now() - startTime,
+    };
+  } catch (error) {
+    logger.error("📥 [ParseFile] ❌ PDF-to-image conversion failed", {
+      requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    
+    return {
+      success: false,
+      parts: [],
+      totalConfidence: 0,
+      errors: [error instanceof Error ? error.message : "PDF conversion failed"],
+      processingTimeMs: Date.now() - startTime,
+    };
+  }
 }
