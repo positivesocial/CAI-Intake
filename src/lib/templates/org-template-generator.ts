@@ -624,12 +624,12 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       height: 0;
     }
     
-    /* Corner Alignment Markers - positioned in actual page margins */
+    /* Corner Alignment Markers - LARGER for better OCR detection */
     .corner-marker {
       position: fixed;
-      width: 12px;
-      height: 12px;
-      border: 2px solid #000;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #000;
       z-index: 1000;
     }
     .corner-tl { top: 2mm; left: 2mm; border-right: none; border-bottom: none; }
@@ -637,27 +637,35 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     .corner-bl { bottom: 2mm; left: 2mm; border-right: none; border-top: none; }
     .corner-br { bottom: 2mm; right: 2mm; border-left: none; border-top: none; }
     
-    /* Page Number - top right corner */
+    /* Page Number - inline with header, not fixed */
     .page-indicator {
-      position: fixed;
-      top: 2mm;
-      right: 20mm;
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: 3px;
-      font-size: 9px;
+      gap: 4px;
+      font-size: 10px;
       font-weight: 600;
-      z-index: 100;
+      color: #333;
+      margin-left: auto;
+      padding: 4px 8px;
+      border: 1.5px solid ${primaryColor};
+      border-radius: 4px;
+      background: white;
     }
     
     .page-num-box {
-      width: 16px;
-      height: 14px;
-      border: 1.5px solid #333;
+      width: 20px;
+      height: 18px;
+      border: 1.5px solid ${primaryColor};
       display: inline-flex;
       align-items: center;
       justify-content: center;
       background: white;
+      border-radius: 2px;
+    }
+    
+    /* Hide page indicator on guide page */
+    .guide-page .page-indicator {
+      display: none;
     }
     
     /* Header Area - Compact */
@@ -668,6 +676,10 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       margin-bottom: 8px;
       padding-bottom: 6px;
       border-bottom: 2px solid ${primaryColor};
+    }
+    
+    .header-container .branding-info {
+      flex: 1;
     }
     
     /* QR + Branding Section */
@@ -745,7 +757,7 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     
     .project-info-content {
       padding: 10px 12px;
-      background: #fafafa;
+      background: ${primaryColor}08; /* Very light tint of brand color */
     }
     
     .project-fields {
@@ -802,8 +814,9 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     }
     
     .main-table th.ops-header {
-      background: #E9D5FF;
+      background: ${primaryColor}30; /* Light tint of brand color - better for printing */
       color: ${primaryColor};
+      font-weight: 700;
     }
     
     .main-table th .sub-label {
@@ -819,9 +832,10 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     }
     
     .main-table td:first-child {
-      color: #666;
+      color: ${primaryColor};
       font-size: 7px;
-      background: #fafafa;
+      font-weight: 600;
+      background: ${primaryColor}10; /* Very light tint of brand color */
     }
     
     .main-table td.part-name {
@@ -1060,12 +1074,7 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   <div class="corner-marker corner-bl"></div>
   <div class="corner-marker corner-br"></div>
   
-  <!-- Page Indicator - Top Right -->
-  <div class="page-indicator">
-    Page: <span class="page-num-box"></span> of <span class="page-num-box"></span>
-  </div>
-  
-  <!-- Header - QR + Branding -->
+  <!-- Header - QR + Branding + Page Number -->
   <div class="header-container">
     <div class="qr-section">
       <div class="qr-code-container">
@@ -1078,6 +1087,11 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       ${config.branding.logo_url ? `<img src="${config.branding.logo_url}" alt="" class="logo" onerror="this.style.display='none'">` : ""}
       <div class="org-name">${orgName}</div>
       <div class="template-title">${title} v${version}</div>
+    </div>
+    
+    <!-- Page Indicator - Inline with header -->
+    <div class="page-indicator">
+      Page <span class="page-num-box"></span> of <span class="page-num-box"></span>
     </div>
   </div>
   
