@@ -280,8 +280,8 @@ function checkMaterialMatch(parsed: CutPart, truth: CutPart): boolean {
 }
 
 function checkEdgingMatch(parsed: CutPart, truth: CutPart): boolean {
-  const parsedEdges = getEdgeArray(parsed.ops?.edging);
-  const truthEdges = getEdgeArray(truth.ops?.edging);
+  const parsedEdges = getEdgeArray(parsed.ops);
+  const truthEdges = getEdgeArray(truth.ops);
   
   if (parsedEdges.length !== truthEdges.length) return false;
   
@@ -326,14 +326,15 @@ function checkLabelMatch(parsed: CutPart, truth: CutPart): boolean {
   return similarity > 0.8;
 }
 
-function getEdgeArray(edging: CutPart["ops"]["edging"] | undefined): string[] {
-  if (!edging) return [];
+function getEdgeArray(ops: CutPart["ops"] | undefined): string[] {
+  if (!ops?.edging?.edges) return [];
   
   const edges: string[] = [];
-  if (edging.L1) edges.push("L1");
-  if (edging.L2) edges.push("L2");
-  if (edging.W1) edges.push("W1");
-  if (edging.W2) edges.push("W2");
+  const e = ops.edging.edges;
+  if (e.L1?.apply) edges.push("L1");
+  if (e.L2?.apply) edges.push("L2");
+  if (e.W1?.apply) edges.push("W1");
+  if (e.W2?.apply) edges.push("W2");
   
   return edges;
 }
