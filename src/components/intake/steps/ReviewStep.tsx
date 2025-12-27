@@ -4,7 +4,8 @@ import * as React from "react";
 import {
   Trash2,
   Plus,
-  BarChart3,
+  Eye,
+  EyeOff,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -127,25 +128,26 @@ export function ReviewStep() {
             <span className="hidden sm:inline ml-1">Clear</span>
           </Button>
 
-          {/* Toggle stats - mobile (opens drawer) */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowMobileStats(true)}
-            className="xl:hidden"
-          >
-            <BarChart3 className="h-4 w-4" />
-            <span className="hidden sm:inline ml-1">Stats</span>
-          </Button>
-
-          {/* Toggle stats sidebar - desktop */}
+          {/* Toggle stats - single button for all screen sizes */}
           <Button
             variant={showStats ? "default" : "outline"}
             size="sm"
-            onClick={() => setShowStats(!showStats)}
-            className="hidden xl:flex"
+            onClick={() => {
+              // On xl screens, toggle the sidebar
+              // On smaller screens, open the drawer
+              if (window.innerWidth >= 1280) {
+                setShowStats(!showStats);
+              } else {
+                setShowMobileStats(true);
+              }
+            }}
           >
-            Stats
+            {showStats ? (
+              <Eye className="h-4 w-4" />
+            ) : (
+              <EyeOff className="h-4 w-4" />
+            )}
+            <span className="ml-1">Stats</span>
           </Button>
         </div>
       </div>

@@ -2,8 +2,6 @@
 
 import * as React from "react";
 import {
-  ChevronLeft,
-  ChevronRight,
   Layers,
   Ruler,
   Scissors,
@@ -14,7 +12,6 @@ import {
   Activity,
   RotateCcw,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useIntakeStore } from "@/lib/store";
 import { calculateStatistics, formatArea, formatLength, type CutlistStatistics } from "@/lib/stats";
@@ -25,7 +22,6 @@ interface StatsSidebarProps {
 }
 
 export function StatsSidebar({ className }: StatsSidebarProps) {
-  const [isCollapsed, setIsCollapsed] = React.useState(false);
   const [stats, setStats] = React.useState<CutlistStatistics | null>(null);
   
   const parts = useIntakeStore((state) => state.currentCutlist.parts);
@@ -44,65 +40,12 @@ export function StatsSidebar({ className }: StatsSidebarProps) {
     }
   }, [parts, inboxParts, materials, edgebands]);
 
-  if (isCollapsed) {
-    return (
-      <div className={cn("w-12 h-full border-l border-[var(--border)] bg-[var(--card)] flex flex-col items-center py-4", className)}>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => setIsCollapsed(false)}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        
-        {stats && (
-          <div className="mt-4 flex flex-col items-center gap-3 text-[var(--muted-foreground)]">
-            <div className="flex flex-col items-center" title={`${stats.totals.uniqueParts} parts`}>
-              <Package className="h-4 w-4" />
-              <span className="text-xs font-medium mt-1">{stats.totals.totalPieces}</span>
-            </div>
-            <div className="flex flex-col items-center" title={`${stats.materials.length} materials`}>
-              <Layers className="h-4 w-4" />
-              <span className="text-xs font-medium mt-1">{stats.materials.length}</span>
-            </div>
-            {stats.totals.partsWithEdging > 0 && (
-              <div className="flex flex-col items-center" title="Has edging">
-                <Ruler className="h-4 w-4 text-[var(--cai-teal)]" />
-              </div>
-            )}
-            {stats.totals.partsWithCNC > 0 && (
-              <div className="flex flex-col items-center" title="Has CNC ops">
-                <Drill className="h-4 w-4 text-[var(--cai-gold)]" />
-              </div>
-            )}
-            {stats.totals.partsNeedingReview > 0 && (
-              <div className="flex flex-col items-center" title={`${stats.totals.partsNeedingReview} need review`}>
-                <AlertTriangle className="h-4 w-4 text-orange-500" />
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className={cn("w-80 h-full border-l border-[var(--border)] bg-[var(--card)] flex flex-col", className)}>
+    <div className={cn("w-full h-full bg-[var(--card)] flex flex-col xl:border-l xl:border-[var(--border)]", className)}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
-        <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-[var(--cai-teal)]" />
-          <span className="text-sm font-semibold">Statistics</span>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => setIsCollapsed(true)}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+      <div className="hidden xl:flex items-center gap-2 px-4 py-3 border-b border-[var(--border)] shrink-0">
+        <Activity className="h-4 w-4 text-[var(--cai-teal)]" />
+        <span className="text-sm font-semibold">Statistics</span>
       </div>
 
       {/* Content */}
