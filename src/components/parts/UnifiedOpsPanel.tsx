@@ -157,41 +157,6 @@ function FaceToggle({
 }
 
 // ============================================================
-// CNC TYPE TOGGLE
-// ============================================================
-
-function CncTypeToggle({
-  code,
-  name,
-  active,
-  onClick,
-}: {
-  code: string;
-  name: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "w-full p-3 rounded-lg border-2 text-left transition-all",
-        "active:scale-[0.98]",
-        active
-          ? "bg-emerald-500 text-white border-emerald-500"
-          : "border-[var(--border)] hover:border-emerald-300 hover:bg-emerald-50"
-      )}
-    >
-      <span className="font-mono text-sm font-bold">{code}</span>
-      <span className={cn("block text-xs mt-0.5", active ? "text-emerald-100" : "text-[var(--muted-foreground)]")}>
-        {name}
-      </span>
-    </button>
-  );
-}
-
-// ============================================================
 // CONVERSION FUNCTIONS
 // ============================================================
 
@@ -665,18 +630,59 @@ export function UnifiedOpsPanel({
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-4 pb-4 space-y-4">
-                <Label className="text-xs text-[var(--muted-foreground)]">Select Operations</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {cnc.map((c) => (
-                    <CncTypeToggle
-                      key={c.id}
-                      code={c.code}
-                      name={c.name}
-                      active={localOps.cnc.types.includes(c.code)}
-                      onClick={() => toggleCncType(c.code)}
-                    />
-                  ))}
+                <div className="space-y-2">
+                  <Label className="text-xs text-[var(--muted-foreground)]">Add CNC Operation</Label>
+                  <Select
+                    value=""
+                    onValueChange={(code) => {
+                      if (code && !localOps.cnc.types.includes(code)) {
+                        toggleCncType(code);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Select CNC operation..." />
+                    </SelectTrigger>
+                    <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
+                      {cnc.map((c) => (
+                        <SelectItem key={c.id} value={c.code} disabled={localOps.cnc.types.includes(c.code)}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-emerald-600 font-bold">{c.code}</span>
+                            <span className="text-[var(--muted-foreground)]">{c.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {localOps.cnc.types.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-[var(--muted-foreground)]">Selected Operations</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {localOps.cnc.types.map((code) => {
+                        const cncOp = cnc.find(c => c.code === code);
+                        return (
+                          <Badge 
+                            key={code} 
+                            className="bg-emerald-100 text-emerald-700 text-sm px-3 py-1 gap-2"
+                          >
+                            <span className="font-mono font-bold">{code}</span>
+                            {cncOp && <span className="font-normal">- {cncOp.name}</span>}
+                            <button
+                              type="button"
+                              onClick={() => toggleCncType(code)}
+                              className="ml-1 hover:bg-emerald-200 rounded p-0.5"
+                            >
+                              ×
+                            </button>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {cnc.length === 0 && (
                   <p className="text-sm text-[var(--muted-foreground)] text-center py-4">
                     No CNC operation types configured
