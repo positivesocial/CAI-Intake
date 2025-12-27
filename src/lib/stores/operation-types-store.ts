@@ -2,14 +2,19 @@
  * CAI Intake - Operation Types Store
  * 
  * Zustand store for managing operation type libraries:
- * - Groove types
- * - Hole types
- * - CNC operation types
- * - Edgeband materials (from edgebands API)
+ * - Groove operations (from /api/v1/operations/groove)
+ * - Drilling operations (from /api/v1/operations/drilling)
+ * - CNC operations (from /api/v1/operations/cnc)
+ * - Edgeband operations (from /api/v1/operations/edgeband)
  */
 
 import { create } from "zustand";
-import type { GrooveType, HoleType, CncOperationType } from "@/lib/schema";
+import type { 
+  GrooveOperation, 
+  DrillingOperation, 
+  CncOperation,
+  EdgebandOperation 
+} from "@/lib/operations/types";
 
 // ============================================================
 // TYPES
@@ -27,34 +32,39 @@ export interface EdgebandMaterial {
 
 interface OperationTypesState {
   // Data
-  grooveTypes: GrooveType[];
-  holeTypes: HoleType[];
-  cncTypes: CncOperationType[];
+  grooveOperations: GrooveOperation[];
+  drillingOperations: DrillingOperation[];
+  cncOperations: CncOperation[];
+  edgebandOperations: EdgebandOperation[];
   edgebandMaterials: EdgebandMaterial[];
 
   // Loading states
-  isLoadingGrooveTypes: boolean;
-  isLoadingHoleTypes: boolean;
-  isLoadingCncTypes: boolean;
+  isLoadingGrooveOps: boolean;
+  isLoadingDrillingOps: boolean;
+  isLoadingCncOps: boolean;
+  isLoadingEdgebandOps: boolean;
   isLoadingEdgebands: boolean;
 
   // Error states
-  grooveTypesError: string | null;
-  holeTypesError: string | null;
-  cncTypesError: string | null;
+  grooveOpsError: string | null;
+  drillingOpsError: string | null;
+  cncOpsError: string | null;
+  edgebandOpsError: string | null;
   edgebandsError: string | null;
 
   // Actions
-  fetchGrooveTypes: () => Promise<void>;
-  fetchHoleTypes: () => Promise<void>;
-  fetchCncTypes: () => Promise<void>;
+  fetchGrooveOperations: () => Promise<void>;
+  fetchDrillingOperations: () => Promise<void>;
+  fetchCncOperations: () => Promise<void>;
+  fetchEdgebandOperations: () => Promise<void>;
   fetchEdgebandMaterials: () => Promise<void>;
-  fetchAllTypes: () => Promise<void>;
+  fetchAllOperations: () => Promise<void>;
 
   // Selectors
-  getGrooveTypeByCode: (code: string) => GrooveType | undefined;
-  getHoleTypeByCode: (code: string) => HoleType | undefined;
-  getCncTypeByCode: (code: string) => CncOperationType | undefined;
+  getGrooveOpByCode: (code: string) => GrooveOperation | undefined;
+  getDrillingOpByCode: (code: string) => DrillingOperation | undefined;
+  getCncOpByCode: (code: string) => CncOperation | undefined;
+  getEdgebandOpByCode: (code: string) => EdgebandOperation | undefined;
   getEdgebandById: (id: string) => EdgebandMaterial | undefined;
 }
 
@@ -64,111 +74,167 @@ interface OperationTypesState {
 
 export const useOperationTypesStore = create<OperationTypesState>((set, get) => ({
   // Initial state
-  grooveTypes: [],
-  holeTypes: [],
-  cncTypes: [],
+  grooveOperations: [],
+  drillingOperations: [],
+  cncOperations: [],
+  edgebandOperations: [],
   edgebandMaterials: [],
 
-  isLoadingGrooveTypes: false,
-  isLoadingHoleTypes: false,
-  isLoadingCncTypes: false,
+  isLoadingGrooveOps: false,
+  isLoadingDrillingOps: false,
+  isLoadingCncOps: false,
+  isLoadingEdgebandOps: false,
   isLoadingEdgebands: false,
 
-  grooveTypesError: null,
-  holeTypesError: null,
-  cncTypesError: null,
+  grooveOpsError: null,
+  drillingOpsError: null,
+  cncOpsError: null,
+  edgebandOpsError: null,
   edgebandsError: null,
 
-  // Fetch groove types
-  fetchGrooveTypes: async () => {
-    set({ isLoadingGrooveTypes: true, grooveTypesError: null });
+  // Fetch groove operations
+  fetchGrooveOperations: async () => {
+    set({ isLoadingGrooveOps: true, grooveOpsError: null });
     try {
-      const response = await fetch("/api/v1/groove-types");
-      if (!response.ok) throw new Error("Failed to fetch groove types");
+      const response = await fetch("/api/v1/operations/groove", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        // Return empty array on error - not critical
+        set({ grooveOperations: [], isLoadingGrooveOps: false });
+        return;
+      }
       const data = await response.json();
-      set({ grooveTypes: data.types || [], isLoadingGrooveTypes: false });
+      set({ grooveOperations: data.operations || [], isLoadingGrooveOps: false });
     } catch (error) {
-      console.error("Failed to fetch groove types:", error);
+      console.warn("Failed to fetch groove operations:", error);
       set({
-        grooveTypesError: error instanceof Error ? error.message : "Unknown error",
-        isLoadingGrooveTypes: false,
+        grooveOperations: [],
+        grooveOpsError: error instanceof Error ? error.message : "Unknown error",
+        isLoadingGrooveOps: false,
       });
     }
   },
 
-  // Fetch hole types
-  fetchHoleTypes: async () => {
-    set({ isLoadingHoleTypes: true, holeTypesError: null });
+  // Fetch drilling operations
+  fetchDrillingOperations: async () => {
+    set({ isLoadingDrillingOps: true, drillingOpsError: null });
     try {
-      const response = await fetch("/api/v1/hole-types");
-      if (!response.ok) throw new Error("Failed to fetch hole types");
+      const response = await fetch("/api/v1/operations/drilling", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        set({ drillingOperations: [], isLoadingDrillingOps: false });
+        return;
+      }
       const data = await response.json();
-      set({ holeTypes: data.types || [], isLoadingHoleTypes: false });
+      set({ drillingOperations: data.operations || [], isLoadingDrillingOps: false });
     } catch (error) {
-      console.error("Failed to fetch hole types:", error);
+      console.warn("Failed to fetch drilling operations:", error);
       set({
-        holeTypesError: error instanceof Error ? error.message : "Unknown error",
-        isLoadingHoleTypes: false,
+        drillingOperations: [],
+        drillingOpsError: error instanceof Error ? error.message : "Unknown error",
+        isLoadingDrillingOps: false,
       });
     }
   },
 
-  // Fetch CNC types
-  fetchCncTypes: async () => {
-    set({ isLoadingCncTypes: true, cncTypesError: null });
+  // Fetch CNC operations
+  fetchCncOperations: async () => {
+    set({ isLoadingCncOps: true, cncOpsError: null });
     try {
-      const response = await fetch("/api/v1/cnc-types");
-      if (!response.ok) throw new Error("Failed to fetch CNC types");
+      const response = await fetch("/api/v1/operations/cnc", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        set({ cncOperations: [], isLoadingCncOps: false });
+        return;
+      }
       const data = await response.json();
-      set({ cncTypes: data.types || [], isLoadingCncTypes: false });
+      set({ cncOperations: data.operations || [], isLoadingCncOps: false });
     } catch (error) {
-      console.error("Failed to fetch CNC types:", error);
+      console.warn("Failed to fetch CNC operations:", error);
       set({
-        cncTypesError: error instanceof Error ? error.message : "Unknown error",
-        isLoadingCncTypes: false,
+        cncOperations: [],
+        cncOpsError: error instanceof Error ? error.message : "Unknown error",
+        isLoadingCncOps: false,
       });
     }
   },
 
-  // Fetch edgeband materials
+  // Fetch edgeband operations
+  fetchEdgebandOperations: async () => {
+    set({ isLoadingEdgebandOps: true, edgebandOpsError: null });
+    try {
+      const response = await fetch("/api/v1/operations/edgeband", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        set({ edgebandOperations: [], isLoadingEdgebandOps: false });
+        return;
+      }
+      const data = await response.json();
+      set({ edgebandOperations: data.operations || [], isLoadingEdgebandOps: false });
+    } catch (error) {
+      console.warn("Failed to fetch edgeband operations:", error);
+      set({
+        edgebandOperations: [],
+        edgebandOpsError: error instanceof Error ? error.message : "Unknown error",
+        isLoadingEdgebandOps: false,
+      });
+    }
+  },
+
+  // Fetch edgeband materials (from the edgebands API)
   fetchEdgebandMaterials: async () => {
     set({ isLoadingEdgebands: true, edgebandsError: null });
     try {
-      const response = await fetch("/api/v1/edgebands");
-      if (!response.ok) throw new Error("Failed to fetch edgebands");
+      const response = await fetch("/api/v1/edgebands", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        set({ edgebandMaterials: [], isLoadingEdgebands: false });
+        return;
+      }
       const data = await response.json();
       set({ edgebandMaterials: data.edgebands || [], isLoadingEdgebands: false });
     } catch (error) {
-      console.error("Failed to fetch edgebands:", error);
+      console.warn("Failed to fetch edgebands:", error);
       set({
+        edgebandMaterials: [],
         edgebandsError: error instanceof Error ? error.message : "Unknown error",
         isLoadingEdgebands: false,
       });
     }
   },
 
-  // Fetch all types at once
-  fetchAllTypes: async () => {
+  // Fetch all operations at once
+  fetchAllOperations: async () => {
     const store = get();
     await Promise.all([
-      store.fetchGrooveTypes(),
-      store.fetchHoleTypes(),
-      store.fetchCncTypes(),
+      store.fetchGrooveOperations(),
+      store.fetchDrillingOperations(),
+      store.fetchCncOperations(),
+      store.fetchEdgebandOperations(),
       store.fetchEdgebandMaterials(),
     ]);
   },
 
   // Selectors
-  getGrooveTypeByCode: (code: string) => {
-    return get().grooveTypes.find(t => t.code.toUpperCase() === code.toUpperCase());
+  getGrooveOpByCode: (code: string) => {
+    return get().grooveOperations.find(op => op.code.toUpperCase() === code.toUpperCase());
   },
 
-  getHoleTypeByCode: (code: string) => {
-    return get().holeTypes.find(t => t.code.toUpperCase() === code.toUpperCase());
+  getDrillingOpByCode: (code: string) => {
+    return get().drillingOperations.find(op => op.code.toUpperCase() === code.toUpperCase());
   },
 
-  getCncTypeByCode: (code: string) => {
-    return get().cncTypes.find(t => t.code.toUpperCase() === code.toUpperCase());
+  getCncOpByCode: (code: string) => {
+    return get().cncOperations.find(op => op.code.toUpperCase() === code.toUpperCase());
+  },
+
+  getEdgebandOpByCode: (code: string) => {
+    return get().edgebandOperations.find(op => op.code.toUpperCase() === code.toUpperCase());
   },
 
   getEdgebandById: (id: string) => {
@@ -251,37 +317,39 @@ function formatSidesCode(sides: string[]): string {
 export function useOperationTypes() {
   const store = useOperationTypesStore();
   
-  // Fetch all types if not already loaded
+  // Fetch all operations if not already loaded
   if (
-    store.grooveTypes.length === 0 &&
-    !store.isLoadingGrooveTypes &&
-    !store.grooveTypesError
+    store.grooveOperations.length === 0 &&
+    !store.isLoadingGrooveOps &&
+    !store.grooveOpsError
   ) {
-    store.fetchAllTypes();
+    store.fetchAllOperations();
   }
 
   return {
-    grooveTypes: store.grooveTypes,
-    holeTypes: store.holeTypes,
-    cncTypes: store.cncTypes,
+    grooveOperations: store.grooveOperations,
+    drillingOperations: store.drillingOperations,
+    cncOperations: store.cncOperations,
+    edgebandOperations: store.edgebandOperations,
     edgebandMaterials: store.edgebandMaterials,
     isLoading:
-      store.isLoadingGrooveTypes ||
-      store.isLoadingHoleTypes ||
-      store.isLoadingCncTypes ||
+      store.isLoadingGrooveOps ||
+      store.isLoadingDrillingOps ||
+      store.isLoadingCncOps ||
+      store.isLoadingEdgebandOps ||
       store.isLoadingEdgebands,
     errors: {
-      grooveTypes: store.grooveTypesError,
-      holeTypes: store.holeTypesError,
-      cncTypes: store.cncTypesError,
+      grooveOps: store.grooveOpsError,
+      drillingOps: store.drillingOpsError,
+      cncOps: store.cncOpsError,
+      edgebandOps: store.edgebandOpsError,
       edgebands: store.edgebandsError,
     },
-    refetch: store.fetchAllTypes,
-    getGrooveTypeByCode: store.getGrooveTypeByCode,
-    getHoleTypeByCode: store.getHoleTypeByCode,
-    getCncTypeByCode: store.getCncTypeByCode,
+    refetch: store.fetchAllOperations,
+    getGrooveOpByCode: store.getGrooveOpByCode,
+    getDrillingOpByCode: store.getDrillingOpByCode,
+    getCncOpByCode: store.getCncOpByCode,
+    getEdgebandOpByCode: store.getEdgebandOpByCode,
     getEdgebandById: store.getEdgebandById,
   };
 }
-
-
