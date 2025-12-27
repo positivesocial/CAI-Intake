@@ -373,6 +373,83 @@ export class PythonOCRClient {
   }
 
   /**
+   * Convert PDF pages to images for AI vision processing
+   * Used as fallback for scanned/image-based PDFs where text extraction fails
+   * 
+   * @param fileData Base64 encoded PDF data
+   * @param fileName Original filename
+   * @returns Array of base64-encoded PNG images, one per page
+   */
+  async extractFromPDFAsImages(
+    fileData: string,
+    fileName: string
+  ): Promise<{ success: boolean; images: string[]; error?: string } | null> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout * 2); // Double timeout for image rendering
+
+      logger.info("🐍 Requesting PDF to images conversion", {
+        endpoint: "/api/ocr/pdf-to-images",
+        fileName,
+      });
+
+      const response = await fetch(`${this.baseUrl}/api/ocr/pdf-to-images`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileData,
+          fileName,
+          options: {
+            dpi: 200, // Good balance between quality and size
+            max_pages: 10, // Limit to prevent timeout
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        logger.warn("🐍 PDF to images conversion failed", {
+          status: response.status,
+          error: errorText,
+        });
+        return {
+          success: false,
+          images: [],
+          error: `HTTP ${response.status}: ${errorText}`,
+        };
+      }
+
+      const result = await response.json();
+      
+      logger.info("🐍 PDF to images conversion complete", {
+        success: result.success,
+        imageCount: result.images?.length ?? 0,
+      });
+
+      return {
+        success: result.success ?? false,
+        images: result.images ?? [],
+        error: result.error,
+      };
+    } catch (error) {
+      // If the endpoint doesn't exist yet, return a helpful error
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn("🐍 PDF to images conversion error", { error: message });
+      
+      return {
+        success: false,
+        images: [],
+        error: message.includes("AbortError") 
+          ? "PDF conversion timed out. Try uploading images instead."
+          : `PDF conversion not available: ${message}`,
+      };
+    }
+  }
+
+  /**
    * Extract text from an image file
    */
   async extractFromImage(

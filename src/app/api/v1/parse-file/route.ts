@@ -1468,6 +1468,9 @@ async function processPDF(
 /**
  * Convert PDF pages to images and parse them using AI vision
  * This is a fallback for scanned/image-based PDFs where text extraction fails
+ * 
+ * Uses Python OCR service which runs on Render with full system dependencies
+ * for PDF rendering (poppler, cairo, etc.)
  */
 async function convertPdfToImagesAndParse(
   pdfBuffer: Buffer,
@@ -1486,70 +1489,68 @@ async function convertPdfToImagesAndParse(
 }> {
   const startTime = Date.now();
   
-  try {
-    // Use pdf-img-convert for reliable Node.js PDF to image conversion
-    const pdfConverter = await import("pdf-img-convert");
-    
-    // Convert PDF buffer to array of image buffers (PNG format)
-    const imagePages = await pdfConverter.convert(pdfBuffer, {
-      width: 2048, // Good resolution for OCR
-      height: 2048,
-      page_numbers: Array.from({ length: 10 }, (_, i) => i + 1), // First 10 pages
-    }) as Uint8Array[];
-    
-    logger.info("📥 [ParseFile] 🖼️ PDF converted to images", {
+  // Check if Python OCR service is available
+  if (!pythonOCR.isConfigured()) {
+    logger.warn("📥 [ParseFile] ⚠️ Python OCR not configured for PDF-to-image", {
       requestId,
-      numPages,
+    });
+    return {
+      success: false,
+      parts: [],
+      totalConfidence: 0,
+      errors: ["PDF-to-image conversion requires the Python OCR service. Please try uploading images (PNG/JPG) of each page instead."],
+      processingTimeMs: Date.now() - startTime,
+    };
+  }
+  
+  try {
+    logger.info("📥 [ParseFile] 🖼️ Requesting PDF-to-image from Python OCR", {
+      requestId,
       fileName,
     });
     
-    if (numPages === 0) {
+    // Send PDF to Python OCR with image extraction mode
+    const base64Pdf = pdfBuffer.toString("base64");
+    const ocrResult = await pythonOCR.extractFromPDFAsImages(base64Pdf, fileName);
+    
+    if (!ocrResult || !ocrResult.success || !ocrResult.images || ocrResult.images.length === 0) {
+      logger.warn("📥 [ParseFile] ⚠️ Python OCR could not extract images from PDF", {
+        requestId,
+        error: ocrResult?.error,
+      });
       return {
         success: false,
         parts: [],
         totalConfidence: 0,
-        errors: ["Could not extract any pages from PDF"],
+        errors: ["Could not convert PDF to images. This may be a protected or corrupted PDF. Try uploading images (PNG/JPG) of each page instead."],
         processingTimeMs: Date.now() - startTime,
       };
     }
+    
+    logger.info("📥 [ParseFile] 🖼️ Python OCR extracted images from PDF", {
+      requestId,
+      imageCount: ocrResult.images.length,
+    });
     
     const allParts: Array<{ part_id: string; label?: string; size: { L: number; W: number }; qty: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string; audit: { source_method: string; confidence: number; human_verified: boolean } }> = [];
     const errors: string[] = [];
     let totalConfidence = 0;
     let successfulPages = 0;
     
-    // Process each page image
-    for (let pageIdx = 0; pageIdx < numPages; pageIdx++) {
+    // Process each page image with AI vision
+    for (let pageIdx = 0; pageIdx < ocrResult.images.length; pageIdx++) {
       const pageNum = pageIdx + 1;
       try {
-        const imageData = imagePages[pageIdx];
-        
-        // Convert Uint8Array to Buffer and optimize with sharp
-        const imageBuffer = Buffer.from(imageData);
-        const optimizedBuffer = await sharp(imageBuffer)
-          .resize(2048, 2048, { fit: "inside", withoutEnlargement: true })
-          .png({ quality: 80 })
-          .toBuffer();
-        
-        logger.info("📥 [ParseFile] 🖼️ Processing page image", {
-          requestId,
-          pageNum,
-          originalSize: imageBuffer.length,
-          optimizedSize: optimizedBuffer.length,
-        });
+        const imageBase64 = ocrResult.images[pageIdx];
         
         // Parse the image using AI vision
-        const base64Image = optimizedBuffer.toString("base64");
-        const mimeType = "image/png";
-        
         const parseResult = await provider.parseImage(
-          base64Image,
-          mimeType,
+          imageBase64,
+          "image/png",
           parseOptions
         );
         
         if (parseResult.parts && parseResult.parts.length > 0) {
-          // Add page info to audit
           const partsWithAudit = parseResult.parts.map((p: { part_id?: string; label?: string; size?: { L: number; W: number }; qty?: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string }) => ({
             ...p,
             part_id: p.part_id || `P-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -1600,7 +1601,10 @@ async function convertPdfToImagesAndParse(
       success: false,
       parts: [],
       totalConfidence: 0,
-      errors: [error instanceof Error ? error.message : "PDF conversion failed"],
+      errors: [
+        "PDF-to-image conversion failed. This PDF may be scanned or image-based.",
+        "💡 Tip: Take photos of each page and upload them as images (PNG/JPG) for better results."
+      ],
       processingTimeMs: Date.now() - startTime,
     };
   }
