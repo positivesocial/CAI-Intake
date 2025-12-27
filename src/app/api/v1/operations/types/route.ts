@@ -65,7 +65,8 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    const roleName = (userData?.roles as { name: string } | null)?.name;
+    const roles = userData?.roles as { name: string }[] | null;
+    const roleName = roles?.[0]?.name;
     const isSuperAdmin = userData?.is_super_admin;
     const isAdmin = roleName === "org_admin" || roleName === "admin" || isSuperAdmin;
     
