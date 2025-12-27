@@ -25,6 +25,7 @@ import { getPythonOCRClient } from "@/lib/services/python-ocr-client";
 import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
 import { AnthropicProvider, type StreamingProgress } from "@/lib/ai/anthropic";
+import { resolveOperationsForParts } from "@/lib/operations/resolver";
 
 // Generate a unique request ID for tracking
 function generateRequestId(): string {
@@ -499,6 +500,28 @@ export async function POST(request: NextRequest) {
         .single();
       
       if (userData?.organization_id) {
+        // Resolve operations against org's database
+        if (aiResult.parts && aiResult.parts.length > 0) {
+          try {
+            const resolveStart = Date.now();
+            aiResult.parts = await resolveOperationsForParts(
+              aiResult.parts,
+              userData.organization_id
+            );
+            logger.info("📥 [ParseFile] Operations resolved against org database", {
+              requestId,
+              organizationId: userData.organization_id,
+              partsResolved: aiResult.parts.length,
+              resolveTimeMs: Date.now() - resolveStart,
+            });
+          } catch (resolveError) {
+            logger.warn("📥 [ParseFile] Operation resolution failed (non-fatal)", {
+              requestId,
+              error: resolveError instanceof Error ? resolveError.message : "Unknown error",
+            });
+          }
+        }
+        
         // Generate unique file name
         const timestamp = Date.now();
         const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");

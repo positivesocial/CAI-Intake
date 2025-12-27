@@ -469,3 +469,92 @@ export async function resolveOperationsBatch(
   return results;
 }
 
+// ============================================================
+// POST-PARSING RESOLUTION
+// ============================================================
+
+/**
+ * Resolve operations for parsed CutPart objects.
+ * Cross-references shortcodes with org's actual operation definitions.
+ * 
+ * @param parts - Array of parsed CutPart objects from AI
+ * @param organizationId - Organization ID for looking up operations
+ * @returns Parts with resolved operations
+ */
+export async function resolveOperationsForParts(
+  parts: Array<{
+    part_id: string;
+    ops?: {
+      edging?: {
+        summary?: { code?: string };
+        edges?: Record<string, unknown>;
+      };
+      grooves?: Array<{ groove_id?: string; profile_id?: string; code?: string }>;
+      holes?: Array<{ pattern_id?: string; code?: string }>;
+      custom_cnc_ops?: Array<{ op_type?: string; code?: string }>;
+    };
+    [key: string]: unknown;
+  }>,
+  organizationId?: string
+): Promise<typeof parts> {
+  if (!organizationId) {
+    // No org context - return parts as-is
+    return parts;
+  }
+
+  const context: OperationResolutionContext = {
+    organizationId,
+    trackUsage: true, // Track usage for popularity sorting
+  };
+
+  const resolvedParts = await Promise.all(
+    parts.map(async (part) => {
+      if (!part.ops) return part;
+
+      try {
+        // Extract shortcodes from parsed operations
+        const edgeCode = part.ops.edging?.summary?.code;
+        const grooveCodes = part.ops.grooves
+          ?.map(g => g.code || g.groove_id || g.profile_id)
+          .filter((c): c is string => !!c);
+        const drillingCodes = part.ops.holes
+          ?.map(h => h.code || h.pattern_id)
+          .filter((c): c is string => !!c);
+        const cncCodes = part.ops.custom_cnc_ops
+          ?.map(c => c.code || c.op_type)
+          .filter((c): c is string => !!c);
+
+        // Resolve operations against org's database
+        const resolved = await resolveOperations(
+          { edgeCode, grooveCodes, drillingCodes, cncCodes },
+          context
+        );
+
+        // Merge resolved operations back into part
+        return {
+          ...part,
+          ops: {
+            ...part.ops,
+            // Override with resolved operations if available
+            ...(resolved.edging && { edging: resolved.edging }),
+            ...(resolved.grooves?.length && { grooves: resolved.grooves }),
+            ...(resolved.holes?.length && { holes: resolved.holes }),
+            ...(resolved.cnc?.length && { custom_cnc_ops: resolved.cnc }),
+          },
+          // Add audit trail
+          audit: {
+            ...(part.audit as Record<string, unknown> || {}),
+            operations_resolved: true,
+            operations_org_id: organizationId,
+          },
+        };
+      } catch (error) {
+        console.error(`Failed to resolve operations for part ${part.part_id}:`, error);
+        return part; // Return original on error
+      }
+    })
+  );
+
+  return resolvedParts;
+}
+
