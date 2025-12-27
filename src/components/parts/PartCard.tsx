@@ -426,6 +426,23 @@ export function PartCard({
             </Select>
           </td>
 
+          {/* Rotation */}
+          <td className="px-1 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => onChange({ allow_rotation: !data.allow_rotation })}
+              className={cn(
+                "w-7 h-7 rounded-md flex items-center justify-center text-xs font-medium transition-colors",
+                data.allow_rotation !== false
+                  ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
+                  : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400"
+              )}
+              title={data.allow_rotation !== false ? "Can rotate (click to lock)" : "Locked (click to allow rotation)"}
+            >
+              {data.allow_rotation !== false ? "✓" : "⊘"}
+            </button>
+          </td>
+
           {/* Operations */}
           <td className="px-1 py-1" onClick={(e) => e.stopPropagation()}>
             <OpsIndicator 

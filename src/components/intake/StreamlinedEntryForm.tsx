@@ -520,6 +520,7 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
                     </th>
                     <th className="w-24 px-2 py-2 text-center text-xs font-medium border-b">Qty</th>
                     <th className="w-40 px-2 py-2 text-left text-xs font-medium border-b">Material</th>
+                    <th className="w-12 px-1 py-2 text-center text-xs font-medium border-b" title="Can Rotate">Rot</th>
                     {hasOpsEnabled && (
                       <th className="w-28 px-2 py-2 text-center text-xs font-medium border-b text-teal-600">Ops</th>
                     )}
