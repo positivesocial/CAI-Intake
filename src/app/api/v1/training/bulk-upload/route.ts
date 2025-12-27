@@ -273,14 +273,13 @@ async function extractTextFromImage(file: File): Promise<string> {
     
     const arrayBuffer = await file.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString("base64");
-    const mimeType = file.type as "image/png" | "image/jpeg" | "image/gif" | "image/webp";
     
-    const result = await provider.processImageOCR(base64, mimeType, {
+    const result = await provider.parseImageForOCR(base64, {
       extractMetadata: false,
       confidence: "balanced",
     });
     
-    return result.extractedText || "";
+    return result.text || "";
   } catch (error) {
     console.error("Image OCR error:", error);
     return "";
