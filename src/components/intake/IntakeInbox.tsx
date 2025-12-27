@@ -665,6 +665,23 @@ function InboxPartRow({
         </Select>
       </td>
 
+      {/* Rotation Toggle */}
+      <td className="px-1 py-2 text-center w-[50px]">
+        <button
+          type="button"
+          onClick={() => onUpdate({ allow_rotation: !part.allow_rotation })}
+          className={cn(
+            "w-7 h-7 rounded-md flex items-center justify-center text-xs font-medium transition-colors",
+            part.allow_rotation !== false
+              ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
+              : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400"
+          )}
+          title={part.allow_rotation !== false ? "Can rotate (click to lock)" : "Locked to grain (click to unlock)"}
+        >
+          {part.allow_rotation !== false ? "✓" : "⊘"}
+        </button>
+      </td>
+
       {/* Operations Shortcodes - Editable */}
       <td className="px-2 py-2 min-w-[160px]">
         <OpsShortcodeEditor 
@@ -1683,6 +1700,7 @@ export function IntakeInbox() {
               <th className="w-[70px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">W</th>
               <th className="w-[60px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Qty</th>
               <th className="px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Material</th>
+              <th className="w-[50px] px-1 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]" title="Can Rotate">Rot</th>
               <th className="min-w-[100px] px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Ops</th>
               <th className="w-[100px] px-2 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">Conf.</th>
               <th className="w-[100px] px-2 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Actions</th>

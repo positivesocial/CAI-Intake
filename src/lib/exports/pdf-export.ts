@@ -875,7 +875,7 @@ export function generateCutlistPDF(
   doc.text("Parts List", margin, yPos);
   yPos += 5;
 
-  const columns: string[] = ["#", "Label", "L", "W", "T", "Qty", "Material"];
+  const columns: string[] = ["#", "Label", "L", "W", "T", "Qty", "Mat", "Rot"];
   if (includeOperations) {
     columns.push("Edge", "Groove", "Holes", "CNC");
   }
@@ -896,6 +896,7 @@ export function generateCutlistPDF(
       part.thickness_mm,
       part.qty,
       material?.name || part.material_id,
+      part.allow_rotation !== false ? "Y" : "N", // Can rotate
     ];
 
     if (includeOperations) {
@@ -941,13 +942,14 @@ export function generateCutlistPDF(
       fillColor: [248, 248, 248],
     },
     columnStyles: {
-      0: { halign: "center", cellWidth: 10 },  // Part # - wider for 3-digit numbers
-      1: { cellWidth: 24 },                     // Label - slightly narrower
-      2: { halign: "right", cellWidth: 12 },
-      3: { halign: "right", cellWidth: 12 },
-      4: { halign: "right", cellWidth: 8 },
-      5: { halign: "center", cellWidth: 8 },
-      6: { cellWidth: 22 },
+      0: { halign: "center", cellWidth: 10 },  // Part #
+      1: { cellWidth: 22 },                     // Label
+      2: { halign: "right", cellWidth: 12 },   // L
+      3: { halign: "right", cellWidth: 12 },   // W
+      4: { halign: "right", cellWidth: 8 },    // T
+      5: { halign: "center", cellWidth: 8 },   // Qty
+      6: { cellWidth: 20 },                     // Material
+      7: { halign: "center", cellWidth: 8 },   // Rot (Y/N)
     },
     didDrawPage: (data) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
