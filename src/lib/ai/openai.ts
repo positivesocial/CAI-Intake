@@ -1273,12 +1273,27 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
     // Very short input might be conversational
     if (lines.length < 3 && text.length < 100) return true;
     
-    // No clear dimension patterns
-    const hasDimensions = /\d+\s*[x×X]\s*\d+/.test(text);
-    if (!hasDimensions) return true;
-    
     // Contains conversational markers
     if (/\b(please|can you|I need|want|like|same as)\b/i.test(text)) return true;
+    
+    // Check for non-standard dimension formats that need AI interpretation
+    // Standard: "720x560" or "720 x 560"
+    // Messy: "2430Lx1210w", "720L x 560W", etc.
+    const hasNonStandardDims = /\d+\s*[LlWw]\s*[x×X*]\s*\d+/i.test(text);
+    if (hasNonStandardDims) return true;
+    
+    // Numbered lists without headers (1.. or 1) or 1. format)
+    const hasNumberedList = /^[1-9]\s*[\.\)\:]/.test(text.trim());
+    const hasNoHeaders = !/(length|width|qty|quantity|material|part\s*name)/i.test(lines[0] || "");
+    if (hasNumberedList && hasNoHeaders) return true;
+    
+    // Mixed quantity/edge/groove notation in same line
+    const hasMixedNotation = /\d+\s*pcs?.*\d+[LW]/i.test(text) || /\d+[LW].*\d+\s*pcs?/i.test(text);
+    if (hasMixedNotation) return true;
+    
+    // No clear dimension patterns at all
+    const hasDimensions = /\d+\s*[x×X*]\s*\d+/.test(text);
+    if (!hasDimensions) return true;
     
     return false;
   }

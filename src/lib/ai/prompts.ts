@@ -351,23 +351,36 @@ Extract EVERY part mentioned, even if the format is inconsistent or messy.
 
 ## Part Detection Strategies
 
-**1. Numbered/Bulleted Lists:**
+**1. Numbered Lists with L/W Dimension Labels (COMMON FORMAT):**
+"1..2430Lx1210wx 4 pcs" → row: 1, length: 2430, width: 1210, quantity: 4
+"5..1829Lx430wx1pcs 1L groove 1L" → row: 5, 1829x430, qty: 1, edge: L1, groove: GL
+"16...2364Lx400wx2pcs 2L CNC" → row: 16, 2364x400, qty: 2, edges: L1+L2, CNC operation
+
+The "L" suffix means Length, "W" or "w" suffix means Width. Parse these dimensions correctly!
+- "2430L" = 2430mm length
+- "1210w" = 1210mm width
+- "1L" after dimensions = 1 long edge edgebanding
+- "2L2W" = all 4 edges
+- "groove 1L" = groove on 1 long edge (GL)
+- "CNC" = CNC operations detected
+
+**2. Numbered/Bulleted Lists:**
 "1) Sides – 600 x 520 x 18 – Qty 20 – White PB – edge: 2L2W"
 → Extract: Sides, 600x520x18, qty 20, material: White PB, edges: L1,L2,W1,W2
 
-**2. Natural Language:**
+**3. Natural Language:**
 "I need 2 side panels 720x560 in white melamine with edge banding"
 → Extract: side panels, 720x560, qty 2, material: white melamine, edges detected
 
-**3. Section-Based:**
+**4. Section-Based:**
 "Drawer boxes:
   sides: 450 x 150 x 16 (8)
   back: 500 x 140 x 16 x4"
 → Extract both parts with "Drawer box" context in notes
 
-**4. Mixed Formats:**
+**5. Mixed Formats:**
 Handle ALL of these quantity formats: "Qty 20", "x5", "qty:2", "(3pcs)", "qty 5", "QTY=9", "pcs 6", "(1)"
-Handle ALL dimension formats: "600 x 520", "764*520", "400 by 540", "560 X 397", "720×560"
+Handle ALL dimension formats: "600 x 520", "764*520", "400 by 540", "560 X 397", "720×560", "2430Lx1210w"
 
 ## CRITICAL: Notes Extraction
 
@@ -427,18 +440,25 @@ Handle ALL dimension formats: "600 x 520", "764*520", "400 by 540", "560 X 397",
 
 | Input | Interpretation |
 |-------|----------------|
+| "1L" | L1 only (1 long edge) |
+| "2L" | L1, L2 (both long edges) |
+| "1W" | W1 only (1 width edge) |
+| "2W" | W1, W2 (both width edges) |
+| "1L 1W" or "1L1W" | L1, W1 |
+| "2L2W" or "2L 2W" | L1, L2, W1, W2 (all 4 edges) |
 | "edge: 2L2W" | L1, L2, W1, W2 (all 4 edges) |
 | "edging 1L" | L1 only |
 | "edge: 1W" | W1 only |
 | "edge all round" | L1, L2, W1, W2 |
 | "front edge only" | L1 (visible front edge) |
 | "no edge" | No edgebanding |
-| "2L" | L1, L2 (both long edges) |
 
 ## Grooving Interpretation
 
 | Input | Interpretation |
 |-------|----------------|
+| "groove 1L" | GL: true (groove on 1 long edge = parallel to length) |
+| "groove 1W" | GW: true (groove on width edge) |
 | "groove GL" | GL: true (groove parallel to length) |
 | "groove GW" | GW: true (groove parallel to width) |
 | "groove depth 10" | Groove detected, depth 10mm in notes |
