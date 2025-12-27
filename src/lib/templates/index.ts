@@ -61,3 +61,23 @@ export {
   type ParsedTemplateId,
   type TemplateQRData,
 } from "./org-template-generator";
+
+// Template parsing service (multi-page, auto-accept, audit)
+export {
+  registerTemplatePage,
+  getSessionStatus,
+  getSessionByProjectCode,
+  mergeSessionPages,
+  cleanupExpiredSessions,
+  checkAutoAccept,
+  logTemplateParseAudit,
+  logHumanCorrections,
+  validateTemplateVersion,
+  AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
+  MULTI_PAGE_WAIT_TIMEOUT_MS,
+  type TemplateParseSession,
+  type TemplatePageResult,
+  type TemplateParseAudit,
+  type MultiPageMergeResult,
+  type AutoAcceptResult,
+} from "./template-parsing-service";

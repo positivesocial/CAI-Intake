@@ -52,6 +52,16 @@ interface UploadedFile {
   status: ProcessingStatus;
   progress: number;
   qrDetected?: QRDetectionResult | null;
+  templateInfo?: {
+    isTemplate: boolean;
+    templateId?: string;
+    autoAccept?: boolean;
+    autoAcceptThreshold?: number;
+    isMultiPage?: boolean;
+    sessionId?: string;
+    pageNumber?: number;
+    totalPages?: number;
+  };
   result?: {
     partsCount: number;
     confidence: number;
@@ -533,6 +543,28 @@ export function FileUpload() {
               });
             }
             
+            // Handle template-specific response
+            if (data.template?.isTemplate) {
+              console.info(`📤 [FileUpload] 🎯 CAI Template detected!`, {
+                fileId: fileId.substring(0, 8),
+                templateId: data.template.templateId,
+                autoAccept: data.template.autoAccept,
+                confidence: `${((data.template.autoAcceptThreshold || 0.95) * 100).toFixed(0)}%`,
+                isMultiPage: data.template.isMultiPage,
+                sessionId: data.template.sessionId,
+              });
+              
+              // If auto-accept is enabled, mark parts as accepted
+              if (data.template.autoAccept) {
+                console.info(`📤 [FileUpload] ✅ AUTO-ACCEPT: Confidence ${((confidence || 0) * 100).toFixed(0)}% >= ${((data.template.autoAcceptThreshold || 0.95) * 100).toFixed(0)}% threshold`, {
+                  fileId: fileId.substring(0, 8),
+                  partsAutoAccepted: parts.length,
+                });
+                // Parts will be added with "accepted" status instead of "pending"
+                parts = parts.map(p => ({ ...p, _status: "accepted" as const }));
+              }
+            }
+            
           } catch (aiError) {
             console.error(`📤 [FileUpload] AI processing failed`, {
               fileId: fileId.substring(0, 8),
@@ -607,6 +639,16 @@ export function FileUpload() {
                 ...f,
                 status: "complete" as ProcessingStatus,
                 progress: 100,
+                templateInfo: data.template?.isTemplate ? {
+                  isTemplate: true,
+                  templateId: data.template.templateId,
+                  autoAccept: data.template.autoAccept,
+                  autoAcceptThreshold: data.template.autoAcceptThreshold,
+                  isMultiPage: data.template.isMultiPage,
+                  sessionId: data.template.sessionId,
+                  pageNumber: data.template.pageNumber,
+                  totalPages: data.template.totalPages,
+                } : undefined,
                 result: {
                   partsCount: parts.length,
                   confidence,
@@ -879,6 +921,12 @@ export function FileUpload() {
                           Template
                         </Badge>
                       )}
+                      {uploadedFile.templateInfo?.autoAccept && (
+                        <Badge variant="teal" className="text-xs shrink-0">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Auto-Accept
+                        </Badge>
+                      )}
                     </div>
 
                     {isActive && (
@@ -902,7 +950,18 @@ export function FileUpload() {
                               ({Math.round(uploadedFile.result.confidence * 100)}% confidence)
                             </span>
                           )}
+                          {uploadedFile.templateInfo?.autoAccept && (
+                            <span className="ml-2 text-[var(--cai-teal)] font-medium">
+                              ✅ Auto-accepted (no review needed)
+                            </span>
+                          )}
                         </p>
+                        {uploadedFile.templateInfo?.isMultiPage && (
+                          <p className="text-xs text-blue-600">
+                            📄 Multi-page template: Page {uploadedFile.templateInfo.pageNumber || "?"} 
+                            {uploadedFile.templateInfo.totalPages && ` of ${uploadedFile.templateInfo.totalPages}`}
+                          </p>
+                        )}
                         {uploadedFile.result.metadata && (
                           <div className="flex gap-2 text-xs text-[var(--muted-foreground)]">
                             {uploadedFile.result.metadata.edgeBanding > 0 && (

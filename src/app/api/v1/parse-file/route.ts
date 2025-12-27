@@ -31,8 +31,16 @@ import {
   getOrgTemplateConfig, 
   buildDeterministicParsePrompt,
   type QRDetectionResult,
-  type OrgTemplateConfig 
+  type OrgTemplateConfig,
+  type TemplateParseResult,
+  type ParsedTemplatePart,
 } from "@/lib/ai/template-ocr";
+import {
+  registerTemplatePage,
+  checkAutoAccept,
+  logTemplateParseAudit,
+  AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
+} from "@/lib/templates/template-parsing-service";
 
 // Generate a unique request ID for tracking
 function generateRequestId(): string {
@@ -719,6 +727,121 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // ============================================================
+    // TEMPLATE-SPECIFIC POST-PROCESSING
+    // ============================================================
+    let templateParseInfo: {
+      isTemplate: boolean;
+      templateId?: string;
+      projectCode?: string;
+      pageNumber?: number;
+      totalPages?: number;
+      sessionId?: string;
+      isMultiPage?: boolean;
+      readyToMerge?: boolean;
+      autoAccept?: boolean;
+      autoAcceptThreshold?: number;
+      autoAcceptReasons?: string[];
+    } = { isTemplate: false };
+    
+    if (detectedTemplateId && qrDetectionResult?.parsed) {
+      const processingTimeMs = Date.now() - requestStartTime;
+      
+      // Extract project info from parsed parts (AI should include this)
+      // For now, we'll use basic detection
+      const projectCode = `proj_${Date.now()}`; // Will be enhanced with AI extraction
+      
+      // Build template parse result for registration
+      const templateResult: TemplateParseResult = {
+        success: true,
+        templateId: detectedTemplateId,
+        orgId: qrDetectionResult.parsed.orgId || "",
+        version: qrDetectionResult.parsed.version || "1.0",
+        projectInfo: {
+          projectCode,
+          page: 1, // Will be extracted from AI response
+          totalPages: undefined, // Will be extracted from AI response
+        },
+        parts: aiResult.parts?.map((p, i) => ({
+          rowNumber: i + 1,
+          label: p.part?.label,
+          length: p.part?.length_mm,
+          width: p.part?.width_mm,
+          thickness: p.part?.thickness_mm,
+          quantity: p.part?.quantity,
+          material: p.part?.material_id,
+          edge: p.part?.ops?.edging?.summary?.code,
+          groove: p.part?.ops?.grooves?.[0]?.groove_id,
+          drill: p.part?.ops?.holes?.[0]?.pattern_id,
+          cnc: p.part?.ops?.custom_cnc_ops?.[0]?.op_type,
+          notes: p.part?.operator_notes,
+          confidence: p.part?.audit?.confidence || 0.8,
+        })) as ParsedTemplatePart[] || [],
+        errors: [],
+        confidence: aiResult.totalConfidence || 0,
+      };
+      
+      // Register for multi-page merging
+      const pageRegistration = registerTemplatePage(
+        userData?.organization_id || "unknown",
+        user.id,
+        detectedTemplateId,
+        uploadedFileId || crypto.randomUUID(),
+        file.name,
+        templateResult,
+        processingTimeMs
+      );
+      
+      // Check auto-accept
+      const autoAcceptResult = checkAutoAccept(templateResult.parts, detectedTemplateId);
+      
+      templateParseInfo = {
+        isTemplate: true,
+        templateId: detectedTemplateId,
+        projectCode,
+        pageNumber: pageRegistration.currentPage,
+        totalPages: pageRegistration.totalExpectedPages,
+        sessionId: pageRegistration.sessionId,
+        isMultiPage: pageRegistration.isMultiPage,
+        readyToMerge: pageRegistration.readyToMerge,
+        autoAccept: autoAcceptResult.shouldAutoAccept,
+        autoAcceptThreshold: AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
+        autoAcceptReasons: autoAcceptResult.reasons,
+      };
+      
+      // Log audit (async, don't wait)
+      if (userData?.organization_id) {
+        logTemplateParseAudit({
+          organizationId: userData.organization_id,
+          userId: user.id,
+          templateId: detectedTemplateId,
+          version: qrDetectionResult.parsed.version || "1.0",
+          projectCode,
+          totalPages: 1,
+          totalParts: aiResult.parts?.length || 0,
+          averageConfidence: aiResult.totalConfidence || 0,
+          autoAccepted: autoAcceptResult.shouldAutoAccept,
+          humanCorrected: false,
+          correctionCount: 0,
+          processingTimeMs,
+        }).catch(err => {
+          logger.warn("📥 [ParseFile] Audit log failed (non-fatal)", {
+            requestId,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        });
+      }
+      
+      logger.info("📥 [ParseFile] 🎯 Template parsing complete", {
+        requestId,
+        templateId: detectedTemplateId,
+        autoAccept: autoAcceptResult.shouldAutoAccept,
+        confidence: aiResult.totalConfidence,
+        sessionId: pageRegistration.sessionId,
+        isMultiPage: pageRegistration.isMultiPage,
+      });
+    }
+
     // Return parsed results with file ID if saved
     return NextResponse.json({
       success: true,
@@ -727,6 +850,8 @@ export async function POST(request: NextRequest) {
       processingTimeMs: aiResult.processingTimeMs,
       rawResponse: aiResult.rawResponse,
       uploadedFileId, // Include file ID for linking to cutlist later
+      // Template-specific info for 0-human-review flow
+      template: templateParseInfo.isTemplate ? templateParseInfo : undefined,
     });
 
   } catch (error) {
