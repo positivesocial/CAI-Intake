@@ -16,6 +16,7 @@
 
 import { generateId } from "@/lib/utils";
 import QRCode from "qrcode";
+import * as XLSX from "xlsx";
 
 // ============================================================
 // TYPES
@@ -1191,8 +1192,6 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
 // ============================================================
 // EXCEL TEMPLATE GENERATOR (XLSX format with Multiple Sheets)
 // ============================================================
-
-import * as XLSX from "xlsx";
 
 /**
  * Generate Excel template as XLSX binary (returns ArrayBuffer)
