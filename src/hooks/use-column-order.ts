@@ -4,6 +4,7 @@ import * as React from "react";
 
 /**
  * Hook to manage column ordering with localStorage persistence
+ * Properly handles adding new columns and removing old ones
  */
 export function useColumnOrder<T extends string>(
   key: string,
@@ -16,12 +17,32 @@ export function useColumnOrder<T extends string>(
       const stored = localStorage.getItem(`column-order-${key}`);
       if (stored) {
         const parsed = JSON.parse(stored) as T[];
-        // Validate that stored columns match default columns
-        if (
-          parsed.length === defaultColumns.length &&
-          parsed.every((col) => defaultColumns.includes(col))
-        ) {
-          return parsed;
+        
+        // Filter out columns that no longer exist in defaults
+        const validStored = parsed.filter((col) => defaultColumns.includes(col));
+        
+        // Find new columns that weren't in stored (added since last save)
+        const newColumns = defaultColumns.filter((col) => !parsed.includes(col));
+        
+        // If we have valid stored columns, merge with new columns
+        if (validStored.length > 0) {
+          // Insert new columns at their default positions
+          const result = [...validStored];
+          for (const newCol of newColumns) {
+            const defaultIndex = defaultColumns.indexOf(newCol);
+            // Find the best position - after the column that precedes it in defaults
+            let insertIndex = result.length;
+            for (let i = defaultIndex - 1; i >= 0; i--) {
+              const prevCol = defaultColumns[i];
+              const prevIndex = result.indexOf(prevCol);
+              if (prevIndex !== -1) {
+                insertIndex = prevIndex + 1;
+                break;
+              }
+            }
+            result.splice(insertIndex, 0, newCol);
+          }
+          return result;
         }
       }
     } catch {
