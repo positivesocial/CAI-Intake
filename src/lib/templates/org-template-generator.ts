@@ -1189,9 +1189,223 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
 }
 
 // ============================================================
-// EXCEL TEMPLATE GENERATOR (XML Spreadsheet with Multiple Sheets)
+// EXCEL TEMPLATE GENERATOR (XLSX format with Multiple Sheets)
 // ============================================================
 
+import * as XLSX from "xlsx";
+
+/**
+ * Generate Excel template as XLSX binary (returns ArrayBuffer)
+ */
+export function generateOrgExcelTemplateXLSX(config: OrgTemplateConfig): ArrayBuffer {
+  const version = config.version || "1.0";
+  const shortOrgId = config.branding.org_id.slice(0, 8);
+  const templateId = `CAI-${shortOrgId}-v${version}`;
+  const orgName = config.branding.name || "Organization";
+  const rows = config.rows || 35;
+  const includeFillInGuide = config.includeFillInGuide !== false;
+  const includeMaterialsRef = config.includeMaterialsRef !== false;
+  
+  // Create a new workbook
+  const workbook = XLSX.utils.book_new();
+  
+  // ============================================
+  // SHEET 1: Project Info
+  // ============================================
+  const projectInfoData: (string | number)[][] = [
+    [orgName, "", templateId],
+    [`Smart Cutlist Template v${version}`],
+    [],
+    ["📋 PROJECT INFORMATION"],
+    ["Fill in the details below. This info helps track multi-page cutlists."],
+    [],
+    ["Project Name:", "", ""],
+    ["Project Code:", ""],
+    [],
+    ["Customer Name:", "", ""],
+    ["Phone:", ""],
+    ["Email:", ""],
+    [],
+    ["📄 PAGE TRACKING"],
+    ["Page:", "", "of", ""],
+    ["Section/Area:", ""],
+    ["Date:", ""],
+    [],
+    [],
+    ["📝 HOW TO USE"],
+    ["1. Fill in the project information above"],
+    ["2. Go to the 'Parts List' sheet and enter your parts"],
+    ["3. Use shortcodes from 'Fill-In Guide' for operations"],
+    ["4. Print, fill by hand, photograph, and upload to CAI Intake"],
+    [],
+    ["💡 Tip: Use BLOCK LETTERS when filling by hand for best OCR accuracy!"],
+    [],
+    [],
+    [`CabinetAI™ Smart Template v${version}`],
+  ];
+  
+  const projectInfoSheet = XLSX.utils.aoa_to_sheet(projectInfoData);
+  projectInfoSheet["!cols"] = [
+    { wch: 18 },
+    { wch: 25 },
+    { wch: 5 },
+    { wch: 12 },
+  ];
+  XLSX.utils.book_append_sheet(workbook, projectInfoSheet, "Project Info");
+  
+  // ============================================
+  // SHEET 2: Parts List
+  // ============================================
+  const headers: string[] = ["#", "Part Name", "L(mm)", "W(mm)", "Thk", "Qty", "Material"];
+  if (config.includeEdgebanding !== false) headers.push("Edge");
+  if (config.includeGrooves) headers.push("Groove");
+  if (config.includeDrilling) headers.push("Drill");
+  if (config.includeCNC) headers.push("CNC");
+  if (config.includeNotes !== false) headers.push("Notes");
+  
+  const partsData: (string | number)[][] = [
+    ["PARTS LIST", "", "", "", "", templateId],
+    ["(See 'Project Info' sheet for project details)"],
+    [],
+    headers,
+  ];
+  
+  // Add empty data rows
+  for (let i = 1; i <= rows; i++) {
+    const row: (string | number)[] = [i];
+    for (let j = 1; j < headers.length; j++) {
+      row.push("");
+    }
+    partsData.push(row);
+  }
+  
+  // Footer
+  partsData.push([]);
+  partsData.push([orgName, "", "", "", "", "", `Page __ of __`]);
+  
+  const partsSheet = XLSX.utils.aoa_to_sheet(partsData);
+  partsSheet["!cols"] = [
+    { wch: 5 },   // #
+    { wch: 18 },  // Part Name
+    { wch: 8 },   // L
+    { wch: 8 },   // W
+    { wch: 5 },   // Thk
+    { wch: 5 },   // Qty
+    { wch: 12 },  // Material
+    { wch: 8 },   // Edge
+    { wch: 8 },   // Groove
+    { wch: 8 },   // Drill
+    { wch: 8 },   // CNC
+    { wch: 15 },  // Notes
+  ];
+  XLSX.utils.book_append_sheet(workbook, partsSheet, "Parts List");
+  
+  // ============================================
+  // SHEET 3: Fill-In Guide
+  // ============================================
+  if (includeFillInGuide) {
+    const guideData: (string | number)[][] = [
+      [`${orgName} - FILL-IN GUIDE`],
+      [templateId],
+      [],
+      ["📝 BEST OCR TIPS"],
+      ["• Use BLOCK LETTERS for best accuracy"],
+      ["• Take a clear, well-lit photo"],
+      ["• Ensure QR code is visible"],
+      [],
+    ];
+    
+    // Edgebanding codes
+    if (config.includeEdgebanding !== false) {
+      const ebCodes = config.shortcodes?.filter(s => s.category === "edgebanding") || getDefaultEdgebandingCodes();
+      guideData.push(["EDGEBANDING CODES"]);
+      guideData.push(["Code", "Description"]);
+      ebCodes.forEach(sc => guideData.push([sc.code, sc.name]));
+      guideData.push([]);
+    }
+    
+    // Grooving codes
+    if (config.includeGrooves) {
+      const grooveCodes = config.shortcodes?.filter(s => s.category === "grooving") || getDefaultGroovingCodes();
+      guideData.push(["GROOVING CODES"]);
+      guideData.push(["Code", "Description"]);
+      grooveCodes.forEach(sc => guideData.push([sc.code, sc.name]));
+      guideData.push([]);
+    }
+    
+    // Drilling codes
+    if (config.includeDrilling) {
+      const drillCodes = config.shortcodes?.filter(s => s.category === "drilling") || getDefaultDrillingCodes();
+      guideData.push(["DRILLING CODES"]);
+      guideData.push(["Code", "Description"]);
+      drillCodes.forEach(sc => guideData.push([sc.code, sc.name]));
+      guideData.push([]);
+    }
+    
+    // CNC codes
+    if (config.includeCNC) {
+      const cncCodes = config.shortcodes?.filter(s => s.category === "cnc") || getDefaultCNCCodes();
+      guideData.push(["CNC CODES"]);
+      guideData.push(["Code", "Description"]);
+      cncCodes.forEach(sc => guideData.push([sc.code, sc.name]));
+      guideData.push([]);
+    }
+    
+    const guideSheet = XLSX.utils.aoa_to_sheet(guideData);
+    guideSheet["!cols"] = [{ wch: 12 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(workbook, guideSheet, "Fill-In Guide");
+  }
+  
+  // ============================================
+  // SHEET 4: Materials Reference
+  // ============================================
+  if (includeMaterialsRef && (config.materials?.length || config.edgebands?.length)) {
+    const matData: (string | number)[][] = [
+      [`${orgName} - MATERIALS REFERENCE`],
+      [templateId],
+      [],
+    ];
+    
+    // Materials
+    if (config.materials?.length) {
+      matData.push(["MATERIALS"]);
+      matData.push(["Code", "Name", "Thickness"]);
+      config.materials.forEach(m => {
+        matData.push([
+          m.code || m.material_id.slice(0, 6),
+          m.name,
+          m.thickness_mm,
+        ]);
+      });
+      matData.push([]);
+    }
+    
+    // Edgebands
+    if (config.edgebands?.length) {
+      matData.push(["EDGEBANDS"]);
+      matData.push(["Code", "Name", "Thickness"]);
+      config.edgebands.forEach(e => {
+        matData.push([
+          e.code || e.edgeband_id.slice(0, 6),
+          e.name,
+          e.thickness_mm,
+        ]);
+      });
+    }
+    
+    const matSheet = XLSX.utils.aoa_to_sheet(matData);
+    matSheet["!cols"] = [{ wch: 12 }, { wch: 30 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(workbook, matSheet, "Materials Reference");
+  }
+  
+  // Generate the XLSX file
+  const xlsxBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  return xlsxBuffer;
+}
+
+/**
+ * Generate Excel template as XML Spreadsheet (legacy format - still works)
+ */
 export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
   const version = config.version || "1.0";
   const shortOrgId = config.branding.org_id.slice(0, 8);

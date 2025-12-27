@@ -46,6 +46,7 @@ export {
 export {
   generateOrgTemplate,
   generateOrgExcelTemplate,
+  generateOrgExcelTemplateXLSX,
   generateOrgCSVTemplate,
   buildTemplateConfigWithShortcodes,
   parseTemplateId,

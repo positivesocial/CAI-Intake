@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { generateId } from "@/lib/utils";
 import {
   generateOrgTemplate,
-  generateOrgExcelTemplate,
+  generateOrgExcelTemplateXLSX,
   generateOrgCSVTemplate,
   generateShortcodesHash,
   type OrgTemplateConfig,
@@ -274,14 +274,16 @@ export function TemplateGenerator() {
   };
 
   const handleDownloadExcel = () => {
-    // Excel XML format with multiple sheets (Fill-In Guide, Materials)
-    const excelXml = generateOrgExcelTemplate(orgTemplateConfig);
-    const blob = new Blob([excelXml], { type: "application/vnd.ms-excel" });
+    // Generate proper XLSX format with multiple sheets
+    const xlsxBuffer = generateOrgExcelTemplateXLSX(orgTemplateConfig);
+    const blob = new Blob([xlsxBuffer], { 
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
+    });
     const url = URL.createObjectURL(blob);
     
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${config.name.replace(/\s+/g, "_")}_v${config.version}.xls`;
+    link.download = `${config.name.replace(/\s+/g, "_")}_v${config.version}.xlsx`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
