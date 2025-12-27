@@ -664,7 +664,6 @@ export async function POST(request: NextRequest) {
             .insert({
               id: fileId,
               organization_id: userData.organization_id,
-              user_id: user.id,
               file_name: sanitizedName,
               original_name: file.name,
               mime_type: file.type || "application/octet-stream",
@@ -1092,6 +1091,29 @@ async function processPDF(
   
   if (bestResult?.success) {
     const aiStartTime = Date.now();
+    
+    // Detect template ID from extracted text if not already detected
+    if (!detectedTemplateId && bestResult.text) {
+      // Look for CAI template ID pattern: CAI-{orgId}-v{version}
+      const templateIdMatch = bestResult.text.match(/CAI-([a-zA-Z0-9]+)-v(\d+(?:\.\d+)?)/);
+      if (templateIdMatch) {
+        detectedTemplateId = templateIdMatch[0];
+        qrDetectionResult = {
+          found: true,
+          templateId: detectedTemplateId,
+          parsed: {
+            orgId: templateIdMatch[1],
+            version: templateIdMatch[2],
+          },
+        };
+        logger.info("📥 [ParseFile] 🎯 Detected template ID from PDF text", {
+          requestId,
+          templateId: detectedTemplateId,
+          orgId: templateIdMatch[1],
+          version: templateIdMatch[2],
+        });
+      }
+    }
     
     // Check if we have per-page data for page-based chunking
     const pages = (bestResult as any).pages || [];
