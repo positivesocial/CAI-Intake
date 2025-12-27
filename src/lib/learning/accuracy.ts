@@ -434,7 +434,7 @@ export async function logParsingAccuracy(
       fewShotExamplesUsed: record.fewShotExamplesUsed,
       patternsApplied: record.patternsApplied,
       clientTemplateUsed: record.clientTemplateUsed,
-      documentDifficulty: record.documentDifficulty ?? undefined,
+      documentDifficulty: record.documentDifficulty as AccuracyLogEntry["documentDifficulty"],
       clientName: record.clientName ?? undefined,
       createdAt: record.createdAt,
     };
