@@ -41,6 +41,7 @@ import { type ParsedPartResult } from "@/lib/ai";
 import { detectTemplateQR, type QRDetectionResult } from "@/lib/ai/template-ocr";
 import { toast } from "sonner";
 import { fileUploadLogger, createFileContext } from "@/lib/logging/file-upload-logger";
+import { ExcelImportDialog } from "./ExcelImportDialog";
 
 type FileType = "pdf" | "image" | "excel" | "csv" | "text" | "unknown";
 type ProcessingStatus = "queued" | "uploading" | "detecting_qr" | "processing" | "complete" | "error" | "cancelled";
@@ -135,6 +136,11 @@ export function FileUpload() {
   const [isDragging, setIsDragging] = React.useState(false);
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [isCancelled, setIsCancelled] = React.useState(false);
+  
+  // Excel/CSV import dialog state
+  const [excelDialogOpen, setExcelDialogOpen] = React.useState(false);
+  const [excelFile, setExcelFile] = React.useState<File | null>(null);
+  
   const [batchStats, setBatchStats] = React.useState<BatchStats>({
     totalFiles: 0,
     processedFiles: 0,
@@ -163,27 +169,100 @@ export function FileUpload() {
 
   // Queue files without processing
   const handleFiles = (fileList: FileList) => {
-    const newFiles: UploadedFile[] = Array.from(fileList).map((file) => {
-      const id = crypto.randomUUID();
-      const fileContext = createFileContext(file, id);
-      
-      // Log file being queued
-      fileUploadLogger.fileQueued(fileContext);
-      
-      return {
-        id,
-        file,
-        type: getFileType(file),
-        status: "queued" as ProcessingStatus,
-        progress: 0,
-      };
-    });
-
-    setFiles((prev) => [...prev, ...newFiles]);
+    const filesToQueue: File[] = [];
+    const excelCsvFiles: File[] = [];
     
-    console.info(`📤 [FileUpload] ${newFiles.length} file(s) added to queue`, {
-      files: newFiles.map(f => ({ name: f.file.name, type: f.type, size: `${(f.file.size / 1024).toFixed(1)}KB` })),
+    // Separate Excel/CSV from other files
+    Array.from(fileList).forEach((file) => {
+      const type = getFileType(file);
+      if (type === "excel" || type === "csv") {
+        excelCsvFiles.push(file);
+      } else {
+        filesToQueue.push(file);
+      }
     });
+    
+    // Route Excel/CSV to the import dialog (one at a time)
+    if (excelCsvFiles.length > 0) {
+      // Open dialog with first Excel/CSV file
+      setExcelFile(excelCsvFiles[0]);
+      setExcelDialogOpen(true);
+      
+      if (excelCsvFiles.length > 1) {
+        toast.info(`Opening import wizard for ${excelCsvFiles[0].name}`, {
+          description: `${excelCsvFiles.length - 1} more spreadsheet(s) will be queued after.`,
+        });
+        // Queue remaining Excel/CSV files for later
+        const remainingExcel = excelCsvFiles.slice(1);
+        remainingExcel.forEach((file) => {
+          const id = crypto.randomUUID();
+          const newFile: UploadedFile = {
+            id,
+            file,
+            type: getFileType(file),
+            status: "queued" as ProcessingStatus,
+            progress: 0,
+          };
+          setFiles((prev) => [...prev, newFile]);
+        });
+      }
+      
+      console.info(`📤 [FileUpload] Excel/CSV detected - opening import wizard`, {
+        fileName: excelCsvFiles[0].name,
+        remainingSpreadsheets: excelCsvFiles.length - 1,
+      });
+    }
+    
+    // Queue other file types for AI processing
+    if (filesToQueue.length > 0) {
+      const newFiles: UploadedFile[] = filesToQueue.map((file) => {
+        const id = crypto.randomUUID();
+        const fileContext = createFileContext(file, id);
+        
+        // Log file being queued
+        fileUploadLogger.fileQueued(fileContext);
+        
+        return {
+          id,
+          file,
+          type: getFileType(file),
+          status: "queued" as ProcessingStatus,
+          progress: 0,
+        };
+      });
+
+      setFiles((prev) => [...prev, ...newFiles]);
+      
+      console.info(`📤 [FileUpload] ${newFiles.length} file(s) added to queue`, {
+        files: newFiles.map(f => ({ name: f.file.name, type: f.type, size: `${(f.file.size / 1024).toFixed(1)}KB` })),
+      });
+    }
+  };
+  
+  // Handle Excel import dialog completion
+  const handleExcelImportComplete = (partsCount: number) => {
+    console.info(`📤 [FileUpload] Excel import complete`, {
+      fileName: excelFile?.name,
+      partsImported: partsCount,
+    });
+    
+    toast.success(`Imported ${partsCount} parts`, {
+      description: excelFile?.name,
+    });
+    
+    // Check if there are queued Excel/CSV files to process next
+    const nextExcelFile = files.find(
+      (f) => (f.type === "excel" || f.type === "csv") && f.status === "queued"
+    );
+    
+    if (nextExcelFile) {
+      // Remove from queue and open dialog
+      setFiles((prev) => prev.filter((f) => f.id !== nextExcelFile.id));
+      setExcelFile(nextExcelFile.file);
+      setExcelDialogOpen(true);
+    } else {
+      setExcelFile(null);
+    }
   };
 
   // Start processing all queued files
@@ -598,24 +677,24 @@ export function FileUpload() {
         }
 
         case "excel": {
-          console.warn(`📤 [FileUpload] Excel file not supported here`, {
+          // Excel files should be routed through the dialog, not processed here
+          // This case handles any that slip through (shouldn't happen normally)
+          console.info(`📤 [FileUpload] Excel file detected in queue - opening dialog`, {
             fileId: fileId.substring(0, 8),
-            hint: "Use Excel Import tab instead",
           });
           
-          fileUploadLogger.fileError(fileId, {
-            stage: "validation",
-            message: "Use the Excel Import tab for spreadsheets",
-            code: "EXCEL_WRONG_TAB",
-          });
+          // Open the Excel import dialog
+          setExcelFile(uploadedFile.file);
+          setExcelDialogOpen(true);
           
+          // Mark as cancelled (will be handled by dialog)
           setFiles((prev) =>
             prev.map((f) =>
               f.id === uploadedFile.id
                 ? {
                     ...f,
-                    status: "error" as ProcessingStatus,
-                    error: "Use the Excel Import tab for spreadsheets",
+                    status: "cancelled" as ProcessingStatus,
+                    error: "Redirected to column mapping wizard",
                   }
                 : f
             )
@@ -1039,7 +1118,7 @@ export function FileUpload() {
             <Badge variant="outline">PDF (AI extraction)</Badge>
             <Badge variant="outline">Images (AI Vision)</Badge>
             <Badge variant="outline">TXT (text parsing)</Badge>
-            <Badge variant="outline">CSV (structured data)</Badge>
+            <Badge variant="outline">Excel/CSV (column mapping)</Badge>
             <Badge variant="outline" className="border-[var(--cai-teal)] text-[var(--cai-teal)]">
               <QrCode className="h-3 w-3 mr-1" />
               QR Templates (99%+ accuracy)
@@ -1047,6 +1126,14 @@ export function FileUpload() {
           </div>
         </div>
       </CardContent>
+      
+      {/* Excel/CSV Import Dialog */}
+      <ExcelImportDialog
+        open={excelDialogOpen}
+        onOpenChange={setExcelDialogOpen}
+        file={excelFile}
+        onComplete={handleExcelImportComplete}
+      />
     </Card>
   );
 }

@@ -8,6 +8,7 @@ export * from "./ManualEntryForm";
 export * from "./StreamlinedEntryForm";
 export * from "./IntakeInbox";
 export * from "./ExcelImport";
+export * from "./ExcelImportDialog";
 export * from "./VoiceDictation";
 export * from "./FileUpload";
 export * from "./FileUploadQueue";

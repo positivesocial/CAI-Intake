@@ -18,7 +18,6 @@ import { SCHEMA_VERSION, DEFAULTS } from "./constants";
 
 export type IntakeMode = 
   | "manual" 
-  | "excel" 
   | "voice" 
   | "file" 
   | "template" 

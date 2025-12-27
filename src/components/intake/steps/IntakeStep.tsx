@@ -4,7 +4,6 @@ import * as React from "react";
 import {
   Keyboard,
   ClipboardPaste,
-  FileSpreadsheet,
   Mic,
   Upload,
   Inbox,
@@ -20,7 +19,6 @@ import {
   PasteParsePanel,
   StreamlinedEntryForm,
   IntakeInbox,
-  ExcelImport,
   VoiceDictation,
   FileUpload,
 } from "@/components/intake";
@@ -43,12 +41,6 @@ const INTAKE_MODES = [
     description: "Parse text data",
   },
   {
-    id: "excel",
-    label: "Excel/CSV",
-    icon: FileSpreadsheet,
-    description: "Import spreadsheets",
-  },
-  {
     id: "voice",
     label: "Voice",
     icon: Mic,
@@ -58,7 +50,7 @@ const INTAKE_MODES = [
     id: "file",
     label: "File Upload",
     icon: Upload,
-    description: "PDF, images, docs",
+    description: "PDF, Excel, images",
   },
 ] as const;
 
@@ -87,7 +79,7 @@ export function IntakeStep() {
         value={activeMode}
         onValueChange={(v) => setActiveMode(v as typeof activeMode)}
       >
-        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 h-auto p-1">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto p-1">
           {INTAKE_MODES.map((mode) => {
             const Icon = mode.icon;
             return (
@@ -122,11 +114,6 @@ export function IntakeStep() {
         {/* Paste & Parse */}
         <TabsContent value="paste" className="mt-4">
           <PasteParsePanel />
-        </TabsContent>
-
-        {/* Excel Import */}
-        <TabsContent value="excel" className="mt-4">
-          <ExcelImport />
         </TabsContent>
 
         {/* Voice Dictation */}
