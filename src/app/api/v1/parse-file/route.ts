@@ -1190,7 +1190,13 @@ async function processPDF(
     return result;
   }
   
-  // Neither extraction worked - PDF is likely a scanned image
+  // Neither extraction worked - check if this might be a blank CAI template
+  const isLikelyBlankTemplate = 
+    file.name.toLowerCase().includes("template") ||
+    file.name.toLowerCase().includes("cutlist") ||
+    file.name.toLowerCase().includes("smart") ||
+    file.name.toLowerCase().includes("cai");
+  
   logger.error("📥 [ParseFile] ❌ Could not extract text from PDF", {
     requestId,
     fileName: file.name,
@@ -1198,20 +1204,29 @@ async function processPDF(
     pythonOCRTextLength: pythonOCRResult?.text?.length ?? 0,
     pythonOCRConfigured: pythonOCR.isConfigured(),
     totalPdfTimeMs: Date.now() - pdfStartTime,
-    suggestion: "Upload as image instead",
+    isLikelyBlankTemplate,
+    suggestion: isLikelyBlankTemplate ? "This appears to be a blank template" : "Upload as image instead",
   });
+  
+  // Provide context-specific error message
+  const errorMessage = isLikelyBlankTemplate
+    ? "This appears to be a blank CAI template PDF. Templates are designed to be:\n\n" +
+      "1️⃣ PRINTED out on paper\n" +
+      "2️⃣ FILLED IN by hand with your parts data\n" +
+      "3️⃣ PHOTOGRAPHED or SCANNED\n" +
+      "4️⃣ UPLOADED as an IMAGE (JPG/PNG)\n\n" +
+      "💡 Tip: For best OCR accuracy, use BLOCK LETTERS when filling in the template."
+    : "Could not extract text from this PDF. This appears to be a scanned document. " +
+      "Please try one of these alternatives:\n" +
+      "• Take a clear photo of the document and upload the image\n" +
+      "• Export the PDF as an image (PNG/JPG) and upload that\n" +
+      "• If possible, use a text-based PDF instead";
   
   return {
     success: false,
     parts: [],
     totalConfidence: 0,
-    errors: [
-      "Could not extract text from this PDF. This appears to be a scanned document. " +
-      "Please try one of these alternatives:\n" +
-      "• Take a clear photo of the document and upload the image\n" +
-      "• Export the PDF as an image (PNG/JPG) and upload that\n" +
-      "• If possible, use a text-based PDF instead"
-    ],
+    errors: [errorMessage],
     processingTimeMs: Date.now() - pdfStartTime,
   };
 }
