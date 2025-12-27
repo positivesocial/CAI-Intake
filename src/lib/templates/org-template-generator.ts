@@ -668,23 +668,22 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       display: none;
     }
     
-    /* Header Area - Compact */
+    /* Header Area - 3 Column Layout */
     .header-container {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
+      justify-content: space-between;
       gap: 12px;
       margin-bottom: 8px;
       padding-bottom: 6px;
       border-bottom: 2px solid ${primaryColor};
     }
     
-    .header-container .branding-info {
-      flex: 1;
-    }
-    
-    /* QR + Branding Section */
+    /* Left: QR + Template ID */
     .qr-section {
-      text-align: center;
+      display: flex;
+      align-items: center;
+      gap: 8px;
       flex-shrink: 0;
     }
     
@@ -707,35 +706,42 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     
     .template-id {
       font-family: 'Consolas', 'Monaco', monospace;
-      font-size: 7px;
-      color: #666;
-      margin-top: 2px;
-      letter-spacing: 0.3px;
+      font-size: 8px;
+      color: ${primaryColor};
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      transform: rotate(180deg);
+      letter-spacing: 0.5px;
+      font-weight: 600;
     }
     
+    /* Center: Org Branding */
     .branding-info {
       display: flex;
       flex-direction: column;
-      gap: 2px;
-      padding-top: 4px;
+      align-items: center;
+      text-align: center;
+      flex: 1;
     }
     
     .org-name {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 700;
       color: #000;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 1px;
     }
     
     .template-title {
       font-size: 10px;
       color: #666;
+      margin-top: 2px;
     }
     
     .logo {
-      max-height: 35px;
-      max-width: 80px;
+      max-height: 40px;
+      max-width: 100px;
+      margin-bottom: 4px;
     }
     
     /* PROJECT INFORMATION - Full Width Before Table */
@@ -1074,8 +1080,9 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   <div class="corner-marker corner-bl"></div>
   <div class="corner-marker corner-br"></div>
   
-  <!-- Header - QR + Branding + Page Number -->
+  <!-- Header - QR | Org Details | Page Number -->
   <div class="header-container">
+    <!-- Left: QR Code + Template ID (beside) -->
     <div class="qr-section">
       <div class="qr-code-container">
         ${qrCodeSVG}
@@ -1083,13 +1090,14 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       <div class="template-id">${templateId}</div>
     </div>
     
+    <!-- Center: Organization Branding -->
     <div class="branding-info">
       ${config.branding.logo_url ? `<img src="${config.branding.logo_url}" alt="" class="logo" onerror="this.style.display='none'">` : ""}
       <div class="org-name">${orgName}</div>
       <div class="template-title">${title} v${version}</div>
     </div>
     
-    <!-- Page Indicator - Inline with header -->
+    <!-- Right: Page Indicator -->
     <div class="page-indicator">
       Page <span class="page-num-box"></span> of <span class="page-num-box"></span>
     </div>
