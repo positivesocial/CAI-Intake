@@ -432,8 +432,8 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="outline">{sourceType}</Badge>
                   <Badge variant={
-                    difficulty === "easy" ? "default" : 
-                    difficulty === "hard" ? "destructive" : "secondary"
+                    difficulty === "easy" ? "success" : 
+                    difficulty === "hard" ? "error" : "secondary"
                   }>
                     {difficulty}
                   </Badge>
