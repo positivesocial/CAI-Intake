@@ -1301,7 +1301,8 @@ async function processPDF(
             provider,
             parseOptions,
             requestId,
-            file.name
+            file.name,
+            pythonOCR
           );
           
           if (visionResult.success && visionResult.parts.length > allParts.length) {
@@ -1355,7 +1356,8 @@ async function processPDF(
           provider,
           parseOptions,
           requestId,
-          file.name
+          file.name,
+          pythonOCR
         );
         
         // Compare results - use whichever got more parts
@@ -1408,7 +1410,8 @@ async function processPDF(
         provider,
         parseOptions,
         requestId,
-        file.name
+        file.name,
+        pythonOCR
       );
       
       if (pdfToImageResult.success && pdfToImageResult.parts.length > 0) {
@@ -1479,7 +1482,8 @@ async function convertPdfToImagesAndParse(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   parseOptions: any,
   requestId: string,
-  fileName: string
+  fileName: string,
+  pythonOCR: ReturnType<typeof getPythonOCRClient>
 ): Promise<{
   success: boolean;
   parts: Array<{ part_id: string; label?: string; size: { L: number; W: number }; qty: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string; audit: { source_method: string; confidence: number; human_verified: boolean } }>;
