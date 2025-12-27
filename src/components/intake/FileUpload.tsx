@@ -370,7 +370,7 @@ export function FileUpload() {
                 console.info(`📤 [FileUpload] QR template detected!`, {
                   fileId: fileId.substring(0, 8),
                   templateId: qrResult.templateId,
-                  version: qrResult.templateVersion,
+                  version: qrResult.parsed?.version,
                 });
               }
               
@@ -416,8 +416,8 @@ export function FileUpload() {
             if (qrResult?.templateId) {
               formData.append("templateId", qrResult.templateId);
             }
-            if (qrResult?.templateConfig) {
-              formData.append("templateConfig", JSON.stringify(qrResult.templateConfig));
+            if (qrResult?.orgConfig) {
+              formData.append("templateConfig", JSON.stringify(qrResult.orgConfig));
             }
 
             const response = await fetch("/api/v1/parse-file", {

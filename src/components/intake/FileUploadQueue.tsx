@@ -420,7 +420,7 @@ export function FileUploadQueue({
                 extractMetadata: true,
                 confidence: "balanced",
                 templateId: qrResult?.templateId,
-                templateConfig: qrResult?.templateConfig,
+                templateConfig: qrResult?.orgConfig as unknown as import("@/lib/ai/provider").TemplateOCRConfig | undefined,
                 defaultMaterialId: "MAT-WHITE-18",
                 defaultThicknessMm: 18,
                 learningContext: learningContext || undefined,
