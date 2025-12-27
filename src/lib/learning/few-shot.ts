@@ -6,6 +6,7 @@
  */
 
 import { getClient } from "@/lib/supabase/client";
+import { prisma } from "@/lib/db";
 import type { CutPart } from "@/lib/schema";
 
 // ============================================================
@@ -101,36 +102,39 @@ export async function selectFewShotExamples(
     needsGrooveExamples,
   } = options;
 
-  const supabase = getClient();
-  if (!supabase) return [];
-
   try {
     // Analyze source text to determine what kind of examples we need
     const textFeatures = analyzeTextFeatures(sourceText);
     
-    // Build query
-    let query = supabase
-      .from("training_examples")
-      .select("*")
-      .eq("is_active", true)
-      .or(`organization_id.eq.${organizationId},organization_id.is.null`);
+    // Build where clause for Prisma
+    const whereClause: {
+      isActive: boolean;
+      OR: Array<{ organizationId: string | null } | { clientName?: { contains: string; mode: "insensitive" } } | { category?: string }>;
+    } = {
+      isActive: true,
+      OR: [
+        { organizationId: organizationId || null },
+        { organizationId: null },
+      ],
+    };
 
-    // Filter by client if we have a hint
+    // Add client hint filter
     if (clientHint) {
-      query = query.or(`client_name.ilike.%${clientHint}%`);
+      whereClause.OR.push({ clientName: { contains: clientHint, mode: "insensitive" } });
     }
 
-    // Filter by category if we have a hint
+    // Add category hint filter
     if (categoryHint) {
-      query = query.or(`category.eq.${categoryHint}`);
+      whereClause.OR.push({ category: categoryHint });
     }
 
     // Fetch candidates
-    const { data, error } = await query
-      .order("success_count", { ascending: false })
-      .limit(50); // Get more than we need for ranking
+    const data = await prisma.trainingExample.findMany({
+      where: whereClause,
+      orderBy: { successCount: "desc" },
+      take: 50,
+    });
 
-    if (error) throw error;
     if (!data || data.length === 0) return [];
 
     // Map and calculate success rates
@@ -365,26 +369,22 @@ export async function recordExampleUsage(
   exampleId: string,
   success: boolean
 ): Promise<void> {
-  const supabase = getClient();
-  if (!supabase) return;
-
   try {
     // Get current values
-    const { data: current } = await supabase
-      .from("training_examples")
-      .select("usage_count, success_count")
-      .eq("id", exampleId)
-      .single();
+    const current = await prisma.trainingExample.findUnique({
+      where: { id: exampleId },
+      select: { usageCount: true, successCount: true },
+    });
 
     if (current) {
-      await supabase
-        .from("training_examples")
-        .update({
-          usage_count: (current.usage_count || 0) + 1,
-          success_count: success ? (current.success_count || 0) + 1 : current.success_count,
-          last_used_at: new Date().toISOString(),
-        })
-        .eq("id", exampleId);
+      await prisma.trainingExample.update({
+        where: { id: exampleId },
+        data: {
+          usageCount: (current.usageCount || 0) + 1,
+          successCount: success ? (current.successCount || 0) + 1 : current.successCount,
+          lastUsedAt: new Date(),
+        },
+      });
     }
   } catch (error) {
     console.error("Failed to record example usage:", error);
@@ -422,9 +422,6 @@ export async function createTrainingExample(
     createdById?: string;
   }
 ): Promise<TrainingExample | null> {
-  const supabase = getClient();
-  if (!supabase) return null;
-
   try {
     // Analyze text features
     const features = analyzeTextFeatures(input.sourceText);
@@ -433,43 +430,36 @@ export async function createTrainingExample(
     const sourceHash = await hashText(input.sourceText);
 
     // Check for duplicate
-    const { data: existing } = await supabase
-      .from("training_examples")
-      .select("id")
-      .eq("source_file_hash", sourceHash)
-      .single();
+    const existing = await prisma.trainingExample.findFirst({
+      where: { sourceFileHash: sourceHash },
+      select: { id: true },
+    });
 
     if (existing) {
       console.log("Training example with same content already exists:", existing.id);
       return null;
     }
 
-    const insertData = {
-      organization_id: input.organizationId,
-      source_type: input.sourceType,
-      source_text: input.sourceText,
-      source_file_name: input.sourceFileName,
-      source_file_hash: sourceHash,
-      correct_parts: input.correctParts,
-      correct_metadata: input.correctMetadata,
-      category: input.category,
-      difficulty: input.difficulty || "medium",
-      client_name: input.clientName,
-      has_headers: features.hasHeaders,
-      column_count: features.estimatedColumns,
-      row_count: features.estimatedRows,
-      has_edge_notation: features.hasEdgePatterns,
-      has_groove_notation: features.hasGroovePatterns,
-      created_by: input.createdById,
-    };
-
-    const { data, error } = await supabase
-      .from("training_examples")
-      .insert(insertData)
-      .select()
-      .single();
-
-    if (error) throw error;
+    const data = await prisma.trainingExample.create({
+      data: {
+        organizationId: input.organizationId,
+        sourceType: input.sourceType,
+        sourceText: input.sourceText,
+        sourceFileName: input.sourceFileName,
+        sourceFileHash: sourceHash,
+        correctParts: input.correctParts as object[],
+        correctMetadata: input.correctMetadata as object,
+        category: input.category,
+        difficulty: input.difficulty || "medium",
+        clientName: input.clientName,
+        hasHeaders: features.hasHeaders,
+        columnCount: features.estimatedColumns,
+        rowCount: features.estimatedRows,
+        hasEdgeNotation: features.hasEdgePatterns,
+        hasGrooveNotation: features.hasGroovePatterns,
+        createdBy: input.createdById,
+      },
+    });
 
     return mapDbExampleToExample(data);
   } catch (error) {
@@ -491,42 +481,45 @@ export async function getTrainingExamples(
     includeGlobal?: boolean;
   }
 ): Promise<TrainingExample[]> {
-  const supabase = getClient();
-  if (!supabase) return [];
-
   try {
-    let query = supabase
-      .from("training_examples")
-      .select("*")
-      .eq("is_active", true);
+    // Build where clause
+    type WhereClause = {
+      isActive: boolean;
+      OR?: Array<{ organizationId: string | null }>;
+      organizationId?: string;
+      category?: string;
+      clientName?: { contains: string; mode: "insensitive" };
+    };
+
+    const whereClause: WhereClause = {
+      isActive: true,
+    };
 
     if (organizationId) {
       if (options?.includeGlobal !== false) {
-        query = query.or(`organization_id.eq.${organizationId},organization_id.is.null`);
+        whereClause.OR = [
+          { organizationId: organizationId },
+          { organizationId: null },
+        ];
       } else {
-        query = query.eq("organization_id", organizationId);
+        whereClause.organizationId = organizationId;
       }
     }
 
     if (options?.category) {
-      query = query.eq("category", options.category);
+      whereClause.category = options.category;
     }
 
     if (options?.clientName) {
-      query = query.ilike("client_name", `%${options.clientName}%`);
+      whereClause.clientName = { contains: options.clientName, mode: "insensitive" };
     }
 
-    query = query
-      .order("success_count", { ascending: false })
-      .limit(options?.limit || 100);
-
-    if (options?.offset) {
-      query = query.range(options.offset, options.offset + (options.limit || 100) - 1);
-    }
-
-    const { data, error } = await query;
-
-    if (error) throw error;
+    const data = await prisma.trainingExample.findMany({
+      where: whereClause,
+      orderBy: { successCount: "desc" },
+      take: options?.limit || 100,
+      skip: options?.offset,
+    });
 
     return (data || []).map(mapDbExampleToExample);
   } catch (error) {
@@ -539,16 +532,13 @@ export async function getTrainingExamples(
  * Delete a training example (soft delete)
  */
 export async function deleteTrainingExample(exampleId: string): Promise<boolean> {
-  const supabase = getClient();
-  if (!supabase) return false;
-
   try {
-    const { error } = await supabase
-      .from("training_examples")
-      .update({ is_active: false })
-      .eq("id", exampleId);
+    await prisma.trainingExample.update({
+      where: { id: exampleId },
+      data: { isActive: false },
+    });
 
-    return !error;
+    return true;
   } catch (error) {
     console.error("Failed to delete training example:", error);
     return false;
@@ -560,32 +550,35 @@ export async function deleteTrainingExample(exampleId: string): Promise<boolean>
 // ============================================================
 
 function mapDbExampleToExample(data: Record<string, unknown>): TrainingExample {
-  const usageCount = (data.usage_count as number) || 0;
-  const successCount = (data.success_count as number) || 0;
+  // Support both snake_case (Supabase) and camelCase (Prisma) keys
+  const usageCount = (data.usageCount ?? data.usage_count ?? 0) as number;
+  const successCount = (data.successCount ?? data.success_count ?? 0) as number;
   
   return {
     id: data.id as string,
-    organizationId: data.organization_id as string | null,
-    sourceType: data.source_type as TrainingExample["sourceType"],
-    sourceText: data.source_text as string,
-    sourceFileName: data.source_file_name as string | undefined,
-    sourceFileHash: data.source_file_hash as string | undefined,
-    correctParts: data.correct_parts as CutPart[],
-    correctMetadata: data.correct_metadata as TrainingExample["correctMetadata"],
+    organizationId: (data.organizationId ?? data.organization_id ?? null) as string | null,
+    sourceType: (data.sourceType ?? data.source_type) as TrainingExample["sourceType"],
+    sourceText: (data.sourceText ?? data.source_text) as string,
+    sourceFileName: (data.sourceFileName ?? data.source_file_name) as string | undefined,
+    sourceFileHash: (data.sourceFileHash ?? data.source_file_hash) as string | undefined,
+    correctParts: (data.correctParts ?? data.correct_parts) as CutPart[],
+    correctMetadata: (data.correctMetadata ?? data.correct_metadata) as TrainingExample["correctMetadata"],
     category: data.category as string | undefined,
-    difficulty: (data.difficulty as TrainingExample["difficulty"]) || "medium",
-    clientName: data.client_name as string | undefined,
-    hasHeaders: (data.has_headers as boolean) ?? true,
-    columnCount: data.column_count as number | undefined,
-    rowCount: data.row_count as number | undefined,
-    hasEdgeNotation: (data.has_edge_notation as boolean) ?? false,
-    hasGrooveNotation: (data.has_groove_notation as boolean) ?? false,
+    difficulty: ((data.difficulty as TrainingExample["difficulty"]) || "medium"),
+    clientName: (data.clientName ?? data.client_name) as string | undefined,
+    hasHeaders: ((data.hasHeaders ?? data.has_headers) as boolean) ?? true,
+    columnCount: (data.columnCount ?? data.column_count) as number | undefined,
+    rowCount: (data.rowCount ?? data.row_count) as number | undefined,
+    hasEdgeNotation: ((data.hasEdgeNotation ?? data.has_edge_notation) as boolean) ?? false,
+    hasGrooveNotation: ((data.hasGrooveNotation ?? data.has_groove_notation) as boolean) ?? false,
     usageCount,
     successCount,
     successRate: usageCount > 0 ? successCount / usageCount : 0,
-    lastUsedAt: data.last_used_at ? new Date(data.last_used_at as string) : undefined,
-    isActive: (data.is_active as boolean) ?? true,
-    createdAt: new Date(data.created_at as string),
+    lastUsedAt: (data.lastUsedAt ?? data.last_used_at) 
+      ? new Date((data.lastUsedAt ?? data.last_used_at) as string | Date) 
+      : undefined,
+    isActive: ((data.isActive ?? data.is_active) as boolean) ?? true,
+    createdAt: new Date((data.createdAt ?? data.created_at) as string | Date),
   };
 }
 
