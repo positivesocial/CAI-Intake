@@ -1073,15 +1073,38 @@ async function processPDF(
     pythonOCRTimeMs: pythonOCRResult?.timeMs ?? 0,
   });
   
+  // Quality thresholds for deciding when to try PDF-to-image fallback
+  const MIN_OCR_CONFIDENCE = 0.5; // Below this, try vision fallback
+  const MIN_TEXT_PER_PAGE = 100; // Expected chars per page of parts data
+  
   // Prefer Python OCR if it succeeded (better for tables/scanned docs)
   // But fall back to pdf-parse if Python OCR failed
-  let bestResult: { source: string; text: string; success: boolean } | null = null;
+  let bestResult: { source: string; text: string; success: boolean; confidence?: number; pageCount?: number } | null = null;
+  let shouldTryVisionFallback = false;
   
   if (pythonOCRResult?.success) {
+    const ocrConfidence = (pythonOCRResult as { confidence?: number }).confidence ?? 1;
+    const pageCount = (pythonOCRResult as { pageCount?: number }).pageCount ?? 1;
+    const expectedMinText = pageCount * MIN_TEXT_PER_PAGE;
+    
+    // Check OCR quality - if confidence is too low or text too short, flag for vision fallback
+    if (ocrConfidence < MIN_OCR_CONFIDENCE || pythonOCRResult.text.length < expectedMinText) {
+      shouldTryVisionFallback = true;
+      logger.warn("📥 [ParseFile] ⚠️ Python OCR quality too low", {
+        requestId,
+        confidence: ocrConfidence.toFixed(2),
+        textLength: pythonOCRResult.text.length,
+        expectedMinText,
+        pageCount,
+        willTryVisionFallback: true,
+      });
+    }
+    
     bestResult = pythonOCRResult;
     logger.info("📥 [ParseFile] ✅ Using Python OCR result (preferred)", {
       requestId,
       textLength: pythonOCRResult.text.length,
+      confidence: ocrConfidence.toFixed(2),
       textPreview: pythonOCRResult.text.substring(0, 100) + "...",
     });
   } else if (pdfParseResult?.success) {
@@ -1253,7 +1276,7 @@ async function processPDF(
         }
       }
       
-      return {
+      const multiPageResult = {
         success: allParts.length > 0,
         parts: allParts,
         totalConfidence: allParts.length > 0 
@@ -1262,6 +1285,45 @@ async function processPDF(
         errors: allErrors,
         processingTime: Date.now() - aiStartTime,
       };
+      
+      // For multi-page: if OCR quality was low AND we found few parts, try vision fallback
+      const MIN_EXPECTED_PARTS_MULTI = 5;
+      if (shouldTryVisionFallback && allParts.length < MIN_EXPECTED_PARTS_MULTI) {
+        logger.info("📥 [ParseFile] 🖼️ Low OCR quality on multi-page + few parts - trying vision", {
+          requestId,
+          partsFoundFromOCR: allParts.length,
+          pageCount,
+        });
+        
+        try {
+          const visionResult = await convertPdfToImagesAndParse(
+            Buffer.from(pdfBuffer),
+            provider,
+            parseOptions,
+            requestId,
+            file.name
+          );
+          
+          if (visionResult.success && visionResult.parts.length > allParts.length) {
+            logger.info("📥 [ParseFile] ✅ Vision fallback found more parts on multi-page!", {
+              requestId,
+              ocrParts: allParts.length,
+              visionParts: visionResult.parts.length,
+            });
+            return {
+              ...visionResult,
+              processingTimeMs: Date.now() - pdfStartTime,
+            };
+          }
+        } catch (error) {
+          logger.warn("📥 [ParseFile] ⚠️ Vision fallback failed on multi-page", {
+            requestId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      
+      return multiPageResult;
     }
     
     // Single page or no page data: Use standard text parsing with chunking
@@ -1273,7 +1335,55 @@ async function processPDF(
       partsFound: result.parts?.length ?? 0,
       aiTimeMs: Date.now() - aiStartTime,
       totalPdfTimeMs: Date.now() - pdfStartTime,
+      shouldTryVisionFallback,
     });
+    
+    // If OCR quality was flagged as low AND we found few parts, try vision fallback
+    const partsFound = result.parts?.length ?? 0;
+    const MIN_EXPECTED_PARTS = 5; // If we got fewer, and OCR was poor, try vision
+    
+    if (shouldTryVisionFallback && partsFound < MIN_EXPECTED_PARTS) {
+      logger.info("📥 [ParseFile] 🖼️ Low OCR quality + few parts - trying PDF-to-image fallback", {
+        requestId,
+        partsFoundFromOCR: partsFound,
+        confidence: (bestResult as { confidence?: number }).confidence?.toFixed(2),
+      });
+      
+      try {
+        const visionResult = await convertPdfToImagesAndParse(
+          Buffer.from(pdfBuffer),
+          provider,
+          parseOptions,
+          requestId,
+          file.name
+        );
+        
+        // Compare results - use whichever got more parts
+        if (visionResult.success && visionResult.parts.length > partsFound) {
+          logger.info("📥 [ParseFile] ✅ Vision fallback found more parts!", {
+            requestId,
+            ocrParts: partsFound,
+            visionParts: visionResult.parts.length,
+            usingVisionResult: true,
+          });
+          return {
+            ...visionResult,
+            processingTimeMs: Date.now() - pdfStartTime,
+          };
+        } else {
+          logger.info("📥 [ParseFile] 📊 OCR result was better than vision fallback", {
+            requestId,
+            ocrParts: partsFound,
+            visionParts: visionResult.parts?.length ?? 0,
+          });
+        }
+      } catch (error) {
+        logger.warn("📥 [ParseFile] ⚠️ Vision fallback failed", {
+          requestId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
     
     return result;
   }
