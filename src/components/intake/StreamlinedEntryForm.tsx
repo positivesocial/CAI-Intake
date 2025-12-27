@@ -15,7 +15,7 @@
  */
 
 import * as React from "react";
-import { Plus, Trash2, ArrowDown, Keyboard, LayoutGrid, LayoutList, Copy, Check, Settings2, RotateCcw, Lock, ChevronDown, Layers } from "lucide-react";
+import { Plus, Trash2, ArrowDown, Keyboard, LayoutGrid, LayoutList, Copy, Check, Settings2, RotateCcw, Lock, ChevronDown, Layers, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -307,6 +307,23 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
       }));
     };
 
+    // Apply bulk group change to selected rows
+    const applyBulkGroup = (groupId: string | undefined) => {
+      setRows(prev => prev.map(row => {
+        if (!selectedRowIds.has(row.id)) return row;
+        return { ...row, group_id: groupId };
+      }));
+    };
+
+    // Get unique groups from current rows for bulk group dropdown
+    const uniqueGroups = React.useMemo(() => {
+      const groups = new Set<string>();
+      rows.forEach(r => {
+        if (r.group_id) groups.add(r.group_id);
+      });
+      return Array.from(groups).sort();
+    }, [rows]);
+
     const addSelectedRowsToParts = () => {
       let addedCount = 0;
       rows.forEach((row, index) => {
@@ -545,6 +562,39 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
                 </DropdownMenuContent>
               </DropdownMenu>
 
+              {/* Group Bulk Action */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 px-2">
+                    <FolderOpen className="h-4 w-4 mr-1" />
+                    Group
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto">
+                  <DropdownMenuLabel className="text-xs">Set Group</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => applyBulkGroup(undefined)}>
+                    <span className="text-[var(--muted-foreground)]">No group</span>
+                  </DropdownMenuItem>
+                  {uniqueGroups.map((g) => (
+                    <DropdownMenuItem key={g} onClick={() => applyBulkGroup(g)}>
+                      <FolderOpen className="h-4 w-4 mr-2 text-indigo-600" />
+                      {g}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => {
+                      const name = prompt("Enter new group name:");
+                      if (name?.trim()) applyBulkGroup(name.trim());
+                    }}
+                  >
+                    <span className="text-[var(--cai-teal)]">+ Create new group...</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <Button variant="ghost" size="sm" onClick={() => setShowBulkOpsPanel(true)} className="h-8 px-2 text-[var(--cai-teal)]">
                 <Settings2 className="h-4 w-4 mr-1" /> Bulk Ops
               </Button>
@@ -587,6 +637,7 @@ export const StreamlinedEntryForm = React.forwardRef<StreamlinedEntryFormRef, St
                     <th className="w-24 px-2 py-2 text-center text-xs font-medium border-b">Qty</th>
                     <th className="w-40 px-2 py-2 text-left text-xs font-medium border-b">Material</th>
                     <th className="w-12 px-1 py-2 text-center text-xs font-medium border-b" title="Can Rotate">Rot</th>
+                    <th className="px-2 py-2 text-center text-xs font-medium border-b" title="Group/Assembly">Group</th>
                     {hasOpsEnabled && (
                       <th className="w-28 px-2 py-2 text-center text-xs font-medium border-b text-teal-600">Ops</th>
                     )}

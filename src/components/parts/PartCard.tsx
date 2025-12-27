@@ -23,6 +23,7 @@ import {
   Lock,
   GripVertical,
   Check,
+  FolderOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -441,6 +442,18 @@ export function PartCard({
             >
               {data.allow_rotation !== false ? "✓" : "⊘"}
             </button>
+          </td>
+
+          {/* Group */}
+          <td className="px-1 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+            <Input
+              type="text"
+              value={data.group_id || ""}
+              onChange={(e) => onChange({ group_id: e.target.value || undefined })}
+              placeholder="—"
+              className="h-7 w-20 text-xs text-center border-0 bg-transparent focus:ring-1 focus:ring-inset focus:ring-indigo-500 placeholder:text-[var(--muted-foreground)]"
+              title="Group/Assembly name"
+            />
           </td>
 
           {/* Operations */}
