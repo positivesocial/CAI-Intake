@@ -226,9 +226,9 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
   const defaultEdgeband = currentCutlist.edgebands?.[0]?.edgeband_id || "EB-WHITE-0.8";
 
   // Column order state with persistence
-  // v3: Added allow_rotation column
+  // v4: Force refresh to show allow_rotation column properly
   const [columnOrder, setColumnOrder] = useColumnOrder<ColumnKey>(
-    "manual-entry-columns-v3",
+    "manual-entry-columns-v4",
     DEFAULT_COLUMN_ORDER
   );
 
