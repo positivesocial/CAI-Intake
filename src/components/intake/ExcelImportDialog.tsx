@@ -114,6 +114,7 @@ export function ExcelImportDialog({
   const [workbookInfo, setWorkbookInfo] = React.useState<WorkbookInfo | null>(null);
   const [selectedSheetIndex, setSelectedSheetIndex] = React.useState<number>(0);
   const [suggestedSheetIndex, setSuggestedSheetIndex] = React.useState<number | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
 
   // Load file when opened
   React.useEffect(() => {
@@ -132,26 +133,38 @@ export function ExcelImportDialog({
       setWorkbookInfo(null);
       setSelectedSheetIndex(0);
       setSuggestedSheetIndex(null);
+      setError(null);
     }
   }, [open, file]);
 
   const loadFile = async (f: File) => {
     setIsLoading(true);
+    setError(null);
+    
     try {
       // Check if it's an Excel workbook (not CSV)
       if (isExcelFile(f)) {
+        console.log("[ExcelImport] Parsing Excel workbook:", f.name);
+        
         // Parse workbook to get sheet info
         const workbook = await parseWorkbook(f);
+        console.log("[ExcelImport] Workbook parsed:", {
+          sheetCount: workbook.sheetCount,
+          sheets: workbook.sheets.map(s => s.name),
+        });
+        
         setWorkbookInfo(workbook);
         
         if (workbook.sheetCount > 1) {
           // Multiple sheets - show sheet selection
           const suggested = detectPartsSheet(workbook.sheets);
+          console.log("[ExcelImport] Multiple sheets detected, suggested:", suggested);
           setSuggestedSheetIndex(suggested);
           setSelectedSheetIndex(suggested);
           setStep("sheets");
         } else {
           // Single sheet - go straight to mapping
+          console.log("[ExcelImport] Single sheet, loading data...");
           const data = await getSheetData(f, 0);
           setRawData(data);
           if (data.length > 0) {
@@ -163,6 +176,7 @@ export function ExcelImportDialog({
         }
       } else {
         // CSV/TSV file - parse as text
+        console.log("[ExcelImport] Parsing CSV/TSV file:", f.name);
         const text = await f.text();
 
         // Detect delimiter
@@ -183,8 +197,9 @@ export function ExcelImportDialog({
         }
         setStep("mapping");
       }
-    } catch (error) {
-      console.error("Failed to load file:", error);
+    } catch (err) {
+      console.error("[ExcelImport] Failed to load file:", err);
+      setError(err instanceof Error ? err.message : "Failed to load spreadsheet. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -334,6 +349,32 @@ export function ExcelImportDialog({
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--cai-teal)] border-t-transparent" />
             <span className="ml-3 text-[var(--muted-foreground)]">Loading spreadsheet...</span>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+            <h3 className="text-lg font-medium text-[var(--foreground)] mb-2">
+              Failed to Load Spreadsheet
+            </h3>
+            <p className="text-sm text-[var(--muted-foreground)] mb-4 max-w-md">
+              {error}
+            </p>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        ) : !rawData.length && !workbookInfo ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <FileSpreadsheet className="h-12 w-12 text-[var(--muted-foreground)] mb-4" />
+            <h3 className="text-lg font-medium text-[var(--foreground)] mb-2">
+              No Data Found
+            </h3>
+            <p className="text-sm text-[var(--muted-foreground)] mb-4">
+              The spreadsheet appears to be empty or couldn't be read.
+            </p>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
           </div>
         ) : (
           <>
