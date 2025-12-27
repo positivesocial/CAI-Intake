@@ -44,15 +44,19 @@ export {
 
 // Org-branded template generator
 export {
-  generateOrgTemplateHTML,
-  generateOrgCSVTemplate,
+  generateOrgTemplate,
+  generateOrgExcelTemplate,
   buildTemplateConfigWithShortcodes,
   parseTemplateId,
   isValidCAITemplateId,
+  downloadTemplate,
+  calculateTemplateVersion,
   type OrgTemplateConfig,
   type OrganizationBranding,
   type OpsShortcode,
   type MaterialDef,
   type EdgebandDef,
   type GeneratedTemplate,
+  type ParsedTemplateId,
+  type TemplateQRData,
 } from "./org-template-generator";
