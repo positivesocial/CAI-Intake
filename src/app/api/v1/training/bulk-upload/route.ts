@@ -279,7 +279,7 @@ async function extractTextFromImage(file: File): Promise<string> {
       confidence: "balanced",
     });
     
-    return result.text || "";
+    return result.extractedText || "";
   } catch (error) {
     console.error("Image OCR error:", error);
     return "";
