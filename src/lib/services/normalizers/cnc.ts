@@ -4,11 +4,67 @@
  * Converts raw CNC data to canonical CncOperation[].
  */
 
-import type { CncOperation, CncOpType } from "../canonical-types";
+import type { CncOperation, CncOpType } from "../compat-types";
 import type { OrgServiceDialect } from "../dialect-types";
 import type { RawCncFields } from "../raw-fields";
-import { parseCncCode, CNC_PRESETS } from "../canonical-shortcodes";
 import { isYesValue } from "../dialect-types";
+
+// Compat: CNC_PRESETS
+const CNC_PRESETS: Record<string, { type: CncOpType; params?: Record<string, number | string> }> = {
+  "PKT-50": { type: "pocket", params: { diameter: 50, depth: 10 } },
+  "RAD-5": { type: "radius", params: { radius: 5 } },
+  "RAD-10": { type: "radius", params: { radius: 10 } },
+  "CHAM-3": { type: "chamfer", params: { size: 3, angle: 45 } },
+  "CUT-SINK": { type: "cutout", params: { subtype: "sink" } },
+  "CUT-WIRE": { type: "cutout", params: { subtype: "wire", diameter: 60 } },
+};
+
+// Compat: parseCncCode stub
+function parseCncCode(code: string): CncOperation | null {
+  const upper = code.toUpperCase().trim();
+  
+  // Check presets first
+  const preset = CNC_PRESETS[upper];
+  if (preset) {
+    return {
+      type: preset.type,
+      label: code,
+      params: preset.params,
+    };
+  }
+  
+  // PKT-50 format: pocket of 50mm diameter
+  const pocketMatch = upper.match(/^PKT[-_]?(\d+)$/);
+  if (pocketMatch) {
+    return {
+      type: "pocket",
+      label: code,
+      params: { diameter: parseInt(pocketMatch[1], 10), depth: 10 },
+    };
+  }
+  
+  // RAD-5 format: radius of 5mm
+  const radiusMatch = upper.match(/^RAD[-_]?(\d+)$/);
+  if (radiusMatch) {
+    return {
+      type: "radius",
+      label: code,
+      params: { radius: parseInt(radiusMatch[1], 10) },
+    };
+  }
+  
+  // CHAM-3 format: chamfer of 3mm
+  const chamferMatch = upper.match(/^CHAM[-_]?(\d+)$/);
+  if (chamferMatch) {
+    return {
+      type: "chamfer",
+      label: code,
+      params: { size: parseInt(chamferMatch[1], 10), angle: 45 },
+    };
+  }
+  
+  return null;
+}
 
 /**
  * Normalize raw CNC data to canonical CncOperation[]

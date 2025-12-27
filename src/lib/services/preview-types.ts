@@ -27,7 +27,7 @@
  * ```
  */
 
-import type { EdgeSide, HolePatternKind, CncOpType } from "./canonical-types";
+import type { EdgeSide, HolePatternKind, CncOpType } from "./compat-types";
 
 // ============================================================
 // EDGE MAPPING FOR PREVIEW

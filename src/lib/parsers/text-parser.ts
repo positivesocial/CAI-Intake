@@ -683,43 +683,55 @@ function servicesToPartOps(
   
   // Convert edgeband
   if (services.edgeband?.edges && services.edgeband.edges.length > 0) {
+    type EdgeRecord = Record<string, { apply: boolean; edgeband_id?: string; thickness_mm?: number }>;
     ops.edging = {
-      edges: services.edgeband.edges.reduce((acc, edge) => {
+      edges: services.edgeband.edges.reduce<EdgeRecord>((acc: EdgeRecord, edge: string) => {
         acc[edge] = { 
           apply: true, 
           edgeband_id: services.edgeband?.tapeId,
           thickness_mm: services.edgeband?.thicknessMm,
         };
         return acc;
-      }, {} as Record<string, { apply: boolean; edgeband_id?: string; thickness_mm?: number }>),
+      }, {}),
     };
   }
   
   // Convert grooves
   if (services.grooves && services.grooves.length > 0) {
-    ops.grooves = services.grooves.map((groove, idx) => ({
-      groove_id: generateId("GRV"),
-      side: groove.onEdge,
-      offset_mm: groove.distanceFromEdgeMm,
-      depth_mm: groove.depthMm,
-      width_mm: groove.widthMm,
-      face: groove.face,
-      notes: groove.note,
-    }));
+    ops.grooves = services.grooves
+      .filter((groove) => groove.onEdge || (groove.onEdges && groove.onEdges.length > 0))
+      .map((groove) => {
+        const side = groove.onEdge ?? groove.onEdges?.[0] ?? "L1";
+        return {
+          groove_id: generateId("GRV"),
+          side: side as "L1" | "L2" | "W1" | "W2",
+          offset_mm: groove.distanceFromEdgeMm,
+          depth_mm: groove.depthMm,
+          width_mm: groove.widthMm,
+          face: groove.face as "front" | "back" | undefined,
+          notes: groove.note,
+        };
+      });
   }
   
   // Convert holes
   if (services.holes && services.holes.length > 0) {
-    ops.holes = services.holes.map((hole) => ({
-      pattern_id: hole.patternId ?? `${hole.kind}-pattern`,
-      face: hole.face === "edge" ? undefined : hole.face,
-      notes: hole.note ?? `${hole.kind} holes`,
-    }));
+    ops.holes = services.holes.map((hole) => {
+      const patternId = (hole as { patternId?: string }).patternId ?? `${hole.kind}-pattern`;
+      const holeFace = (hole as { face?: string }).face;
+      return {
+        pattern_id: patternId,
+        face: (holeFace === "front" || holeFace === "back" || holeFace === "edge") 
+          ? (holeFace as "front" | "back" | "edge") 
+          : undefined,
+        notes: hole.note ?? `${hole.kind} holes`,
+      };
+    });
   }
   
   // Convert CNC operations
   if (services.cnc && services.cnc.length > 0) {
-    ops.custom_cnc_ops = services.cnc.map((cnc) => ({
+    ops.custom_cnc_ops = services.cnc.map((cnc: typeof services.cnc[number]) => ({
       op_type: cnc.type,
       payload: {
         shapeId: cnc.shapeId,

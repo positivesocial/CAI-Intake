@@ -4,11 +4,60 @@
  * Converts raw drilling data to canonical HolePatternSpec[].
  */
 
-import type { EdgeSide, HolePatternSpec, HolePatternKind } from "../canonical-types";
+import type { EdgeSide, HolePatternSpec, HolePatternKind } from "../compat-types";
 import type { OrgServiceDialect } from "../dialect-types";
 import type { RawDrillingFields } from "../raw-fields";
-import { parseHoleCode, HOLE_PRESETS } from "../canonical-shortcodes";
 import { isYesValue } from "../dialect-types";
+
+// Compat: HOLE_PRESETS
+const HOLE_PRESETS: Record<string, { kind: HolePatternKind; count?: number; spacingMm?: number }> = {
+  "H2": { kind: "hinge", count: 2 },
+  "H3": { kind: "hinge", count: 3 },
+  "SP": { kind: "shelf_pins" },
+  "S32": { kind: "system32", spacingMm: 32 },
+  "HD-96": { kind: "handle", spacingMm: 96 },
+  "HD-128": { kind: "handle", spacingMm: 128 },
+  "KB": { kind: "knob" },
+};
+
+// Compat: parseHoleCode stub
+function parseHoleCode(code: string): HolePatternSpec | null {
+  const upper = code.toUpperCase().trim();
+  
+  // Check presets first
+  const preset = HOLE_PRESETS[upper];
+  if (preset) {
+    return {
+      kind: preset.kind,
+      count: preset.count,
+      distanceFromEdgeMm: 21.5, // Default hinge distance
+      spacingMm: preset.spacingMm,
+    };
+  }
+  
+  // H2-110 format: 2 hinges at 110mm offset
+  const hingeMatch = upper.match(/^H(\d+)(?:[-_](\d+))?$/);
+  if (hingeMatch) {
+    return {
+      kind: "hinge",
+      count: parseInt(hingeMatch[1], 10),
+      distanceFromEdgeMm: 21.5,
+      offsetsMm: hingeMatch[2] ? [parseInt(hingeMatch[2], 10)] : undefined,
+    };
+  }
+  
+  // HD-128 format: handle at 128mm spacing
+  const handleMatch = upper.match(/^HD[-_]?(\d+)$/);
+  if (handleMatch) {
+    return {
+      kind: "handle",
+      spacingMm: parseInt(handleMatch[1], 10),
+      distanceFromEdgeMm: 0,
+    };
+  }
+  
+  return null;
+}
 
 /**
  * Normalize raw drilling data to canonical HolePatternSpec[]

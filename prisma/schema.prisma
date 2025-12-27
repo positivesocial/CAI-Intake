@@ -52,10 +52,17 @@ model Organization {
   trainingExamples    TrainingExample[]
   parsingAccuracyLogs ParsingAccuracyLog[]
 
-  // Operations libraries
+  // Operations libraries (legacy)
   holePatterns    HolePattern[]
   grooveProfiles  GrooveProfile[]
   routingProfiles RoutingProfile[]
+
+  // New unified operations system
+  operationTypes      OperationType[]
+  edgebandOperations  EdgebandOperation[]
+  grooveOperations    GrooveOperation[]
+  drillingOperations  DrillingOperation[]
+  cncOperations       CncOperation[]
 
   @@map("organizations")
 }
@@ -827,6 +834,139 @@ model RoutingProfile {
   @@index([profileType])
   @@index([usageCount(sort: Desc)])
   @@map("routing_profiles")
+}
+
+// ============================================================
+// UNIFIED OPERATIONS SYSTEM
+// ============================================================
+
+model OperationType {
+  id             String  @id @default(cuid())
+  organizationId String? @map("organization_id")
+  category       String  // edgeband, groove, drilling, cnc
+  code           String
+  name           String
+  description    String?
+  icon           String?
+  isSystem       Boolean @default(false) @map("is_system")
+  isActive       Boolean @default(true) @map("is_active")
+  displayOrder   Int     @default(0) @map("display_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  // Relationships
+  organization       Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grooveOperations   GrooveOperation[]
+  drillingOperations DrillingOperation[]
+  cncOperations      CncOperation[]
+
+  @@unique([organizationId, category, code], map: "idx_operation_types_org_cat_code")
+  @@index([category], map: "idx_operation_types_category")
+  @@index([organizationId], map: "idx_operation_types_org")
+  @@map("operation_types")
+}
+
+model EdgebandOperation {
+  id             String   @id @default(cuid())
+  organizationId String?  @map("organization_id")
+  code           String
+  name           String
+  description    String?
+  edges          String[] @default([])
+  thicknessMm    Float?   @map("thickness_mm")
+  materialId     String?  @map("material_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  usageCount     Int      @default(0) @map("usage_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  // Relationships
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code], map: "idx_edgeband_operations_org_code")
+  @@index([organizationId], map: "idx_edgeband_operations_org")
+  @@map("edgeband_operations")
+}
+
+model GrooveOperation {
+  id               String  @id @default(cuid())
+  organizationId   String? @map("organization_id")
+  typeId           String? @map("type_id")
+  code             String
+  name             String
+  description      String?
+  widthMm          Float   @map("width_mm")
+  depthMm          Float   @map("depth_mm")
+  offsetFromEdgeMm Float   @default(0) @map("offset_from_edge_mm")
+  edge             String?
+  isActive         Boolean @default(true) @map("is_active")
+  usageCount       Int     @default(0) @map("usage_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  // Relationships
+  organization  Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  operationType OperationType? @relation(fields: [typeId], references: [id])
+
+  @@unique([organizationId, code], map: "idx_groove_operations_org_code")
+  @@index([organizationId], map: "idx_groove_operations_org")
+  @@map("groove_operations")
+}
+
+model DrillingOperation {
+  id             String  @id @default(cuid())
+  organizationId String? @map("organization_id")
+  typeId         String? @map("type_id")
+  code           String
+  name           String
+  description    String?
+  holes          Json    @default("[]")
+  refEdge        String? @map("ref_edge")
+  refCorner      String? @map("ref_corner")
+  hardwareBrand  String? @map("hardware_brand")
+  hardwareModel  String? @map("hardware_model")
+  isActive       Boolean @default(true) @map("is_active")
+  usageCount     Int     @default(0) @map("usage_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  // Relationships
+  organization  Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  operationType OperationType? @relation(fields: [typeId], references: [id])
+
+  @@unique([organizationId, code], map: "idx_drilling_operations_org_code")
+  @@index([organizationId], map: "idx_drilling_operations_org")
+  @@map("drilling_operations")
+}
+
+model CncOperation {
+  id               String  @id @default(cuid())
+  organizationId   String? @map("organization_id")
+  typeId           String? @map("type_id")
+  code             String
+  name             String
+  description      String?
+  opType           String  @map("op_type") // edge_profile, pocket, cutout, rebate, chamfer, radius, contour, drill_array, text, custom
+  parametricConfig Json?   @map("parametric_config")
+  shapeId          String? @map("shape_id")
+  params           Json?
+  isActive         Boolean @default(true) @map("is_active")
+  usageCount       Int     @default(0) @map("usage_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  // Relationships
+  organization  Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  operationType OperationType? @relation(fields: [typeId], references: [id])
+
+  @@unique([organizationId, code], map: "idx_cnc_operations_org_code")
+  @@index([organizationId], map: "idx_cnc_operations_org")
+  @@map("cnc_operations")
 }
 
 // ============================================================

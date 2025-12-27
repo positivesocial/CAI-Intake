@@ -6,7 +6,7 @@
  */
 
 import type { PartOps, GrooveOp, HoleOp, RoutingOp, CustomCncOp } from "@/lib/schema/operations";
-import type { EdgeSide, HolePatternKind } from "./canonical-types";
+import type { EdgeSide, HolePatternKind } from "./compat-types";
 import type {
   PartPreviewData,
   PreviewEdgeband,

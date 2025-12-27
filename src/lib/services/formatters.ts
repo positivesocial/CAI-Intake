@@ -12,8 +12,34 @@ import type {
   CncOperation,
   PartServices,
   EdgeSide,
-} from "./canonical-types";
-import { edgesToCode } from "./canonical-shortcodes";
+} from "./compat-types";
+
+/**
+ * Convert edge array to shortcode format
+ * e.g., ["L1", "L2"] -> "2L", ["L1", "L2", "W1", "W2"] -> "2L2W"
+ */
+function edgesToCode(edges: EdgeSide[]): string {
+  if (!edges || edges.length === 0) return "0";
+  
+  const hasL1 = edges.includes("L1");
+  const hasL2 = edges.includes("L2");
+  const hasW1 = edges.includes("W1");
+  const hasW2 = edges.includes("W2");
+  
+  const longCount = (hasL1 ? 1 : 0) + (hasL2 ? 1 : 0);
+  const widthCount = (hasW1 ? 1 : 0) + (hasW2 ? 1 : 0);
+  
+  if (longCount === 2 && widthCount === 2) return "2L2W";
+  if (longCount === 2 && widthCount === 1) return "2L1W";
+  if (longCount === 1 && widthCount === 2) return "L2W";
+  if (longCount === 2 && widthCount === 0) return "2L";
+  if (longCount === 0 && widthCount === 2) return "2W";
+  if (longCount === 1 && widthCount === 1) return `${hasL1 ? "L1" : "L2"}${hasW1 ? "W1" : "W2"}`;
+  if (longCount === 1) return hasL1 ? "L1" : "L2";
+  if (widthCount === 1) return hasW1 ? "W1" : "W2";
+  
+  return edges.join(",");
+}
 
 // ============================================================
 // EDGEBAND FORMATTING
@@ -141,7 +167,10 @@ export function formatGrooveDescription(spec: GrooveSpec): string {
   };
   
   let desc = `${spec.widthMm}mm groove`;
-  desc += ` on ${edgeNames[spec.onEdge]}`;
+  const edge = spec.onEdge ?? (spec.onEdges?.[0]);
+  if (edge) {
+    desc += ` on ${edgeNames[edge]}`;
+  }
   desc += `, ${spec.distanceFromEdgeMm}mm from edge`;
   desc += `, ${spec.depthMm}mm deep`;
   
@@ -160,12 +189,13 @@ export function formatGrooveDescription(spec: GrooveSpec): string {
  * Format HolePatternSpec to canonical shortcode
  */
 export function formatHoleCode(spec: HolePatternSpec): string {
+  const offsets = spec.offsetsMm ?? [];
   switch (spec.kind) {
     case "hinge":
-      return `H${spec.count ?? 2}-${spec.offsetsMm[0] ?? 100}`;
+      return `H${spec.count ?? 2}-${offsets[0] ?? 100}`;
     case "handle":
-      if (spec.offsetsMm.length >= 2) {
-        const centers = spec.offsetsMm[1] - spec.offsetsMm[0];
+      if (offsets.length >= 2) {
+        const centers = offsets[1] - offsets[0];
         return `HD-CC${centers}`;
       }
       return "HD-STD";
@@ -173,7 +203,7 @@ export function formatHoleCode(spec: HolePatternSpec): string {
       if (spec.distanceFromEdgeMm === 0) {
         return "KN-CTR";
       }
-      return `KN-${spec.offsetsMm[0] ?? 37}`;
+      return `KN-${offsets[0] ?? 37}`;
     case "shelf_pins":
       return "SP-STD";
     case "system32":
@@ -216,14 +246,15 @@ export function formatHoleDescription(spec: HolePatternSpec): string {
     custom: "Custom holes",
   };
   
+  const offsets = spec.offsetsMm ?? [];
   let desc = kindNames[spec.kind] ?? spec.kind;
   
   if (spec.kind === "hinge") {
-    desc += ` (${spec.count ?? 2}x, ${spec.offsetsMm[0] ?? 100}mm from edge)`;
-  } else if (spec.kind === "handle" && spec.offsetsMm.length >= 2) {
-    desc += ` (${spec.offsetsMm[1] - spec.offsetsMm[0]}mm centers)`;
+    desc += ` (${spec.count ?? 2}x, ${offsets[0] ?? 100}mm from edge)`;
+  } else if (spec.kind === "handle" && offsets.length >= 2) {
+    desc += ` (${offsets[1] - offsets[0]}mm centers)`;
   } else if (spec.kind === "knob") {
-    desc += spec.distanceFromEdgeMm === 0 ? " (centered)" : ` (${spec.offsetsMm[0]}mm from edge)`;
+    desc += spec.distanceFromEdgeMm === 0 ? " (centered)" : ` (${offsets[0] ?? 37}mm from edge)`;
   }
   
   if (spec.hardwareId) {
@@ -241,23 +272,26 @@ export function formatHoleDescription(spec: HolePatternSpec): string {
  * Format CncOperation to canonical shortcode
  */
 export function formatCncCode(op: CncOperation): string {
+  const shapeId = op.shapeId ?? "SHAPE";
+  const params = op.params ?? {};
+  
   switch (op.type) {
     case "cutout":
-      return `CUTOUT-${op.shapeId.toUpperCase()}-${op.params.width}x${op.params.height}`;
+      return `CUTOUT-${shapeId.toUpperCase()}-${params.width ?? 0}x${params.height ?? 0}`;
     case "radius":
-      return `RADIUS-${op.params.radius}-${String(op.params.corners ?? "ALL").toUpperCase()}`;
+      return `RADIUS-${params.radius ?? 0}-${String(params.corners ?? "ALL").toUpperCase()}`;
     case "pocket":
-      return `POCKET-${op.params.width}x${op.params.height}x${op.params.depth}`;
+      return `POCKET-${params.width ?? 0}x${params.height ?? 0}x${params.depth ?? 0}`;
     case "contour":
-      return `PROFILE-${op.shapeId.toUpperCase()}`;
+      return `PROFILE-${shapeId.toUpperCase()}`;
     case "rebate":
-      return `REBATE-${op.params.width}x${op.params.depth}`;
+      return `REBATE-${params.width ?? 0}x${params.depth ?? 0}`;
     case "chamfer":
-      return `CHAMFER-${op.params.size ?? 3}`;
+      return `CHAMFER-${params.size ?? 3}`;
     case "text":
       return "TEXT";
     default:
-      return `CNC-${op.shapeId.toUpperCase()}`;
+      return `CNC-${shapeId.toUpperCase()}`;
   }
 }
 
@@ -276,23 +310,26 @@ export function formatCncCodes(ops: CncOperation[] | undefined): string {
  * Format CncOperation to human-readable description
  */
 export function formatCncDescription(op: CncOperation): string {
+  const shapeId = op.shapeId ?? "shape";
+  const params = op.params ?? {};
+  
   switch (op.type) {
     case "cutout":
-      return `${op.shapeId} cutout (${op.params.width}x${op.params.height}mm)`;
+      return `${shapeId} cutout (${params.width ?? 0}x${params.height ?? 0}mm)`;
     case "radius":
-      return `${op.params.radius}mm corner radius (${op.params.corners ?? "all"} corners)`;
+      return `${params.radius ?? 0}mm corner radius (${params.corners ?? "all"} corners)`;
     case "pocket":
-      return `Pocket ${op.params.width}x${op.params.height}mm, ${op.params.depth}mm deep`;
+      return `Pocket ${params.width ?? 0}x${params.height ?? 0}mm, ${params.depth ?? 0}mm deep`;
     case "contour":
-      return `Edge profile: ${op.shapeId.replace(/_/g, " ")}`;
+      return `Edge profile: ${shapeId.replace(/_/g, " ")}`;
     case "rebate":
-      return `Rebate ${op.params.width}x${op.params.depth}mm`;
+      return `Rebate ${params.width ?? 0}x${params.depth ?? 0}mm`;
     case "chamfer":
-      return `${op.params.size ?? 3}mm chamfer`;
+      return `${params.size ?? 3}mm chamfer`;
     case "text":
       return "Text engraving";
     default:
-      return op.note ?? `CNC: ${op.shapeId}`;
+      return op.note ?? `CNC: ${shapeId}`;
   }
 }
 

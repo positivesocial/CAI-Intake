@@ -1,98 +1,21 @@
 /**
  * CAI Intake - Services Module
  * 
- * Canonical service types and normalization for:
+ * Service types and utilities for:
  * - Edgebanding
  * - Grooves
  * - Drilling/Holes
  * - CNC Operations
  * 
- * This module provides:
- * 1. Canonical types (the "internal truth")
- * 2. Canonical shortcodes (CabinetAI's official notation)
- * 3. Organization dialect configuration (external format translation)
- * 4. Normalizers (external → canonical)
- * 5. Formatters (canonical → display)
+ * NOTE: The canonical types and shortcodes have been moved to the
+ * unified operations system in @/lib/operations.
  * 
- * @example
- * ```typescript
- * import {
- *   // Types
- *   EdgeBandSpec,
- *   GrooveSpec,
- *   PartServices,
- *   
- *   // Normalization
- *   normalizeServices,
- *   extractRawFieldsFromText,
- *   
- *   // Formatting
- *   formatEdgebandCode,
- *   formatServicesSummary,
- *   
- *   // Dialect
- *   getDefaultDialect,
- * } from "@/lib/services";
- * 
- * // Parse raw input
- * const raw = extractRawFieldsFromText("Side panel 720x560 2L2W G-ALL-4-10");
- * 
- * // Normalize to canonical
- * const services = normalizeServices(raw, orgDialect);
- * 
- * // Format for display
- * const summary = formatServicesSummary(services);
- * ```
+ * This module now provides:
+ * 1. Organization dialect configuration (external format translation)
+ * 2. Raw field extraction
+ * 3. Formatters (canonical → display)
+ * 4. Preview types (for 2D visualization)
  */
-
-// ============================================================
-// CANONICAL TYPES (Internal Truth)
-// ============================================================
-
-export type {
-  EdgeSide,
-  PartFace,
-  HolePatternKind,
-  CncOpType,
-  EdgeBandSpec,
-  GrooveSpec,
-  HolePatternSpec,
-  CncOperation,
-  PartServices,
-} from "./canonical-types";
-
-export {
-  ALL_EDGE_SIDES,
-  LONG_EDGES,
-  WIDTH_EDGES,
-  hasAnyServices,
-  countServices,
-  createEmptyServices,
-  createEdgeBandSpec,
-  createBackPanelGroove,
-  createDrawerBottomGroove,
-  mergeServices,
-} from "./canonical-types";
-
-// ============================================================
-// CANONICAL SHORTCODES
-// ============================================================
-
-export {
-  EDGE_CODES,
-  edgesToCode,
-  parseEdgeCode,
-  GROOVE_PRESETS,
-  parseGrooveCode,
-  grooveToCode,
-  HOLE_PRESETS,
-  parseHoleCode,
-  holePatternToCode,
-  CNC_PRESETS,
-  parseCncCode,
-  cncOperationToCode,
-  SHORTCODE_REFERENCE,
-} from "./canonical-shortcodes";
 
 // ============================================================
 // DIALECT TYPES
@@ -151,13 +74,7 @@ export {
   normalizeFromText,
   validateServices,
   mergePartServices,
-  normalizeEdgeband,
-  normalizeGrooves,
-  normalizeHoles,
-  normalizeCnc,
 } from "./normalizers";
-
-export type { QuickNormalizeOptions } from "./normalizers";
 
 // ============================================================
 // FORMATTERS
@@ -218,4 +135,3 @@ export {
   convertEdgingToPreview,
   createPreviewFromPart,
 } from "./preview-converter";
-

@@ -10,7 +10,7 @@ import type { CutPart } from "@/lib/schema";
 import type { EdgeEdgingOps, GrooveOp, HoleOp } from "@/lib/schema/operations";
 import { generateId } from "@/lib/utils";
 import type { TemplateMetadata } from "./template-detector";
-import { parseEdgeCode } from "@/lib/services/canonical-shortcodes";
+import { codeToEdges } from "@/lib/operations/types";
 
 // ============================================================
 // TYPES
@@ -506,7 +506,7 @@ function parseEdgebanding(row: RowData): EdgeEdgingOps | undefined {
   // Or a single shortcode column
   if (row.edgeband || row.eb || row.edge) {
     const code = row.edgeband || row.eb || row.edge;
-    const edgeList = parseEdgeCode(code);
+    const edgeList = codeToEdges(code);
     for (const edge of edgeList) {
       edges[edge] = { apply: true };
     }

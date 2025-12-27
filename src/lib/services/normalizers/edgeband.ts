@@ -4,11 +4,28 @@
  * Converts raw edgeband data to canonical EdgeBandSpec.
  */
 
-import type { EdgeSide, EdgeBandSpec } from "../canonical-types";
+import type { EdgeSide, EdgeBandSpec } from "../compat-types";
 import type { OrgServiceDialect } from "../dialect-types";
 import type { RawEdgebandFields } from "../raw-fields";
-import { EDGE_CODES, parseEdgeCode } from "../canonical-shortcodes";
+import { codeToEdges, ALL_EDGES } from "@/lib/operations/types";
 import { isYesValue, isNoValue } from "../dialect-types";
+
+// Compat: EDGE_CODES mapping
+const EDGE_CODES = {
+  "2L2W": ALL_EDGES as EdgeSide[],
+  "ALL": ALL_EDGES as EdgeSide[],
+  "2L": ["L1", "L2"] as EdgeSide[],
+  "2W": ["W1", "W2"] as EdgeSide[],
+  "L1": ["L1"] as EdgeSide[],
+  "L2": ["L2"] as EdgeSide[],
+  "W1": ["W1"] as EdgeSide[],
+  "W2": ["W2"] as EdgeSide[],
+};
+
+// Compat: parseEdgeCode using new codeToEdges
+function parseEdgeCode(code: string): EdgeSide[] {
+  return codeToEdges(code) as EdgeSide[];
+}
 
 /**
  * Normalize raw edgeband data to canonical EdgeBandSpec

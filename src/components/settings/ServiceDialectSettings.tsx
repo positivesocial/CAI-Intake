@@ -27,18 +27,41 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   type OrgServiceDialect,
-  type EdgeSide,
   getDefaultDialect,
-  parseEdgeCode,
-  parseGrooveCode,
-  parseHoleCode,
-  parseCncCode,
-  SHORTCODE_REFERENCE,
   formatEdgebandCode,
   formatGroovesCode,
   formatHolesCode,
   formatCncCodes,
 } from "@/lib/services";
+import { codeToEdges, type EdgeSide } from "@/lib/operations/types";
+
+// Compat: parsers and reference
+const parseEdgeCode = codeToEdges;
+const parseGrooveCode = (_code: string): { edges: string[]; widthMm: number; offsetMm: number } | null => null;
+const parseHoleCode = (_code: string): { kind: string; count?: number } | null => null;
+const parseCncCode = (_code: string): { type: string; shapeId: string; params: Record<string, unknown> } | null => null;
+
+const SHORTCODE_REFERENCE = {
+  edgeband: [
+    { code: "2L2W", description: "All 4 edges", example: "2L2W" },
+    { code: "2L", description: "Long edges only", example: "2L" },
+    { code: "2W", description: "Width edges only", example: "2W" },
+    { code: "L1", description: "Single edge L1", example: "L1" },
+  ],
+  groove: [
+    { code: "GL-4-10", description: "4mm groove, 10mm deep on L", example: "GL-4-10" },
+    { code: "BP", description: "Back panel groove", example: "BP" },
+  ],
+  drilling: [
+    { code: "H2", description: "2 hinge borings", example: "H2" },
+    { code: "HD-96", description: "Handle 96mm", example: "HD-96" },
+    { code: "S32", description: "System 32", example: "S32" },
+  ],
+  cnc: [
+    { code: "PKT-50", description: "50mm pocket", example: "PKT-50" },
+    { code: "RAD-5", description: "5mm radius", example: "RAD-5" },
+  ],
+};
 import { cn } from "@/lib/utils";
 
 // ============================================================
@@ -240,7 +263,7 @@ function TestParser({ dialect }: TestParserProps) {
       newResults.push({
         input: testInput,
         output: `Groove: ${formatGroovesCode([{
-          onEdge: grResult.edges[0] as EdgeSide,
+          onEdges: grResult.edges as EdgeSide[],
           widthMm: grResult.widthMm,
           distanceFromEdgeMm: grResult.offsetMm,
           depthMm: 10,
@@ -569,7 +592,7 @@ export function ServiceDialectSettings({
             onAdd={addEdgebandAlias}
             onRemove={removeEdgebandAlias}
             validateCanonical={(code) => parseEdgeCode(code).length > 0}
-            examples={SHORTCODE_REFERENCE.edgeband.examples}
+            examples={SHORTCODE_REFERENCE.edgeband}
             colorClass="bg-blue-500/20 text-blue-700 dark:text-blue-300"
           />
           
@@ -581,7 +604,7 @@ export function ServiceDialectSettings({
             onAdd={addGrooveAlias}
             onRemove={removeGrooveAlias}
             validateCanonical={(code) => parseGrooveCode(code) !== null}
-            examples={SHORTCODE_REFERENCE.groove.examples}
+            examples={SHORTCODE_REFERENCE.groove}
             colorClass="bg-amber-500/20 text-amber-700 dark:text-amber-300"
           />
           
@@ -593,7 +616,7 @@ export function ServiceDialectSettings({
             onAdd={addDrillingAlias}
             onRemove={removeDrillingAlias}
             validateCanonical={(code) => parseHoleCode(code) !== null}
-            examples={SHORTCODE_REFERENCE.holes.examples}
+            examples={SHORTCODE_REFERENCE.drilling}
             colorClass="bg-purple-500/20 text-purple-700 dark:text-purple-300"
           />
           
@@ -605,7 +628,7 @@ export function ServiceDialectSettings({
             onAdd={addCncAlias}
             onRemove={removeCncAlias}
             validateCanonical={(code) => parseCncCode(code) !== null}
-            examples={SHORTCODE_REFERENCE.cnc.examples}
+            examples={SHORTCODE_REFERENCE.cnc}
             colorClass="bg-green-500/20 text-green-700 dark:text-green-300"
           />
         </CardContent>

@@ -17,7 +17,7 @@ import type {
   CncOperation,
   EdgeBandSpec,
   GrooveSpec,
-} from "./canonical-types";
+} from "./compat-types";
 
 // ============================================================
 // DIALECT PATTERN TYPES

@@ -63,13 +63,47 @@ export function TemplateGenerator() {
   const [copied, setCopied] = React.useState(false);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [generatedTemplate, setGeneratedTemplate] = React.useState<GeneratedTemplate | null>(null);
+  const [orgShortcodes, setOrgShortcodes] = React.useState<OpsShortcode[]>([]);
+  const [shortcodesLoading, setShortcodesLoading] = React.useState(true);
 
-  // TODO: Load org shortcodes from API/database
-  const orgShortcodes: OpsShortcode[] = React.useMemo(() => {
-    // These would come from the org's ops/shortcodes tables
+  // Fetch org shortcodes from API on mount
+  React.useEffect(() => {
+    async function loadShortcodes() {
+      try {
+        const res = await fetch("/api/v1/template-shortcodes", {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.shortcodes && data.shortcodes.length > 0) {
+            setOrgShortcodes(data.shortcodes);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load org shortcodes:", error);
+      } finally {
+        setShortcodesLoading(false);
+      }
+    }
+    loadShortcodes();
+  }, []);
+
+  // Filter shortcodes based on enabled operation types
+  const filteredShortcodes: OpsShortcode[] = React.useMemo(() => {
+    // If we have org shortcodes, filter them by enabled operations
+    if (orgShortcodes.length > 0) {
+      return orgShortcodes.filter(sc => {
+        if (sc.category === "edgebanding" && !config.includeEdging) return false;
+        if (sc.category === "grooving" && !config.includeGrooves) return false;
+        if (sc.category === "drilling" && !config.includeDrilling) return false;
+        if (sc.category === "cnc" && !config.includeCNC) return false;
+        return true;
+      });
+    }
+    
+    // Fallback to defaults if no org shortcodes
     const shortcodes: OpsShortcode[] = [];
     
-    // Default shortcodes - in production, load from org settings
     if (config.includeEdging) {
       shortcodes.push(
         { id: "eb1", code: "L", name: "Length only", category: "edgebanding" },
@@ -109,12 +143,12 @@ export function TemplateGenerator() {
     }
     
     return shortcodes;
-  }, [config.includeEdging, config.includeGrooves, config.includeDrilling, config.includeCNC]);
+  }, [orgShortcodes, config.includeEdging, config.includeGrooves, config.includeDrilling, config.includeCNC]);
 
   // Generate shortcodes hash for versioning
   const shortcodesHash = React.useMemo(() => 
-    generateShortcodesHash(orgShortcodes), 
-    [orgShortcodes]
+    generateShortcodesHash(filteredShortcodes), 
+    [filteredShortcodes]
   );
 
   // Template ID format: CAI-{org_id}-v{version}
@@ -150,9 +184,9 @@ export function TemplateGenerator() {
       thickness_mm: e.thickness_mm,
       code: e.edgeband_id.slice(0, 6).toUpperCase(),
     })),
-    shortcodes: orgShortcodes,
+    shortcodes: filteredShortcodes,
     shortcodesHash,
-  }), [config, currentCutlist.materials, currentCutlist.edgebands, orgShortcodes, shortcodesHash]);
+  }), [config, currentCutlist.materials, currentCutlist.edgebands, filteredShortcodes, shortcodesHash]);
 
   const handleCopyTemplateId = () => {
     navigator.clipboard.writeText(templateId);
@@ -378,7 +412,7 @@ export function TemplateGenerator() {
               <div className="text-xs text-[var(--muted-foreground)] space-y-1">
                 <p><strong>{currentCutlist.materials.length}</strong> sheet materials</p>
                 <p><strong>{currentCutlist.edgebands?.length || 0}</strong> edgebands</p>
-                <p><strong>{orgShortcodes.length}</strong> operation shortcodes</p>
+                <p><strong>{filteredShortcodes.length}</strong> operation shortcodes{shortcodesLoading ? " (loading...)" : ""}</p>
               </div>
               <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950 rounded text-xs">
                 <p className="font-medium text-amber-800 dark:text-amber-200">Best OCR Tips:</p>

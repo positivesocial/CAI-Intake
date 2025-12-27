@@ -1,252 +1,401 @@
 /**
- * CAI Intake - Operations Library Types
+ * CAI Intake - Operations System Types
  * 
- * Per-organization libraries for:
- * - Hole Patterns (drilling patterns)
- * - Groove Profiles (groove specifications)
- * - Routing Profiles (CNC operations)
+ * Unified type definitions for all operations:
+ * - Edgeband: Edge banding specifications
+ * - Groove: Groove operations (back panel, drawer bottom, etc.)
+ * - Drilling: Hole patterns for hardware (hinges, handles, etc.)
+ * - CNC: CNC operations (pockets, cutouts, chamfers, etc.)
+ * 
+ * Each operation has:
+ * - code: The shortcode for quick input
+ * - name: Human-readable name
+ * - spec: Type-specific specification
  */
 
 // ============================================================
-// HOLE PATTERNS
+// CORE TYPES
 // ============================================================
 
-export type HolePatternKind = 
-  | 'hinge'
-  | 'shelf_pins'
-  | 'handle'
-  | 'knob'
-  | 'drawer_slide'
-  | 'cam_lock'
-  | 'dowel'
-  | 'system32'
-  | 'custom';
+/** Operation category */
+export type OperationCategory = "edgeband" | "groove" | "drilling" | "cnc";
 
-export interface HoleDefinition {
-  x: number;       // mm from reference edge
-  y: number;       // mm from reference corner (negative = from opposite)
-  dia_mm: number;  // hole diameter
-  depth_mm?: number;
-  through?: boolean;
-  note?: string;
-}
+/** Edge identifiers for rectangular parts */
+export type EdgeSide = "L1" | "L2" | "W1" | "W2";
 
-export interface ParametricConfig {
-  spacing_mm: number;    // e.g., 32 for System 32
-  margin_mm: number;     // distance from edge
-  rows: 'auto' | number; // number of rows or auto-calculate
-  hole_dia_mm: number;
-  hole_depth_mm: number;
-}
+/** All edge sides */
+export const ALL_EDGES: readonly EdgeSide[] = ["L1", "L2", "W1", "W2"] as const;
+export const LONG_EDGES: readonly EdgeSide[] = ["L1", "L2"] as const;
+export const WIDTH_EDGES: readonly EdgeSide[] = ["W1", "W2"] as const;
 
-export interface HolePattern {
-  id: string;
-  organization_id: string;
-  pattern_id: string;
-  name: string;
-  description?: string;
-  kind: HolePatternKind;
-  holes: HoleDefinition[];
-  ref_edge?: 'L1' | 'L2' | 'W1' | 'W2';
-  ref_corner?: 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
-  parametric_config?: ParametricConfig;
-  hardware_id?: string;
-  hardware_brand?: string;
-  hardware_model?: string;
-  is_system: boolean;
-  is_active: boolean;
-  usage_count: number;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
+/** Part face for operations */
+export type PartFace = "front" | "back";
 
-export interface HolePatternInput {
-  pattern_id: string;
-  name: string;
-  description?: string;
-  kind: HolePatternKind;
-  holes: HoleDefinition[];
-  ref_edge?: 'L1' | 'L2' | 'W1' | 'W2';
-  ref_corner?: 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
-  parametric_config?: ParametricConfig;
-  hardware_id?: string;
-  hardware_brand?: string;
-  hardware_model?: string;
-  is_active?: boolean;
-  metadata?: Record<string, unknown>;
-}
+/** Reference corner for drilling */
+export type RefCorner = "TL" | "TR" | "BL" | "BR";
 
-// ============================================================
-// GROOVE PROFILES
-// ============================================================
-
-export type GroovePurpose = 
-  | 'back_panel'
-  | 'drawer_bottom'
-  | 'light_profile'
-  | 'glass_panel'
-  | 'divider'
-  | 'custom';
-
-export interface GrooveProfile {
-  id: string;
-  organization_id: string;
-  profile_id: string;
-  name: string;
-  description?: string;
-  width_mm: number;
-  depth_mm: number;
-  purpose?: GroovePurpose;
-  default_offset_mm: number;
-  default_face: 'front' | 'back';
-  allow_stopped: boolean;
-  default_start_offset_mm: number;
-  default_end_offset_mm: number;
-  tool_dia_mm?: number;
-  tool_id?: string;
-  feed_rate?: number;
-  is_system: boolean;
-  is_active: boolean;
-  usage_count: number;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface GrooveProfileInput {
-  profile_id: string;
-  name: string;
-  description?: string;
-  width_mm: number;
-  depth_mm: number;
-  purpose?: GroovePurpose;
-  default_offset_mm?: number;
-  default_face?: 'front' | 'back';
-  allow_stopped?: boolean;
-  default_start_offset_mm?: number;
-  default_end_offset_mm?: number;
-  tool_dia_mm?: number;
-  tool_id?: string;
-  feed_rate?: number;
-  is_active?: boolean;
-  metadata?: Record<string, unknown>;
-}
-
-// ============================================================
-// ROUTING PROFILES
-// ============================================================
-
-export type RoutingProfileType = 
-  | 'edge_profile'
-  | 'pocket'
-  | 'cutout'
-  | 'rebate'
-  | 'chamfer'
-  | 'radius'
-  | 'contour'
-  | 'drill_array'
-  | 'text'
-  | 'custom';
-
+/** CNC tool types */
 export type ToolType = 
-  | 'straight'
-  | 'spiral_up'
-  | 'spiral_down'
-  | 'compression'
-  | 'vbit'
-  | 'ballnose'
-  | 'ogee';
+  | "straight" 
+  | "spiral_up" 
+  | "spiral_down" 
+  | "compression" 
+  | "vbit" 
+  | "ballnose" 
+  | "ogee";
 
-// Type-specific specifications
-export interface EdgeProfileSpecs {
-  shape: 'round' | 'ogee' | 'bevel' | 'custom';
-  radius_mm?: number;
-  angle_deg?: number;
-  depth_mm?: number;
-}
+// ============================================================
+// OPERATION TYPE (for type dropdowns)
+// ============================================================
 
-export interface PocketSpecs {
-  default_depth_mm: number;
-  through_allowed: boolean;
-  width_mm?: number;
-  height_mm?: number;
-  corner_radius_mm?: number;
-}
-
-export interface CutoutSpecs {
-  shape: 'rect' | 'circle' | 'oval' | 'custom';
-  purpose?: 'sink' | 'hob' | 'vent' | 'socket' | 'custom';
-  corner_radius_mm?: number;
-  through: boolean;
-}
-
-export interface RadiusSpecs {
-  radius_mm: number;
-  corners: 'all' | 'front' | 'back' | 'left' | 'right' | string[];
-}
-
-export interface ChamferSpecs {
-  angle_deg: number;
-  width_mm: number;
-}
-
-export interface RebateSpecs {
-  width_mm: number;
-  depth_mm: number;
-}
-
-export type RoutingSpecs = 
-  | EdgeProfileSpecs 
-  | PocketSpecs 
-  | CutoutSpecs 
-  | RadiusSpecs 
-  | ChamferSpecs 
-  | RebateSpecs 
-  | Record<string, unknown>;
-
-export interface RoutingProfile {
+/** 
+ * Operation type - defines a category of operation
+ * Used for dropdown selections in the UI
+ */
+export interface OperationType {
   id: string;
-  organization_id: string;
-  profile_id: string;
-  name: string;
+  organizationId: string | null;
+  category: OperationCategory;
+  code: string;           // e.g., "hinge", "pocket", "back_panel"
+  name: string;           // e.g., "Hinge Boring", "Pocket", "Back Panel"
   description?: string;
-  profile_type: RoutingProfileType;
-  specifications: RoutingSpecs;
-  tool_dia_mm?: number;
-  tool_id?: string;
-  tool_type?: ToolType;
-  feed_rate?: number;
-  plunge_rate?: number;
-  spindle_speed?: number;
-  step_down_mm?: number;
-  dxf_layer?: string;
-  gcode_template?: string;
-  is_system: boolean;
-  is_active: boolean;
-  usage_count: number;
-  metadata?: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
+  icon?: string;
+  isSystem: boolean;
+  isActive: boolean;
+  displayOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-export interface RoutingProfileInput {
-  profile_id: string;
+export interface OperationTypeInput {
+  category: OperationCategory;
+  code: string;
   name: string;
   description?: string;
-  profile_type: RoutingProfileType;
-  specifications: RoutingSpecs;
-  tool_dia_mm?: number;
-  tool_id?: string;
-  tool_type?: ToolType;
-  feed_rate?: number;
-  plunge_rate?: number;
-  spindle_speed?: number;
-  step_down_mm?: number;
-  dxf_layer?: string;
-  gcode_template?: string;
-  is_active?: boolean;
-  metadata?: Record<string, unknown>;
+  icon?: string;
+  isActive?: boolean;
+  displayOrder?: number;
+}
+
+// ============================================================
+// GROOVE TYPE CODES (system defaults)
+// ============================================================
+
+export type GrooveTypeCode = 
+  | "back_panel"
+  | "drawer_bottom"
+  | "divider"
+  | "light_channel"
+  | "glass_panel"
+  | "custom";
+
+export const GROOVE_TYPE_LABELS: Record<GrooveTypeCode, string> = {
+  back_panel: "Back Panel",
+  drawer_bottom: "Drawer Bottom",
+  divider: "Divider",
+  light_channel: "Light Channel",
+  glass_panel: "Glass Panel",
+  custom: "Custom",
+};
+
+// ============================================================
+// DRILLING TYPE CODES (system defaults)
+// ============================================================
+
+export type DrillingTypeCode = 
+  | "hinge"
+  | "shelf_pins"
+  | "handle"
+  | "knob"
+  | "drawer_slide"
+  | "cam_lock"
+  | "dowel"
+  | "system32"
+  | "custom";
+
+export const DRILLING_TYPE_LABELS: Record<DrillingTypeCode, string> = {
+  hinge: "Hinge Boring",
+  shelf_pins: "Shelf Pins",
+  handle: "Handle",
+  knob: "Knob",
+  drawer_slide: "Drawer Slide",
+  cam_lock: "Cam Lock",
+  dowel: "Dowel",
+  system32: "System 32",
+  custom: "Custom",
+};
+
+// ============================================================
+// CNC TYPE CODES (system defaults)
+// ============================================================
+
+export type CncTypeCode = 
+  | "pocket"
+  | "cutout"
+  | "chamfer"
+  | "radius"
+  | "rebate"
+  | "contour"
+  | "text"
+  | "custom";
+
+export const CNC_TYPE_LABELS: Record<CncTypeCode, string> = {
+  pocket: "Pocket",
+  cutout: "Cutout",
+  chamfer: "Chamfer",
+  radius: "Corner Radius",
+  rebate: "Rebate",
+  contour: "Contour",
+  text: "Text Engraving",
+  custom: "Custom",
+};
+
+export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
+  straight: "Straight",
+  spiral_up: "Spiral Up-cut",
+  spiral_down: "Spiral Down-cut",
+  compression: "Compression",
+  vbit: "V-Bit",
+  ballnose: "Ball Nose",
+  ogee: "Ogee",
+};
+
+// ============================================================
+// EDGEBAND OPERATION
+// ============================================================
+
+/**
+ * Edgeband operation - specifies which edges to band
+ * No type dropdown - the "type" is effectively the edgeband material
+ */
+export interface EdgebandOperation {
+  id: string;
+  organizationId: string | null;
+  code: string;           // shortcode: "2L2W", "L1", "ALL"
+  name: string;           // "All Edges", "Long 1 Only"
+  description?: string;
+  
+  // Spec
+  edges: EdgeSide[];      // which edges to band
+  materialId?: string;    // reference to edgeband material
+  thicknessMm?: number;   // tape thickness
+  
+  // Metadata
+  isActive: boolean;
+  usageCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface EdgebandOperationInput {
+  code: string;
+  name: string;
+  description?: string;
+  edges: EdgeSide[];
+  materialId?: string;
+  thicknessMm?: number;
+  isActive?: boolean;
+}
+
+// ============================================================
+// GROOVE OPERATION
+// ============================================================
+
+/**
+ * Groove operation - grooves for back panels, drawer bottoms, etc.
+ */
+export interface GrooveOperation {
+  id: string;
+  organizationId: string | null;
+  code: string;           // shortcode: "GL-4-10", "BP", "DB"
+  name: string;           // "Back Panel Groove"
+  description?: string;
+  
+  // Type (from dropdown)
+  typeId?: string;
+  type?: OperationType;   // populated on fetch
+  
+  // Spec
+  widthMm: number;
+  depthMm: number;
+  offsetFromEdgeMm: number; // distance from edge
+  edge?: EdgeSide;        // which edge the groove runs along
+  
+  // Metadata
+  isActive: boolean;
+  usageCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface GrooveOperationInput {
+  code: string;
+  name: string;
+  description?: string;
+  typeId?: string;
+  widthMm: number;
+  depthMm: number;
+  offsetFromEdgeMm?: number;
+  edge?: EdgeSide;
+  isActive?: boolean;
+}
+
+// ============================================================
+// DRILLING OPERATION
+// ============================================================
+
+/** Single hole definition */
+export interface HoleDefinition {
+  x: number;          // mm from reference edge
+  y: number;          // mm from reference corner
+  diaMm: number;      // hole diameter
+  depthMm?: number;   // hole depth (omit for through)
+  through?: boolean;
+}
+
+/** Parametric config for System 32 and similar */
+export interface ParametricConfig {
+  spacingMm: number;      // e.g., 32 for System 32
+  marginMm: number;       // distance from edge
+  rows: number | "auto";  // number of rows or auto-calculate
+  holeDiaMm: number;
+  holeDepthMm: number;
+}
+
+/**
+ * Drilling operation - hole patterns for hardware
+ */
+export interface DrillingOperation {
+  id: string;
+  organizationId: string | null;
+  code: string;           // shortcode: "H2-110", "SP32", "HD-96"
+  name: string;           // "2 Hinges @ 110mm"
+  description?: string;
+  
+  // Type (from dropdown)
+  typeId?: string;
+  type?: OperationType;
+  
+  // Spec
+  holes: HoleDefinition[];
+  refEdge?: EdgeSide;
+  refCorner?: RefCorner;
+  
+  // Hardware (text only)
+  hardwareBrand?: string;
+  hardwareModel?: string;
+  
+  // Metadata
+  isActive: boolean;
+  usageCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DrillingOperationInput {
+  code: string;
+  name: string;
+  description?: string;
+  typeId?: string;
+  holes: HoleDefinition[];
+  refEdge?: EdgeSide;
+  refCorner?: RefCorner;
+  hardwareBrand?: string;
+  hardwareModel?: string;
+  isActive?: boolean;
+}
+
+// ============================================================
+// CNC OPERATION
+// ============================================================
+
+/**
+ * CNC operation - pockets, cutouts, chamfers, etc.
+ */
+export interface CncOperation {
+  id: string;
+  organizationId: string | null;
+  code: string;           // shortcode: "PKT-50", "RAD-10", "CUT-SINK"
+  name: string;           // "50mm Pocket", "10mm Radius"
+  description?: string;
+  
+  // Type (from dropdown)
+  typeId?: string;
+  type?: OperationType;
+  
+  // Spec
+  opType: string;         // edge_profile, pocket, cutout, etc.
+  parametricConfig?: Record<string, unknown>;
+  shapeId?: string;
+  params?: Record<string, unknown>;
+  
+  // Metadata
+  isActive: boolean;
+  usageCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CncOperationInput {
+  code: string;
+  name: string;
+  description?: string;
+  typeId?: string;
+  opType: string;
+  parametricConfig?: Record<string, unknown>;
+  shapeId?: string;
+  params?: Record<string, unknown>;
+  isActive?: boolean;
+}
+
+// ============================================================
+// COMBINED PART OPERATIONS (for CutPart.ops)
+// ============================================================
+
+/**
+ * Resolved operations for a part - used in CutPart
+ * This is what gets stored after resolving shortcodes
+ */
+export interface PartOperations {
+  edging?: {
+    edges: Record<EdgeSide, {
+      apply: boolean;
+      edgebandId?: string;
+      thicknessMm?: number;
+      remarks?: string;
+    }>;
+    summary?: {
+      code: string;
+      edgeCount: number;
+    };
+  };
+  grooves?: Array<{
+    edge: EdgeSide;
+    widthMm: number;
+    depthMm: number;
+    offsetMm: number;
+    face: PartFace;
+    stopped?: { startMm: number; endMm: number };
+    code?: string;
+  }>;
+  holes?: Array<{
+    kind: string;
+    holes: HoleDefinition[];
+    refEdge?: EdgeSide;
+    refCorner?: RefCorner;
+    hardware?: { brand?: string; model?: string };
+    code?: string;
+  }>;
+  cnc?: Array<{
+    type: string;
+    params: Record<string, number | string | boolean | string[]>;
+    tooling?: {
+      toolId?: string;
+      toolType?: ToolType;
+      toolDiaMm?: number;
+    };
+    code?: string;
+  }>;
 }
 
 // ============================================================
@@ -254,75 +403,108 @@ export interface RoutingProfileInput {
 // ============================================================
 
 export interface OperationsLibrarySummary {
-  hole_patterns: number;
-  groove_profiles: number;
-  routing_profiles: number;
-}
-
-export interface ListHolePatternsResponse {
-  patterns: HolePattern[];
-  total: number;
-}
-
-export interface ListGrooveProfilesResponse {
-  profiles: GrooveProfile[];
-  total: number;
-}
-
-export interface ListRoutingProfilesResponse {
-  profiles: RoutingProfile[];
-  total: number;
+  operationTypes: number;
+  edgebandOperations: number;
+  grooveOperations: number;
+  drillingOperations: number;
+  cncOperations: number;
 }
 
 // ============================================================
-// DISPLAY HELPERS
+// HELPER FUNCTIONS
 // ============================================================
 
-export const HOLE_PATTERN_KIND_LABELS: Record<HolePatternKind, string> = {
-  hinge: 'Hinge',
-  shelf_pins: 'Shelf Pins',
-  handle: 'Handle',
-  knob: 'Knob',
-  drawer_slide: 'Drawer Slide',
-  cam_lock: 'Cam Lock',
-  dowel: 'Dowel',
-  system32: 'System 32',
-  custom: 'Custom',
-};
+/**
+ * Check if edges array represents "all edges"
+ */
+export function isAllEdges(edges: EdgeSide[]): boolean {
+  return edges.length === 4 && 
+    edges.includes("L1") && 
+    edges.includes("L2") && 
+    edges.includes("W1") && 
+    edges.includes("W2");
+}
 
-export const GROOVE_PURPOSE_LABELS: Record<GroovePurpose, string> = {
-  back_panel: 'Back Panel',
-  drawer_bottom: 'Drawer Bottom',
-  light_profile: 'Light Profile',
-  glass_panel: 'Glass Panel',
-  divider: 'Divider',
-  custom: 'Custom',
-};
+/**
+ * Check if edges array represents "long edges only"
+ */
+export function isLongEdgesOnly(edges: EdgeSide[]): boolean {
+  return edges.length === 2 && 
+    edges.includes("L1") && 
+    edges.includes("L2") &&
+    !edges.includes("W1") && 
+    !edges.includes("W2");
+}
 
-export const ROUTING_TYPE_LABELS: Record<RoutingProfileType, string> = {
-  edge_profile: 'Edge Profile',
-  pocket: 'Pocket',
-  cutout: 'Cutout',
-  rebate: 'Rebate',
-  chamfer: 'Chamfer',
-  radius: 'Corner Radius',
-  contour: 'Contour',
-  drill_array: 'Drill Array',
-  text: 'Text Engraving',
-  custom: 'Custom',
-};
+/**
+ * Check if edges array represents "width edges only"
+ */
+export function isWidthEdgesOnly(edges: EdgeSide[]): boolean {
+  return edges.length === 2 && 
+    edges.includes("W1") && 
+    edges.includes("W2") &&
+    !edges.includes("L1") && 
+    !edges.includes("L2");
+}
 
-export const TOOL_TYPE_LABELS: Record<ToolType, string> = {
-  straight: 'Straight',
-  spiral_up: 'Spiral Up-cut',
-  spiral_down: 'Spiral Down-cut',
-  compression: 'Compression',
-  vbit: 'V-Bit',
-  ballnose: 'Ball Nose',
-  ogee: 'Ogee',
-};
+/**
+ * Generate a standard edge code from edges array
+ */
+export function edgesToCode(edges: EdgeSide[]): string {
+  if (isAllEdges(edges)) return "2L2W";
+  if (isLongEdgesOnly(edges)) return "2L";
+  if (isWidthEdgesOnly(edges)) return "2W";
+  
+  const longCount = edges.filter(e => e === "L1" || e === "L2").length;
+  const widthCount = edges.filter(e => e === "W1" || e === "W2").length;
+  
+  if (longCount === 1 && widthCount === 2) return "L2W";
+  if (longCount === 2 && widthCount === 1) return "2LW";
+  
+  return edges.join("+");
+}
 
-
-
-
-
+/**
+ * Parse an edge code to edges array
+ */
+export function codeToEdges(code: string): EdgeSide[] {
+  const upper = code.toUpperCase().trim();
+  
+  // Common codes
+  switch (upper) {
+    case "2L2W":
+    case "ALL":
+    case "4":
+      return ["L1", "L2", "W1", "W2"];
+    case "2L":
+      return ["L1", "L2"];
+    case "2W":
+      return ["W1", "W2"];
+    case "L1":
+      return ["L1"];
+    case "L2":
+      return ["L2"];
+    case "W1":
+      return ["W1"];
+    case "W2":
+      return ["W2"];
+    case "L2W":
+    case "LWW":
+      return ["L1", "W1", "W2"];
+    case "2LW":
+    case "LLW":
+      return ["L1", "L2", "W1"];
+    case "0":
+    case "NONE":
+      return [];
+  }
+  
+  // Try parsing as edge list (L1+L2+W1)
+  const edges: EdgeSide[] = [];
+  if (upper.includes("L1")) edges.push("L1");
+  if (upper.includes("L2")) edges.push("L2");
+  if (upper.includes("W1")) edges.push("W1");
+  if (upper.includes("W2")) edges.push("W2");
+  
+  return edges;
+}

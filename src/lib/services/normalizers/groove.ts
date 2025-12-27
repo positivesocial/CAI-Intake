@@ -4,11 +4,37 @@
  * Converts raw groove data to canonical GrooveSpec[].
  */
 
-import type { EdgeSide, GrooveSpec } from "../canonical-types";
+import type { EdgeSide, GrooveSpec } from "../compat-types";
 import type { OrgServiceDialect } from "../dialect-types";
 import type { RawGrooveFields } from "../raw-fields";
-import { parseGrooveCode } from "../canonical-shortcodes";
 import { isYesValue } from "../dialect-types";
+
+// Compat: parseGrooveCode stub
+function parseGrooveCode(code: string): { edges: EdgeSide[]; widthMm: number; depthMm: number; offsetMm: number } | null {
+  const upper = code.toUpperCase().trim();
+  
+  // GL-4-10 format: Groove on Long edges, 4mm wide, 10mm deep
+  const match = upper.match(/^G([LW])?[-_]?(\d+(?:\.\d+)?)[X-](\d+(?:\.\d+)?)(?:[@](\d+(?:\.\d+)?))?$/);
+  if (match) {
+    const edgeType = match[1];
+    const widthMm = parseFloat(match[2]);
+    const depthMm = parseFloat(match[3]);
+    const offsetMm = match[4] ? parseFloat(match[4]) : 10;
+    
+    let edges: EdgeSide[];
+    if (edgeType === "L") {
+      edges = ["L1", "L2"];
+    } else if (edgeType === "W") {
+      edges = ["W1", "W2"];
+    } else {
+      edges = ["L1", "L2"]; // Default to long edges
+    }
+    
+    return { edges, widthMm, depthMm, offsetMm };
+  }
+  
+  return null;
+}
 
 /**
  * Normalize raw groove data to canonical GrooveSpec[]

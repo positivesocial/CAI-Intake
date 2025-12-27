@@ -1,6 +1,9 @@
 /**
  * CAI Intake - Service Normalizers
  * 
+ * @deprecated This module is being replaced by the unified operations system
+ * at @/lib/operations. Use the new resolveOperations function instead.
+ * 
  * Main entry point for normalizing raw service data to canonical types.
  * 
  * This is the core of the "many dialects → one internal truth" architecture:
@@ -10,7 +13,7 @@
  * 3. Everything downstream uses the canonical types
  */
 
-import type { PartServices } from "../canonical-types";
+import type { PartServices } from "../compat-types";
 import type { OrgServiceDialect } from "../dialect-types";
 import type { RawServiceFields } from "../raw-fields";
 import { getDefaultDialect, mergeWithDefaults } from "../default-dialect";

@@ -71,19 +71,11 @@ const SETTINGS_SECTIONS = [
   },
   {
     id: "operations",
-    label: "Operations Library",
+    label: "Operations",
     icon: Wrench,
-    description: "Hole patterns, grooves, and routing profiles",
+    description: "Edgeband, groove, drilling, and CNC operations with shortcodes",
     adminOnly: true,
     href: "/settings/operations",
-  },
-  {
-    id: "shortcodes",
-    label: "Shortcodes",
-    icon: Code2,
-    description: "Configure shortcode mappings for parsing",
-    adminOnly: true,
-    href: "/settings/shortcodes",
   },
   {
     id: "branding",
@@ -873,7 +865,7 @@ export default function SettingsPage() {
               </Link>
             )}
 
-            {/* Operations Library Section (Admin Only) */}
+            {/* Operations Section (Admin Only) */}
             {activeSection === "operations" && isOrgAdmin() && (
               <Link href="/settings/operations">
                 <Card className="cursor-pointer hover:shadow-md transition-shadow">
@@ -884,36 +876,11 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex-1">
                         <h3 className="text-lg font-semibold">
-                          Operations Library
+                          Operations
                         </h3>
                         <p className="text-[var(--muted-foreground)]">
-                          Manage hole patterns, groove profiles, and routing profiles
-                          for CNC operations
-                        </p>
-                      </div>
-                      <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            )}
-
-            {/* Shortcodes Section (Admin Only) */}
-            {activeSection === "shortcodes" && isOrgAdmin() && (
-              <Link href="/settings/shortcodes">
-                <Card className="cursor-pointer hover:shadow-md transition-shadow">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                        <Code2 className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold">
-                          Shortcode Configuration
-                        </h3>
-                        <p className="text-[var(--muted-foreground)]">
-                          Configure shortcode mappings for edge banding, grooves,
-                          holes, and CNC operations
+                          Configure edgeband, groove, drilling, and CNC operations
+                          with shortcodes for quick input
                         </p>
                       </div>
                       <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />

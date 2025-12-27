@@ -42,5 +42,18 @@ export {
   type TemplateParseResult,
 } from "./template-excel-parser";
 
-
-
+// Org-branded template generator
+export {
+  generateOrgTemplateHTML,
+  generateOrgCSVTemplate,
+  fetchOrgShortcodes,
+  buildTemplateConfigWithOrgOps,
+  parseTemplateId,
+  isValidCAITemplateId,
+  type OrgTemplateConfig,
+  type OrganizationBranding,
+  type OpsShortcode,
+  type MaterialDef,
+  type EdgebandDef,
+  type GeneratedTemplate,
+} from "./org-template-generator";
