@@ -762,7 +762,7 @@ export async function POST(request: NextRequest) {
           page: 1, // Will be extracted from AI response
           totalPages: undefined, // Will be extracted from AI response
         },
-        parts: aiResult.parts?.map((p, i) => ({
+        parts: (aiResult.parts || []).map((p: { part?: { label?: string; length_mm?: number; width_mm?: number; thickness_mm?: number; quantity?: number; material_id?: string; ops?: { edging?: { summary?: { code?: string } }; grooves?: Array<{ groove_id?: string }>; holes?: Array<{ pattern_id?: string }>; custom_cnc_ops?: Array<{ op_type?: string }> }; operator_notes?: string; audit?: { confidence?: number } } }, i: number) => ({
           rowNumber: i + 1,
           label: p.part?.label,
           length: p.part?.length_mm,
@@ -776,7 +776,7 @@ export async function POST(request: NextRequest) {
           cnc: p.part?.ops?.custom_cnc_ops?.[0]?.op_type,
           notes: p.part?.operator_notes,
           confidence: p.part?.audit?.confidence || 0.8,
-        })) as ParsedTemplatePart[] || [],
+        })) as ParsedTemplatePart[],
         errors: [],
         confidence: aiResult.totalConfidence || 0,
       };
