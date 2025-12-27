@@ -327,14 +327,14 @@ function InboxPartPreview({
   // Convert part ops to preview data
   const previewData: PartPreviewData = React.useMemo(() => {
     // Show grain lines when part cannot rotate (respects material grain)
-    const showGrain = part.allow_rotation === false || part.grain === "along_L";
+    const showGrain = part.allow_rotation === false;
     return convertOpsToPreview(
       part.size.L,
       part.size.W,
       showGrain ? "along_L" : "none",
       part.ops
     );
-  }, [part.size.L, part.size.W, part.grain, part.allow_rotation, part.ops]);
+  }, [part.size.L, part.size.W, part.allow_rotation, part.ops]);
 
   return (
     <PartPreviewSvg

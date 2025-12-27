@@ -232,13 +232,13 @@ export function validatePart(
     });
   }
 
-  // Grain direction
+  // Grain direction - if material is grained, warn if part allows rotation
   if (part.material_id && opts.grainedMaterials.includes(part.material_id)) {
-    if (part.grain === "none" && part.allow_rotation !== false) {
+    if (part.allow_rotation !== false) {
       warnings.push({
-        field: "grain",
-        message: "Material is grained but grain direction not specified. Parts may be placed with incorrect grain.",
-        code: "GRAIN_NOT_SPECIFIED",
+        field: "allow_rotation",
+        message: "Material is grained but part allows rotation. Set allow_rotation=false to respect grain direction.",
+        code: "GRAINED_MATERIAL_ROTATION",
         severity: "warning",
       });
     }

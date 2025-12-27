@@ -469,13 +469,13 @@ export function detectCorrections(
     });
   }
 
-  // Check grain
-  if (originalPart.grain !== correctedPart.grain) {
+  // Check rotation
+  if (originalPart.allow_rotation !== correctedPart.allow_rotation) {
     corrections.push({
-      correctionType: "grain",
-      fieldPath: "grain",
-      originalValue: originalPart.grain,
-      correctedValue: correctedPart.grain,
+      correctionType: "rotation",
+      fieldPath: "allow_rotation",
+      originalValue: originalPart.allow_rotation,
+      correctedValue: correctedPart.allow_rotation,
       originalPart,
       correctedPart,
       sourceText,

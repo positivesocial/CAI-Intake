@@ -408,7 +408,6 @@ export function parseVoiceInput(
     size: dimensions,
     thickness_mm: thickness,
     material_id: materialId,
-    grain: "none",
     allow_rotation: true,
     ops: edgeBanding.detected || grooving.detected ? {
       edging: edgeBanding.detected ? {

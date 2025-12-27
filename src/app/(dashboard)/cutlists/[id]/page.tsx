@@ -51,8 +51,7 @@ interface CutlistPart {
   size: { L: number; W: number };
   thickness_mm: number;
   material_id: string;
-  grain: string;
-  allow_rotation: boolean;
+  allow_rotation?: boolean;
   group_id?: string;
   ops?: Record<string, unknown>;
   notes?: Record<string, string>;
@@ -392,7 +391,7 @@ export default function CutlistDetailPage() {
                         </td>
                         <td className="py-2 px-3">{part.material_id}</td>
                         <td className="py-2 px-3">
-                          {part.grain === "none" ? "—" : part.grain === "along_L" ? "↔ L" : "↕ W"}
+                          {part.allow_rotation !== false ? "✓" : "⊘"}
                         </td>
                       </tr>
                     ))}

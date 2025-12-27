@@ -67,7 +67,6 @@ export function ReviewStep() {
       size: { L, W },
       thickness_mm: thickness,
       material_id: currentCutlist.materials[0]?.material_id || "MAT-WHITE-18",
-      grain: "none", // Deprecated - grain is a material property
       allow_rotation: true, // Default: parts can rotate
       audit: {
         source_method: "manual",

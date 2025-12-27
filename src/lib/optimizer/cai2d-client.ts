@@ -1036,7 +1036,6 @@ export function cutPartsToOptimizeParts(parts: CutPart[]): OptimizePart[] {
     quantity: part.qty,
     material: part.material_id,
     thickness: part.thickness_mm,
-    grain: "none",
     canRotate: part.allow_rotation ?? true,
     priority: part.priority,
     edgebanding: part.ops?.edging?.edges as EdgeSpec | undefined,

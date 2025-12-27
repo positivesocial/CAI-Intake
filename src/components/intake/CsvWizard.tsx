@@ -704,7 +704,7 @@ export function CsvWizard({
                               <td className="px-3 py-2">{part.thickness_mm}</td>
                               <td className="px-3 py-2">{part.qty}</td>
                               <td className="px-3 py-2 text-xs">{part.material_id}</td>
-                              <td className="px-3 py-2 text-xs">{part.grain || "—"}</td>
+                              <td className="px-3 py-2 text-xs">{part.allow_rotation !== false ? "Y" : "N"}</td>
                               <td className="px-3 py-2 text-xs">
                                 {part.ops?.edging?.edges 
                                   ? Object.keys(part.ops.edging.edges).join(", ")

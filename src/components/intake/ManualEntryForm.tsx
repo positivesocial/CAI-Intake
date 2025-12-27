@@ -595,7 +595,6 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
       },
       thickness_mm: parseFloat(row.thickness_mm) || 18,
       material_id: row.material_id || defaultMaterial,
-      grain: "none", // Deprecated - grain is now a material property
       allow_rotation: row.allow_rotation !== false, // Default to true (can rotate)
       group_id: row.group_id || undefined,
       notes: Object.keys(finalNotes || {}).length > 0 ? finalNotes : undefined,

@@ -512,18 +512,19 @@ function CornerRoundIndicator({
 export interface SimplePartPreviewProps {
   L: number;
   W: number;
-  grain?: string;
+  /** Whether rotation is allowed (if false, shows grain lines) */
+  allow_rotation?: boolean;
   edging?: Record<string, { apply?: boolean }>;
   className?: string;
 }
 
 /**
- * Simple part preview (backward compatible with existing IntakeInbox usage)
+ * Simple part preview
  */
 export function SimplePartPreview({
   L,
   W,
-  grain,
+  allow_rotation = true,
   edging,
   className,
 }: SimplePartPreviewProps) {
@@ -551,7 +552,8 @@ export function SimplePartPreview({
   const data: PartPreviewData = {
     L,
     W,
-    grain: grain === "along_L" ? "along_L" : "none",
+    // Show grain lines if part cannot rotate (respects material grain)
+    grain: allow_rotation === false ? "along_L" : "none",
     edgebands,
     grooves: [],
     holes: [],

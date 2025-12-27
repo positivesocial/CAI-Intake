@@ -52,7 +52,7 @@ interface CutlistPart {
   size: { L: number; W: number };
   thickness_mm: number;
   material_id: string;
-  grain: string;
+  allow_rotation?: boolean;
   ops?: Record<string, unknown>;
 }
 
@@ -498,12 +498,10 @@ export default function CutlistFilesGalleryPage() {
                         {part.material_id}
                       </td>
                       <td className="py-2 px-3 text-center">
-                        {part.grain === "none" ? (
-                          <span className="text-[var(--muted-foreground)]">—</span>
-                        ) : part.grain === "along_L" ? (
-                          <span title="Grain along length">↔</span>
+                        {part.allow_rotation !== false ? (
+                          <span className="text-green-600" title="Can rotate">✓</span>
                         ) : (
-                          <span title="Grain along width">↕</span>
+                          <span className="text-amber-600" title="Cannot rotate (respects grain)">⊘</span>
                         )}
                       </td>
                     </tr>

@@ -51,20 +51,24 @@ const OPTIONAL_FIELDS: (keyof ColumnMapping)[] = [
   "edging_W2",
 ];
 
-const FIELD_LABELS: Record<keyof ColumnMapping, string> = {
+const FIELD_LABELS: Partial<Record<keyof ColumnMapping, string>> = {
   label: "Label/Name",
   qty: "Quantity",
   L: "Length (L)",
   W: "Width (W)",
   thickness_mm: "Thickness",
   material: "Material",
-  grain: "Grain Direction",
+  allow_rotation: "Can Rotate",
   group_id: "Group ID",
   notes: "Notes",
+  edge: "Edge (all)",
   edging_L1: "Edge L1",
   edging_L2: "Edge L2",
   edging_W1: "Edge W1",
   edging_W2: "Edge W2",
+  groove: "Groove",
+  drill: "Drilling",
+  cnc: "CNC",
 };
 
 export function ExcelImport() {

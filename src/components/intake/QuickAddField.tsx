@@ -192,7 +192,6 @@ function parseCanonical(input: string, defaults: {
     size: { L, W },
     thickness_mm: thickness,
     material_id: defaults.materialId,
-    grain: "none",
     allow_rotation: true,
     notes: note ? { operator: note } : undefined,
     ops: Object.keys(ops).length > 0 ? ops : undefined,

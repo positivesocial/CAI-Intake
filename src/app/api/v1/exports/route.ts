@@ -144,7 +144,6 @@ export async function POST(request: NextRequest) {
         },
         thickness_mm: (p.thickness_mm as number) || 18,
         material_id: (p.material_id as string) || "default",
-        grain: (p.grain as string) || "none",
         allow_rotation: (p.allow_rotation as boolean) ?? true,
         group_id: p.group_id as string | undefined,
         ops: p.ops as Record<string, unknown> | undefined,

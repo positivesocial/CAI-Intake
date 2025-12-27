@@ -238,7 +238,6 @@ export function CommandPalette() {
       size: { L: 0, W: 0 }, // User will fill in
       thickness_mm: 18,
       material_id: defaultMaterial,
-      grain: "none",
       allow_rotation: true,
       ops: Object.keys(ops).length > 0 ? ops : undefined,
       audit: {

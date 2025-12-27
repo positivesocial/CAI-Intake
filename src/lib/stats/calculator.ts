@@ -338,8 +338,8 @@ export function calculateStatistics(
       partsNeedingReview++;
     }
     
-    if (part.grain !== "none" || part.allow_rotation === false) {
-      partsWithGrain++;
+    if (part.allow_rotation === false) {
+      partsWithGrain++; // Part respects material grain
     }
   }
   

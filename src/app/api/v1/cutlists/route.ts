@@ -385,7 +385,6 @@ export async function POST(request: NextRequest) {
             size_w: p.size.W,
             thickness_mm: p.thickness_mm,
             material_ref: p.material_id, // DB column is material_ref
-            grain: p.grain ?? "none",
             allow_rotation: p.allow_rotation ?? true,
             group_id: p.group_id,
             ops: p.ops,

@@ -274,8 +274,8 @@ function parseAIResponse(
       
       if (L <= 0 || W <= 0) return null;
       
-      // Map grain value (along_W is treated same as along_L)
-      const grainValue = item.grain === "along_W" ? "along_L" : (item.grain as "none" | "along_L") ?? "none";
+      // Determine if part can rotate based on grain value
+      const canRotate = !item.grain || item.grain === "none";
       
       const part: CutPart = {
         part_id: generateId("P"),
@@ -284,8 +284,7 @@ function parseAIResponse(
         size: { L, W },
         thickness_mm: options.defaultThickness ?? 18,
         material_id: options.defaultMaterialId ?? "default",
-        grain: grainValue,
-        allow_rotation: grainValue === "none",
+        allow_rotation: canRotate,
         audit: {
           source_method: "ocr_generic",
           confidence: 0.85,

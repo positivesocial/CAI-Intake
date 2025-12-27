@@ -844,7 +844,6 @@ export function parseTextLine(
       size: { L, W },
       thickness_mm: thickness,
       material_id: materialId,
-      grain: "none",
       allow_rotation: true,
       audit: {
         source_method: options.sourceMethod ?? "paste_parser",
@@ -915,10 +914,10 @@ export function parseTextLine(
     warnings.push("Quantity not specified, defaulting to 1");
   }
   
-  // Extract grain and rotation
-  const { grain, allowRotation, confidence: grainConf } = extractGrain(normalizedText);
+  // Extract rotation preference (grain is a material property)
+  const { allowRotation, confidence: grainConf } = extractGrain(normalizedText);
   if (grainConf < 0.7) {
-    // Don't reduce confidence much for grain - it's optional
+    // Don't reduce confidence much for rotation - it's optional
     overallConfidence *= 0.95;
   }
   
@@ -942,7 +941,6 @@ export function parseTextLine(
     size: { L: dims.L, W: dims.W },
     thickness_mm: parsedThickness ?? options.defaultThicknessMm ?? DEFAULTS.THICKNESS_MM,
     material_id: options.defaultMaterialId ?? "default",
-    grain,
     allow_rotation: allowRotation,
     audit: {
       source_method: options.sourceMethod ?? "paste_parser",
@@ -1002,7 +1000,6 @@ function createEmptyPart(options: TextParseOptions): CutPart {
     size: { L: 0, W: 0 },
     thickness_mm: options.defaultThicknessMm ?? DEFAULTS.THICKNESS_MM,
     material_id: options.defaultMaterialId ?? "default",
-    grain: "none",
     allow_rotation: true,
     audit: {
       source_method: options.sourceMethod ?? "paste_parser",
@@ -1095,10 +1092,8 @@ export function validateParsedPart(
     suggestions.push("Quantity must be at least 1");
   }
   
-  // Check grain vs rotation
-  if (part.grain === "along_L" && part.allow_rotation) {
-    suggestions.push("Grained parts typically should not allow rotation");
-  }
+  // No need to check grain vs rotation - grain is now a material property
+  // allow_rotation=false means the part respects the material's grain
   
   return { valid, suggestions };
 }

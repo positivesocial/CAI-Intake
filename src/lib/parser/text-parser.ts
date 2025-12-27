@@ -42,7 +42,6 @@ export interface ParsedPart {
   size: { L: number; W: number };
   thickness_mm: number;
   material_id: string;
-  grain: "none" | "along_L";
   allow_rotation: boolean;
   group_id?: string;
   edges?: EdgeId[];
@@ -228,7 +227,6 @@ export class TextParser {
       size: dimensions,
       thickness_mm: thickness,
       material_id: materialId,
-      grain: effectiveAllowRotation ? "none" : "along_L",
       allow_rotation: effectiveAllowRotation,
       edges: edges.length > 0 ? edges : undefined,
       audit: {

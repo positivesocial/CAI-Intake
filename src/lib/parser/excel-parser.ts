@@ -402,7 +402,6 @@ function parseRows(
         size: { L: length, W: width },
         thickness_mm: thickness,
         material_id: material,
-        grain: grain === "along_W" ? "along_L" : grain as "none" | "along_L",
         allow_rotation: allowRotation,
         group_id: group,
         notes: notes ? { operator: notes } : undefined,

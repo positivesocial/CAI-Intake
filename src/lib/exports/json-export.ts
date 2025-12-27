@@ -72,7 +72,6 @@ export function generateJsonExport(
       size: p.size,
       thickness_mm: p.thickness_mm,
       material_id: p.material_id,
-      grain: p.grain,
       allow_rotation: p.allow_rotation,
       group_id: p.group_id,
       ...(opts.includeOps && p.ops && { ops: p.ops }),

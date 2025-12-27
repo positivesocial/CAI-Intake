@@ -171,8 +171,7 @@ export async function GET(
       size: { L: p.size_l, W: p.size_w },
       thickness_mm: p.thickness_mm,
       material_id: p.material_ref, // Map DB column to API response
-      grain: p.grain,
-      allow_rotation: p.allow_rotation,
+      allow_rotation: p.allow_rotation ?? true,
       group_id: p.group_id,
       ops: p.ops,
       notes: p.notes,
@@ -274,7 +273,6 @@ export async function POST(
           size_w: p.size.W,
           thickness_mm: p.thickness_mm,
           material_ref: p.material_id, // DB column is material_ref
-          grain: p.grain ?? "none",
           allow_rotation: p.allow_rotation ?? true,
           group_id: p.group_id,
           ops: p.ops,
@@ -317,8 +315,7 @@ export async function POST(
       size: { L: p.size_l, W: p.size_w },
       thickness_mm: p.thickness_mm,
       material_id: p.material_ref, // Map DB column to API response
-      grain: p.grain,
-      allow_rotation: p.allow_rotation,
+      allow_rotation: p.allow_rotation ?? true,
       group_id: p.group_id,
       ops: p.ops,
       notes: p.notes,

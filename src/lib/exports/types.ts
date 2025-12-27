@@ -11,7 +11,6 @@ export interface ExportablePart {
   size: { L: number; W: number };
   thickness_mm: number;
   material_id: string;
-  grain: string;
   allow_rotation: boolean;
   group_id?: string;
   ops?: Record<string, unknown>;

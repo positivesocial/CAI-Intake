@@ -164,13 +164,12 @@ function parseRow(
   const material = data.material || data.materialName || defaultMaterialId || "default";
   const notes = data.notes || undefined;
   
-  // Parse grain
-  const grainValue = (data.grain || "").toLowerCase();
-  let grain: "none" | "along_L" = "none";
+  // Parse rotation (or legacy grain column)
+  const rotValue = (data.rotation || data.rotate || data.rot || data.grain || "").toLowerCase();
   let allowRotation = true;
   
-  if (grainValue && !/^(no|none|n\/a|-|0)$/i.test(grainValue)) {
-    grain = "along_L";
+  // N, No, false, 0 or any grain value = cannot rotate
+  if (rotValue && /^(n|no|false|0|l|w|length|width)$/i.test(rotValue)) {
     allowRotation = false;
   }
   
@@ -188,7 +187,6 @@ function parseRow(
     size: { L: length, W: width },
     thickness_mm: thickness,
     material_id: material,
-    grain,
     allow_rotation: allowRotation,
     ops,
     notes: notes ? { operator: notes } : undefined,

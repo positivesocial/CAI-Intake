@@ -251,21 +251,18 @@ function parseRow(
   const material = getValue("material") || options.defaultMaterialId || "default";
   const notes = getValue("notes") || undefined;
   
-  // Parse grain direction
-  const grainValue = getValue("grain").toLowerCase();
-  let grain: "none" | "along_L" = "none";
+  // Parse rotation (grain direction is now a material property)
+  const rotValue = getValue("rotation") || getValue("rotate") || getValue("grain");
   let allowRotation = true;
   
-  if (grainValue) {
-    if (/^(l|length|along.?l|gl|horizontal|horiz|h)$/i.test(grainValue)) {
-      grain = "along_L";
+  if (rotValue) {
+    const lower = rotValue.toLowerCase();
+    // N, No, false, 0 = cannot rotate (has grain constraint)
+    if (/^(n|no|false|0|l|length|along.?l|gl|w|width|along.?w|gw)$/i.test(lower)) {
       allowRotation = false;
-    } else if (/^(w|width|along.?w|gw|vertical|vert|v)$/i.test(grainValue)) {
-      // Width grain - swap to along_L since we normalize
-      grain = "along_L";
-      allowRotation = false;
-    } else if (/^(no|none|n\/a|-|0)$/i.test(grainValue)) {
-      grain = "none";
+    }
+    // Y, Yes, true, 1, none = can rotate
+    else if (/^(y|yes|true|1|none)$/i.test(lower)) {
       allowRotation = true;
     }
   }
@@ -288,7 +285,6 @@ function parseRow(
     size: { L: length, W: width },
     thickness_mm: thickness,
     material_id: material,
-    grain,
     allow_rotation: allowRotation,
     ops,
     notes: notes ? { operator: notes } : undefined,

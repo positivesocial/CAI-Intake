@@ -229,7 +229,7 @@ export function ExportStep() {
               part.thickness_mm,
               part.qty,
               material?.name || part.material_id,
-              part.grain,
+              part.allow_rotation !== false ? "Y" : "N",
               edging,
               part.audit?.source_method || "",
             ].join(",");

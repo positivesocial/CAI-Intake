@@ -9,7 +9,6 @@ import { z } from "zod";
 import {
   DimLW,
   DimLWSchema,
-  GrainModeSchema,
   PartFamilySchema,
   IngestionMethodSchema,
 } from "./primitives";
@@ -109,11 +108,6 @@ export const CorePartSchema = z.object({
   thickness_mm: z.number().positive("Thickness must be positive"),
   /** Reference to material definition */
   material_id: z.string().min(1, "Material ID is required"),
-  /** 
-   * Grain orientation - DEPRECATED: Use allow_rotation instead
-   * Grain is now a material property. For backwards compatibility, defaults to "none".
-   */
-  grain: GrainModeSchema.optional().default("none"),
 });
 
 export type CorePart = z.infer<typeof CorePartSchema>;
@@ -134,8 +128,12 @@ export const CutPartSchema = CorePartSchema.extend({
   family: PartFamilySchema.optional(),
   
   // Layout Constraints
-  /** Whether rotation is allowed (should be false if grained) */
-  allow_rotation: z.boolean().optional(),
+  /** 
+   * Whether rotation is allowed during optimization.
+   * false = part must respect material grain direction
+   * true/undefined = part can be rotated freely (default)
+   */
+  allow_rotation: z.boolean().optional().default(true),
   
   // Grouping & Organization
   /** Group/cabinet ID for organizing parts */
@@ -171,11 +169,6 @@ export type CutPart = z.infer<typeof CutPartSchema>;
  */
 export function validatePartGeometry(part: CutPart): string[] {
   const errors: string[] = [];
-  
-  // Check grain vs rotation
-  if (part.grain === "along_L" && part.allow_rotation === true) {
-    errors.push("Grained parts should not allow rotation");
-  }
   
   // Check reasonable dimensions
   if (part.size.L > 10000) {
@@ -235,7 +228,7 @@ export function createPart(
     qty,
     thickness_mm: options?.thickness_mm ?? 18,
     material_id,
-    grain: options?.grain ?? "none",
+    allow_rotation: options?.allow_rotation ?? true,
     ...options,
   };
 }

@@ -210,8 +210,10 @@ function parseRow(
   const thickness_mm =
     parseNumber(thkStr) ?? defaultThicknessMm ?? DEFAULTS.THICKNESS_MM;
 
-  // Parse grain
-  const grain = parseGrain(grainStr);
+  // Parse rotation (or legacy grain column)
+  const rotStr = getColumnValue(row, headers, mapping.allow_rotation);
+  const grainParsed = parseGrain(rotStr || grainStr);
+  const allowRotation = grainParsed === "none";
 
   // Parse edging
   const edgingL1 = parseEdging(getColumnValue(row, headers, mapping.edging_L1));
@@ -228,8 +230,7 @@ function parseRow(
     size: { L, W },
     thickness_mm,
     material_id: material || defaultMaterialId || "default",
-    grain,
-    allow_rotation: grain === "none",
+    allow_rotation: allowRotation,
     group_id: groupId || undefined,
     notes: notes ? { operator: notes } : undefined,
     audit: {
