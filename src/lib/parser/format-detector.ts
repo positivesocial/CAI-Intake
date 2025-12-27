@@ -316,13 +316,18 @@ export interface ParserModeAnalysis {
 
 // Patterns that indicate natural language / AI-needed text
 const NATURAL_LANGUAGE_PATTERNS = [
-  /\b(i need|please|also|and then|make sure|don't forget)\b/i,
-  /\b(with|including|except|but not|however)\b/i,
+  /\b(i need|please|pls|also|and then|make sure|don't forget|confirm)\b/i,
+  /\b(with|including|except|but not|however|where needed|where not)\b/i,
   /\b(edge\s*band|edging|groove|drill|hole|cnc)\s+(on|for|at|along)\b/i,
   /\b(same|similar|like the|as before)\b/i,
   /\b(white|oak|maple|cherry|walnut|melamine|plywood|mdf)\s+(board|panel|sheet|material)/i,
   /[.!?]\s+[A-Z]/,  // Sentence endings followed by new sentences
   /\b(cabinet|drawer|shelf|door|panel|side|top|bottom|back)\s+(for|of|in)\b/i,
+  /\b(all\s*(round|sides|edges)|front\s+edge\s+only|no\s+edge)\b/i, // Prose edge descriptions
+  /\bnotes?:\s*\w+/i, // Notes field with content
+  /^-{2,}.*-{2,}$/m, // Section dividers like --- extras ---
+  /\b(mostly|exposed|inset|pocket|radius)\b/i, // Descriptive terms
+  /\b(front\s*\+\s*back|both\s+sides)\b/i, // Compound descriptions
 ];
 
 // Patterns that indicate structured/tabular data
@@ -375,6 +380,9 @@ export function analyzeTextForParserMode(text: string): ParserModeAnalysis {
   // Calculate metrics
   const metrics = calculateMetrics(trimmed, lines);
   
+  // Check for format variation (key indicator that AI is needed)
+  const formatVariation = detectFormatVariation(trimmed);
+  
   // Decision logic
   let patternScore = 0;
   let aiScore = 0;
@@ -388,7 +396,16 @@ export function analyzeTextForParserMode(text: string): ParserModeAnalysis {
     reasons.push("Free-form text detected");
   }
   
-  // 2. Structural consistency
+  // 2. Format variation - CRITICAL for AI decision
+  if (formatVariation.hasHighVariation) {
+    aiScore += 35;
+    reasons.push(`Mixed formats: ${formatVariation.details.join(", ")}`);
+  } else if (formatVariation.variationScore > 0.3) {
+    aiScore += 20;
+    reasons.push("Some format variations detected");
+  }
+  
+  // 3. Structural consistency
   if (metrics.consistencyScore >= 0.8) {
     patternScore += 25;
     reasons.push("Highly consistent structure");
@@ -399,47 +416,55 @@ export function analyzeTextForParserMode(text: string): ParserModeAnalysis {
     reasons.push("Inconsistent structure");
   }
   
-  // 3. Dimension patterns
-  if (metrics.dimensionPatternScore >= 0.7) {
+  // 4. Dimension patterns
+  // High dimension score + consistency (even without delimiters) = pattern-parseable
+  if (metrics.dimensionPatternScore >= 0.7 && metrics.consistencyScore >= 0.7 && !formatVariation.hasHighVariation) {
     patternScore += 20;
-    reasons.push("Clear dimension patterns found");
+    reasons.push("Consistent dimension patterns detected");
+  } else if (metrics.dimensionPatternScore >= 0.7 && metrics.structuralScore >= 0.5) {
+    patternScore += 15;
+    reasons.push("Clear dimension patterns with structure");
   } else if (metrics.dimensionPatternScore >= 0.4) {
-    patternScore += 10;
-  } else if (metrics.dimensionPatternScore < 0.2) {
-    aiScore += 10;
-    reasons.push("Few standard dimension patterns");
+    patternScore += 5;
   }
   
-  // 4. Natural language indicators
-  if (metrics.naturalLanguageScore >= 0.5) {
-    aiScore += 30;
+  // 5. Natural language indicators
+  if (metrics.naturalLanguageScore >= 0.4) {
+    aiScore += 35;
     reasons.push("Contains natural language descriptions");
   } else if (metrics.naturalLanguageScore >= 0.2) {
-    aiScore += 15;
+    aiScore += 20;
+    reasons.push("Some natural language detected");
   }
   
-  // 5. Structural score (delimiters, consistency)
+  // 6. Structural score (delimiters, consistency)
   if (metrics.structuralScore >= 0.7) {
-    patternScore += 20;
+    patternScore += 25;
     reasons.push("Tabular/structured data detected");
   } else if (metrics.structuralScore < 0.3) {
-    aiScore += 15;
+    aiScore += 20;
     reasons.push("Unstructured format");
   }
   
-  // 6. Line count and complexity
-  if (lines.length >= 10 && metrics.consistencyScore >= 0.7) {
+  // 7. Line count and complexity
+  if (lines.length >= 10 && metrics.consistencyScore >= 0.7 && !formatVariation.hasHighVariation) {
     patternScore += 10;
-    reasons.push("Large structured dataset");
+    reasons.push("Large consistent dataset");
   }
   
-  // 7. Token density - high tokens per line often means prose
+  // 8. Token density - high tokens per line often means prose
   if (metrics.avgTokensPerLine > 15) {
     aiScore += 15;
     reasons.push("Complex lines suggest prose");
-  } else if (metrics.avgTokensPerLine < 8 && lines.length > 2) {
+  } else if (metrics.avgTokensPerLine < 6 && lines.length > 2 && metrics.structuralScore >= 0.5) {
     patternScore += 10;
-    reasons.push("Concise lines suggest structured data");
+    reasons.push("Concise structured lines");
+  }
+  
+  // 9. Section headers/context indicators
+  if (/^[A-Z][A-Z\s]+:$/m.test(trimmed) || /^-{2,}.*-{2,}$/m.test(trimmed)) {
+    aiScore += 15;
+    reasons.push("Contains section headers/context");
   }
   
   // Determine recommendation
@@ -462,6 +487,94 @@ export function analyzeTextForParserMode(text: string): ParserModeAnalysis {
     reasons,
     formatHint: formatResult.format,
     metrics,
+  };
+}
+
+/**
+ * Detect format variation that indicates AI should be used
+ */
+function detectFormatVariation(text: string): { 
+  hasHighVariation: boolean; 
+  variationScore: number;
+  details: string[];
+} {
+  const details: string[] = [];
+  let variationCount = 0;
+  
+  // Check quantity format variations
+  const qtyFormats = {
+    "qty N": /\bqty\s*[:\s]?\s*\d+/gi,
+    "xN": /\bx\s*\d+\b/gi,
+    "(N)": /\(\s*\d+\s*\)/g,
+    "Npcs": /\b\d+\s*pcs\b/gi,
+    "pcs N": /\bpcs\s*\d+\b/gi,
+    "QTY=N": /\bqty\s*=\s*\d+/gi,
+  };
+  
+  const foundQtyFormats: string[] = [];
+  for (const [name, pattern] of Object.entries(qtyFormats)) {
+    if (pattern.test(text)) {
+      foundQtyFormats.push(name);
+    }
+  }
+  if (foundQtyFormats.length >= 2) {
+    variationCount++;
+    details.push(`${foundQtyFormats.length} qty formats`);
+  }
+  
+  // Check dimension separator variations
+  const dimSeparators = {
+    "x": /\d+\s*x\s*\d+/gi,
+    "×": /\d+\s*×\s*\d+/g,
+    "*": /\d+\s*\*\s*\d+/g,
+    "by": /\d+\s+by\s+\d+/gi,
+    "X": /\d+\s*X\s*\d+/g,
+  };
+  
+  const foundDimFormats: string[] = [];
+  for (const [name, pattern] of Object.entries(dimSeparators)) {
+    if (pattern.test(text)) {
+      foundDimFormats.push(name);
+    }
+  }
+  if (foundDimFormats.length >= 2) {
+    variationCount++;
+    details.push(`${foundDimFormats.length} dim separators`);
+  }
+  
+  // Check edge notation variations
+  const edgeFormats = {
+    "coded": /\b[1-4]?[LW][1-4]?[LW]?\b/g, // 2L2W, 1L, etc.
+    "prose": /\b(all\s*(round|sides|edges)|front\s+edge|no\s+edge|edge\s+all)\b/gi,
+    "edge:": /\bedge\s*:\s*\w+/gi,
+    "edging": /\bedging\s+\w+/gi,
+  };
+  
+  const foundEdgeFormats: string[] = [];
+  for (const [name, pattern] of Object.entries(edgeFormats)) {
+    if (pattern.test(text)) {
+      foundEdgeFormats.push(name);
+    }
+  }
+  if (foundEdgeFormats.length >= 2) {
+    variationCount++;
+    details.push("mixed edge notation");
+  }
+  
+  // Check for prose operations vs coded operations
+  const hasProseOps = /\b(groove\s+depth|drill\s+\w+\s+holes?|radius\s+R?\d|pocket\s+for)\b/i.test(text);
+  const hasCodedOps = /\b(H\d|GL|GW|R\d)\b/.test(text);
+  if (hasProseOps && hasCodedOps) {
+    variationCount++;
+    details.push("mixed operation notation");
+  }
+  
+  const variationScore = variationCount / 4; // Normalize to 0-1
+  
+  return {
+    hasHighVariation: variationCount >= 2,
+    variationScore,
+    details,
   };
 }
 
