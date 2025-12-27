@@ -708,41 +708,40 @@ export async function getAccuracySummary(
   strongestField: string;
   recentTrend: "improving" | "stable" | "declining";
 }> {
-  const supabase = getClient();
-  if (!supabase) {
-    return {
-      overallAccuracy: 0,
-      totalPartsProcessed: 0,
-      totalDocuments: 0,
-      weakestField: "unknown",
-      strongestField: "unknown",
-      recentTrend: "stable",
-    };
-  }
+  const defaultResult = {
+    overallAccuracy: 0,
+    totalPartsProcessed: 0,
+    totalDocuments: 0,
+    weakestField: "unknown",
+    strongestField: "unknown",
+    recentTrend: "stable" as const,
+  };
 
   try {
-    let query = supabase
-      .from("parsing_accuracy_logs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const whereClause: { organizationId?: string } = {};
 
     if (organizationId) {
-      query = query.eq("organization_id", organizationId);
+      whereClause.organizationId = organizationId;
     }
 
-    const { data, error } = await query;
+    const data = await prisma.parsingAccuracyLog.findMany({
+      where: whereClause,
+      select: {
+        accuracy: true,
+        totalParts: true,
+        dimensionAccuracy: true,
+        materialAccuracy: true,
+        edgingAccuracy: true,
+        groovingAccuracy: true,
+        quantityAccuracy: true,
+        labelAccuracy: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
 
-    if (error) throw error;
     if (!data || data.length === 0) {
-      return {
-        overallAccuracy: 0,
-        totalPartsProcessed: 0,
-        totalDocuments: 0,
-        weakestField: "unknown",
-        strongestField: "unknown",
-        recentTrend: "stable",
-      };
+      return defaultResult;
     }
 
     // Calculate overall accuracy
@@ -750,17 +749,23 @@ export async function getAccuracySummary(
     const overallAccuracy = totalAccuracy / data.length;
 
     // Calculate total parts
-    const totalPartsProcessed = data.reduce((sum, row) => sum + row.total_parts, 0);
+    const totalPartsProcessed = data.reduce((sum, row) => sum + row.totalParts, 0);
 
     // Calculate field averages
     const fieldAverages: Record<string, number> = {};
-    const fields = ["dimension", "material", "edging", "grooving", "quantity", "label"];
+    const fieldMappings: { name: string; key: keyof typeof data[0] }[] = [
+      { name: "dimension", key: "dimensionAccuracy" },
+      { name: "material", key: "materialAccuracy" },
+      { name: "edging", key: "edgingAccuracy" },
+      { name: "grooving", key: "groovingAccuracy" },
+      { name: "quantity", key: "quantityAccuracy" },
+      { name: "label", key: "labelAccuracy" },
+    ];
     
-    for (const field of fields) {
-      const key = `${field}_accuracy`;
+    for (const { name, key } of fieldMappings) {
       const values = data.map(row => row[key]).filter((v): v is number => v != null);
       if (values.length > 0) {
-        fieldAverages[field] = values.reduce((a, b) => a + b, 0) / values.length;
+        fieldAverages[name] = values.reduce((a, b) => a + b, 0) / values.length;
       }
     }
 
@@ -795,14 +800,7 @@ export async function getAccuracySummary(
     };
   } catch (error) {
     console.error("Failed to get accuracy summary:", error);
-    return {
-      overallAccuracy: 0,
-      totalPartsProcessed: 0,
-      totalDocuments: 0,
-      weakestField: "unknown",
-      strongestField: "unknown",
-      recentTrend: "stable",
-    };
+    return defaultResult;
   }
 }
 
