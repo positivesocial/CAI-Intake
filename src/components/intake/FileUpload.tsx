@@ -299,6 +299,16 @@ export function FileUpload() {
       let method = "unknown";
       let confidence = 0;
       const metadata = { edgeBanding: 0, grooving: 0, cncOps: 0 };
+      let templateInfoFromApi: {
+        isTemplate: boolean;
+        templateId?: string;
+        autoAccept?: boolean;
+        autoAcceptThreshold?: number;
+        isMultiPage?: boolean;
+        sessionId?: string;
+        pageNumber?: number;
+        totalPages?: number;
+      } | undefined;
 
       switch (uploadedFile.type) {
         case "text":
@@ -554,6 +564,18 @@ export function FileUpload() {
                 sessionId: data.template.sessionId,
               });
               
+              // Store template info for file status update
+              templateInfoFromApi = {
+                isTemplate: true,
+                templateId: data.template.templateId,
+                autoAccept: data.template.autoAccept,
+                autoAcceptThreshold: data.template.autoAcceptThreshold,
+                isMultiPage: data.template.isMultiPage,
+                sessionId: data.template.sessionId,
+                pageNumber: data.template.pageNumber,
+                totalPages: data.template.totalPages,
+              };
+              
               // If auto-accept is enabled, mark parts as accepted
               if (data.template.autoAccept) {
                 console.info(`📤 [FileUpload] ✅ AUTO-ACCEPT: Confidence ${((confidence || 0) * 100).toFixed(0)}% >= ${((data.template.autoAcceptThreshold || 0.95) * 100).toFixed(0)}% threshold`, {
@@ -639,16 +661,7 @@ export function FileUpload() {
                 ...f,
                 status: "complete" as ProcessingStatus,
                 progress: 100,
-                templateInfo: data.template?.isTemplate ? {
-                  isTemplate: true,
-                  templateId: data.template.templateId,
-                  autoAccept: data.template.autoAccept,
-                  autoAcceptThreshold: data.template.autoAcceptThreshold,
-                  isMultiPage: data.template.isMultiPage,
-                  sessionId: data.template.sessionId,
-                  pageNumber: data.template.pageNumber,
-                  totalPages: data.template.totalPages,
-                } : undefined,
+                templateInfo: templateInfoFromApi,
                 result: {
                   partsCount: parts.length,
                   confidence,
