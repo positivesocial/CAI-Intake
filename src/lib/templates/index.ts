@@ -46,6 +46,7 @@ export {
 export {
   generateOrgTemplate,
   generateOrgExcelTemplate,
+  generateOrgCSVTemplate,
   buildTemplateConfigWithShortcodes,
   parseTemplateId,
   isValidCAITemplateId,

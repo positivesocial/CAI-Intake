@@ -26,6 +26,7 @@ import { generateId } from "@/lib/utils";
 import {
   generateOrgTemplate,
   generateOrgExcelTemplate,
+  generateOrgCSVTemplate,
   generateShortcodesHash,
   type OrgTemplateConfig,
   type OpsShortcode,
@@ -33,7 +34,7 @@ import {
   type OrganizationBranding,
 } from "@/lib/templates/org-template-generator";
 
-type TemplateType = "pdf" | "excel";
+type TemplateType = "pdf" | "excel" | "csv";
 
 interface TemplateConfig {
   name: string;
@@ -272,8 +273,24 @@ export function TemplateGenerator() {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 
+  const handleDownloadExcel = () => {
+    // Excel XML format with multiple sheets (Fill-In Guide, Materials)
+    const excelXml = generateOrgExcelTemplate(orgTemplateConfig);
+    const blob = new Blob([excelXml], { type: "application/vnd.ms-excel" });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${config.name.replace(/\s+/g, "_")}_v${config.version}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownloadCSV = () => {
-    const csv = generateOrgExcelTemplate(orgTemplateConfig);
+    // Simple CSV format (single sheet only)
+    const csv = generateOrgCSVTemplate(orgTemplateConfig);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     
@@ -620,7 +637,7 @@ export function TemplateGenerator() {
             </div>
 
             {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Button
                 variant="outline"
                 onClick={handlePreview}
@@ -631,11 +648,19 @@ export function TemplateGenerator() {
               </Button>
               <Button
                 variant="outline"
-                onClick={handleDownloadCSV}
+                onClick={handleDownloadExcel}
                 className="gap-2"
               >
                 <FileSpreadsheet className="h-4 w-4" />
-                Download CSV
+                Excel
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleDownloadCSV}
+                className="gap-2 text-xs"
+              >
+                <Download className="h-3 w-3" />
+                CSV
               </Button>
             </div>
             <Button

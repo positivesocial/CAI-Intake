@@ -1189,14 +1189,18 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
 }
 
 // ============================================================
-// EXCEL/CSV TEMPLATE GENERATOR
+// EXCEL TEMPLATE GENERATOR (XML Spreadsheet with Multiple Sheets)
 // ============================================================
 
 export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
   const version = config.version || "1.0";
-  const templateId = `CAI-${config.branding.org_id}-v${version}`;
+  const shortOrgId = config.branding.org_id.slice(0, 8);
+  const templateId = `CAI-${shortOrgId}-v${version}`;
   const orgName = config.branding.name || "Organization";
-  const rows = config.rows || 50;
+  const rows = config.rows || 35;
+  const primaryColor = config.branding.primary_color || "#6B21A8";
+  const includeFillInGuide = config.includeFillInGuide !== false;
+  const includeMaterialsRef = config.includeMaterialsRef !== false;
   
   // Build headers
   const headers: string[] = [
@@ -1225,93 +1229,378 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
     headers.push("Notes");
   }
   
-  // Build CSV with proper structure
+  // Helper to escape XML
+  const escXml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  
+  // Helper to create a cell
+  const cell = (value: string | number, type: "String" | "Number" = "String", styleId?: string) => {
+    const style = styleId ? ` ss:StyleID="${styleId}"` : "";
+    if (type === "Number") {
+      return `<Cell${style}><Data ss:Type="Number">${value}</Data></Cell>`;
+    }
+    return `<Cell${style}><Data ss:Type="String">${escXml(String(value))}</Data></Cell>`;
+  };
+  
+  // Helper to create a row
+  const row = (cells: string[], height?: number) => {
+    const h = height ? ` ss:Height="${height}"` : "";
+    return `<Row${h}>${cells.join("")}</Row>`;
+  };
+  
+  // ============================================
+  // SHEET 1: Parts List (Cutlist)
+  // ============================================
+  const partsSheetRows: string[] = [];
+  
+  // Row 1: Header with org name and template ID
+  partsSheetRows.push(row([
+    cell(orgName, "String", "OrgName"),
+    cell("", "String"),
+    cell("", "String"),
+    cell(templateId, "String", "TemplateId"),
+    cell("", "String"),
+    cell("", "String"),
+    cell(`Smart Cutlist Template v${version}`, "String", "SubTitle"),
+  ]));
+  
+  // Row 2: Empty
+  partsSheetRows.push(row([cell("")]));
+  
+  // Row 3: Project Info Header
+  partsSheetRows.push(row([
+    cell("📋 PROJECT INFORMATION (Required for multi-page cutlists)", "String", "SectionHeader"),
+  ]));
+  
+  // Row 4-5: Project fields
+  partsSheetRows.push(row([
+    cell("Project Name:", "String", "FieldLabel"),
+    cell("", "String", "FieldInput"),
+    cell("", "String", "FieldInput"),
+    cell("Code:", "String", "FieldLabel"),
+    cell("", "String", "FieldInput"),
+    cell("Page:", "String", "FieldLabel"),
+    cell("", "String", "FieldInput"),
+    cell("of", "String"),
+    cell("", "String", "FieldInput"),
+  ]));
+  
+  partsSheetRows.push(row([
+    cell("Customer:", "String", "FieldLabel"),
+    cell("", "String", "FieldInput"),
+    cell("", "String", "FieldInput"),
+    cell("Phone:", "String", "FieldLabel"),
+    cell("", "String", "FieldInput"),
+    cell("Section/Area:", "String", "FieldLabel"),
+    cell("", "String", "FieldInput"),
+    cell("Date:", "String", "FieldLabel"),
+    cell("", "String", "FieldInput"),
+  ]));
+  
+  // Row 6: Empty
+  partsSheetRows.push(row([cell("")]));
+  
+  // Row 7: Column headers
+  partsSheetRows.push(row(headers.map(h => cell(h, "String", "ColumnHeader"))));
+  
+  // Data rows
+  for (let i = 1; i <= rows; i++) {
+    const rowCells = [cell(i, "Number", "RowNum")];
+    for (let j = 1; j < headers.length; j++) {
+      rowCells.push(cell("", "String", "DataCell"));
+    }
+    partsSheetRows.push(row(rowCells, 18));
+  }
+  
+  // Footer row
+  partsSheetRows.push(row([cell("")]));
+  partsSheetRows.push(row([
+    cell(orgName, "String", "Footer"),
+    cell("", "String"),
+    cell("", "String"),
+    cell("", "String"),
+    cell("", "String"),
+    cell("", "String"),
+    cell(`CabinetAI™ Smart Template v${version}`, "String", "Footer"),
+  ]));
+  
+  // Column widths for Parts sheet
+  const colWidths = [30, 120, 50, 50, 35, 35, 70];
+  if (config.includeEdgebanding !== false) colWidths.push(50);
+  if (config.includeGrooves) colWidths.push(55);
+  if (config.includeDrilling) colWidths.push(50);
+  if (config.includeCNC) colWidths.push(55);
+  if (config.includeNotes !== false) colWidths.push(100);
+  
+  const partsSheet = `
+    <Worksheet ss:Name="Cutlist">
+      <Table>
+        ${colWidths.map(w => `<Column ss:Width="${w}"/>`).join("\n        ")}
+        ${partsSheetRows.join("\n        ")}
+      </Table>
+    </Worksheet>`;
+  
+  // ============================================
+  // SHEET 2: Fill-In Guide (Optional)
+  // ============================================
+  let guideSheet = "";
+  if (includeFillInGuide) {
+    const guideRows: string[] = [];
+    
+    // Title
+    guideRows.push(row([
+      cell(`${orgName} - FILL-IN GUIDE`, "String", "SheetTitle"),
+    ]));
+    guideRows.push(row([
+      cell(templateId, "String", "TemplateId"),
+    ]));
+    guideRows.push(row([cell("")]));
+    
+    // OCR Tips
+    guideRows.push(row([
+      cell("📝 BEST OCR TIPS", "String", "SectionHeader"),
+    ]));
+    guideRows.push(row([cell("• Use BLOCK LETTERS for best accuracy")]));
+    guideRows.push(row([cell("• Take a clear, well-lit photo")]));
+    guideRows.push(row([cell("• Ensure QR code is visible")]));
+    guideRows.push(row([cell("")]));
+    
+    // Edgebanding codes
+    if (config.includeEdgebanding !== false) {
+      const ebCodes = (config.shortcodes?.filter(s => s.category === "edgebanding") || getDefaultEdgebandingCodes());
+      guideRows.push(row([cell("EDGEBANDING CODES", "String", "CategoryHeader")]));
+      guideRows.push(row([cell("Code", "String", "TableHeader"), cell("Description", "String", "TableHeader")]));
+      ebCodes.forEach(sc => {
+        guideRows.push(row([cell(sc.code, "String", "CodeCell"), cell(sc.name)]));
+      });
+      guideRows.push(row([cell("")]));
+    }
+    
+    // Grooving codes
+    if (config.includeGrooves) {
+      const grvCodes = (config.shortcodes?.filter(s => s.category === "grooving") || getDefaultGroovingCodes());
+      guideRows.push(row([cell("GROOVING CODES", "String", "CategoryHeader")]));
+      guideRows.push(row([cell("Code", "String", "TableHeader"), cell("Description", "String", "TableHeader")]));
+      grvCodes.forEach(sc => {
+        guideRows.push(row([cell(sc.code, "String", "CodeCell"), cell(sc.name)]));
+      });
+      guideRows.push(row([cell("")]));
+    }
+    
+    // Drilling codes
+    if (config.includeDrilling) {
+      const drillCodes = (config.shortcodes?.filter(s => s.category === "drilling") || getDefaultDrillingCodes());
+      guideRows.push(row([cell("DRILLING CODES", "String", "CategoryHeader")]));
+      guideRows.push(row([cell("Code", "String", "TableHeader"), cell("Description", "String", "TableHeader")]));
+      drillCodes.forEach(sc => {
+        guideRows.push(row([cell(sc.code, "String", "CodeCell"), cell(sc.name)]));
+      });
+      guideRows.push(row([cell("")]));
+    }
+    
+    // CNC codes
+    if (config.includeCNC) {
+      const cncCodes = (config.shortcodes?.filter(s => s.category === "cnc") || getDefaultCNCCodes());
+      guideRows.push(row([cell("CNC CODES", "String", "CategoryHeader")]));
+      guideRows.push(row([cell("Code", "String", "TableHeader"), cell("Description", "String", "TableHeader")]));
+      cncCodes.forEach(sc => {
+        guideRows.push(row([cell(sc.code, "String", "CodeCell"), cell(sc.name)]));
+      });
+    }
+    
+    guideSheet = `
+    <Worksheet ss:Name="Fill-In Guide">
+      <Table>
+        <Column ss:Width="80"/>
+        <Column ss:Width="250"/>
+        ${guideRows.join("\n        ")}
+      </Table>
+    </Worksheet>`;
+  }
+  
+  // ============================================
+  // SHEET 3: Materials Reference (Optional)
+  // ============================================
+  let materialsSheet = "";
+  if (includeMaterialsRef && ((config.materials && config.materials.length > 0) || (config.edgebands && config.edgebands.length > 0))) {
+    const matRows: string[] = [];
+    
+    // Title
+    matRows.push(row([
+      cell(`${orgName} - MATERIALS & EDGEBANDS REFERENCE`, "String", "SheetTitle"),
+    ]));
+    matRows.push(row([cell("")]));
+    
+    // Sheet Materials
+    if (config.materials && config.materials.length > 0) {
+      matRows.push(row([cell("SHEET MATERIALS", "String", "CategoryHeader")]));
+      matRows.push(row([
+        cell("Code", "String", "TableHeader"),
+        cell("Name", "String", "TableHeader"),
+        cell("Thickness (mm)", "String", "TableHeader"),
+      ]));
+      config.materials.forEach(m => {
+        matRows.push(row([
+          cell(m.code || m.material_id.slice(0, 6), "String", "CodeCell"),
+          cell(m.name),
+          cell(m.thickness_mm, "Number"),
+        ]));
+      });
+      matRows.push(row([cell("")]));
+    }
+    
+    // Edgebands
+    if (config.edgebands && config.edgebands.length > 0) {
+      matRows.push(row([cell("EDGEBANDS", "String", "CategoryHeader")]));
+      matRows.push(row([
+        cell("Code", "String", "TableHeader"),
+        cell("Name", "String", "TableHeader"),
+        cell("Thickness (mm)", "String", "TableHeader"),
+      ]));
+      config.edgebands.forEach(e => {
+        matRows.push(row([
+          cell(e.code || e.edgeband_id.slice(0, 6), "String", "CodeCell"),
+          cell(e.name),
+          cell(e.thickness_mm, "Number"),
+        ]));
+      });
+    }
+    
+    materialsSheet = `
+    <Worksheet ss:Name="Materials Reference">
+      <Table>
+        <Column ss:Width="80"/>
+        <Column ss:Width="200"/>
+        <Column ss:Width="100"/>
+        ${matRows.join("\n        ")}
+      </Table>
+    </Worksheet>`;
+  }
+  
+  // ============================================
+  // ASSEMBLE FULL XML SPREADSHEET
+  // ============================================
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="Default">
+      <Font ss:FontName="Segoe UI" ss:Size="9"/>
+    </Style>
+    <Style ss:ID="OrgName">
+      <Font ss:FontName="Segoe UI" ss:Size="16" ss:Bold="1"/>
+    </Style>
+    <Style ss:ID="TemplateId">
+      <Font ss:FontName="Consolas" ss:Size="9" ss:Color="${primaryColor}"/>
+    </Style>
+    <Style ss:ID="SubTitle">
+      <Font ss:FontName="Segoe UI" ss:Size="10" ss:Color="#666666"/>
+    </Style>
+    <Style ss:ID="SectionHeader">
+      <Font ss:FontName="Segoe UI" ss:Size="10" ss:Bold="1" ss:Color="${primaryColor}"/>
+      <Interior ss:Color="${primaryColor}20" ss:Pattern="Solid"/>
+    </Style>
+    <Style ss:ID="FieldLabel">
+      <Font ss:FontName="Segoe UI" ss:Size="9" ss:Bold="1"/>
+    </Style>
+    <Style ss:ID="FieldInput">
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="ColumnHeader">
+      <Font ss:FontName="Segoe UI" ss:Size="9" ss:Bold="1" ss:Color="#FFFFFF"/>
+      <Interior ss:Color="${primaryColor}" ss:Pattern="Solid"/>
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="RowNum">
+      <Font ss:FontName="Segoe UI" ss:Size="8" ss:Color="${primaryColor}"/>
+      <Interior ss:Color="${primaryColor}10" ss:Pattern="Solid"/>
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="DataCell">
+      <Alignment ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="Footer">
+      <Font ss:FontName="Segoe UI" ss:Size="8" ss:Color="#888888"/>
+    </Style>
+    <Style ss:ID="SheetTitle">
+      <Font ss:FontName="Segoe UI" ss:Size="14" ss:Bold="1" ss:Color="${primaryColor}"/>
+    </Style>
+    <Style ss:ID="CategoryHeader">
+      <Font ss:FontName="Segoe UI" ss:Size="11" ss:Bold="1" ss:Color="${primaryColor}"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="${primaryColor}"/>
+      </Borders>
+    </Style>
+    <Style ss:ID="TableHeader">
+      <Font ss:FontName="Segoe UI" ss:Size="9" ss:Bold="1"/>
+      <Interior ss:Color="#F0F0F0" ss:Pattern="Solid"/>
+    </Style>
+    <Style ss:ID="CodeCell">
+      <Font ss:FontName="Consolas" ss:Size="9" ss:Bold="1" ss:Color="${primaryColor}"/>
+    </Style>
+  </Styles>
+  ${partsSheet}
+  ${guideSheet}
+  ${materialsSheet}
+</Workbook>`;
+
+  return xml;
+}
+
+// ============================================================
+// CSV TEMPLATE GENERATOR (Simple fallback)
+// ============================================================
+
+export function generateOrgCSVTemplate(config: OrgTemplateConfig): string {
+  const version = config.version || "1.0";
+  const shortOrgId = config.branding.org_id.slice(0, 8);
+  const templateId = `CAI-${shortOrgId}-v${version}`;
+  const orgName = config.branding.name || "Organization";
+  const rows = config.rows || 35;
+  
+  // Build headers
+  const headers: string[] = ["#", "Part Name", "L(mm)", "W(mm)", "Thk", "Qty", "Material"];
+  if (config.includeEdgebanding !== false) headers.push("Edge");
+  if (config.includeGrooves) headers.push("Groove");
+  if (config.includeDrilling) headers.push("Drill");
+  if (config.includeCNC) headers.push("CNC");
+  if (config.includeNotes !== false) headers.push("Notes");
+  
   const csvRows: string[] = [];
   
-  // Header row with org info
+  // Header
   csvRows.push(`"${orgName}","","","${templateId}","","","Smart Cutlist Template v${version}"`);
   csvRows.push("");
-  
-  // Project info section
-  csvRows.push(`"PROJECT INFO (Must fill for multi-page)"`);
   csvRows.push(`"Project:","","","Code:","","","Page:","","of",""`);
   csvRows.push(`"Customer:","","","Phone:","","","Section:",""`);
   csvRows.push("");
-  
-  // Column headers
   csvRows.push(headers.map(h => `"${h}"`).join(","));
   
-  // Data rows (numbered)
+  // Data rows
   for (let i = 1; i <= rows; i++) {
-    const row = [`"${i}"`, ...Array(headers.length - 1).fill('""')];
-    csvRows.push(row.join(","));
+    csvRows.push([`"${i}"`, ...Array(headers.length - 1).fill('""')].join(","));
   }
   
-  // Fill-in guide section
   csvRows.push("");
-  csvRows.push(`"FILL-IN GUIDE - Use these codes in the respective columns"`);
-  csvRows.push("");
-  
-  if (config.includeEdgebanding !== false) {
-    const ebCodes = (config.shortcodes?.filter(s => s.category === "edgebanding") || getDefaultEdgebandingCodes());
-    csvRows.push(`"EDGEBANDING CODES:"`);
-    ebCodes.forEach(sc => {
-      csvRows.push(`"","${sc.code}","${sc.name}"`);
-    });
-    csvRows.push("");
-  }
-  
-  if (config.includeGrooves) {
-    const grvCodes = (config.shortcodes?.filter(s => s.category === "grooving") || getDefaultGroovingCodes());
-    csvRows.push(`"GROOVING CODES:"`);
-    grvCodes.forEach(sc => {
-      csvRows.push(`"","${sc.code}","${sc.name}"`);
-    });
-    csvRows.push("");
-  }
-  
-  if (config.includeDrilling) {
-    const drillCodes = (config.shortcodes?.filter(s => s.category === "drilling") || getDefaultDrillingCodes());
-    csvRows.push(`"DRILLING CODES:"`);
-    drillCodes.forEach(sc => {
-      csvRows.push(`"","${sc.code}","${sc.name}"`);
-    });
-    csvRows.push("");
-  }
-  
-  if (config.includeCNC) {
-    const cncCodes = (config.shortcodes?.filter(s => s.category === "cnc") || getDefaultCNCCodes());
-    csvRows.push(`"CNC CODES:"`);
-    cncCodes.forEach(sc => {
-      csvRows.push(`"","${sc.code}","${sc.name}"`);
-    });
-    csvRows.push("");
-  }
-  
-  csvRows.push(`"TIPS:","Use BLOCK LETTERS for best OCR accuracy"`);
-  
-  // Materials reference
-  if (config.materials && config.materials.length > 0) {
-    csvRows.push("");
-    csvRows.push(`"MATERIALS REFERENCE"`);
-    csvRows.push(`"Code","Name","Thickness (mm)"`);
-    config.materials.forEach(m => {
-      csvRows.push(`"${m.code || m.material_id.slice(0, 6)}","${m.name}","${m.thickness_mm}"`);
-    });
-  }
-  
-  if (config.edgebands && config.edgebands.length > 0) {
-    csvRows.push("");
-    csvRows.push(`"EDGEBANDS REFERENCE"`);
-    csvRows.push(`"Code","Name","Thickness (mm)"`);
-    config.edgebands.forEach(e => {
-      csvRows.push(`"${e.code || e.edgeband_id.slice(0, 6)}","${e.name}","${e.thickness_mm}"`);
-    });
-  }
-  
-  // Footer
-  csvRows.push("");
-  csvRows.push(`"${orgName}","","","","","","CabinetAI Smart Template v${version}"`);
+  csvRows.push(`"${orgName}","","","","","","CabinetAI™ Smart Template v${version}"`);
   
   return csvRows.join("\n");
 }
@@ -1325,7 +1614,7 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
  */
 export function downloadTemplate(
   config: OrgTemplateConfig, 
-  format: "pdf" | "excel" = "pdf"
+  format: "pdf" | "excel" | "csv" = "pdf"
 ): void {
   const filename = `${config.branding.name.replace(/\s+/g, "_")}_Template_v${config.version || "1.0"}`;
   
@@ -1342,8 +1631,23 @@ export function downloadTemplate(
     
     // Cleanup after delay
     setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } else if (format === "excel") {
+    // Excel XML format with multiple sheets
+    const excelXml = generateOrgExcelTemplate(config);
+    const blob = new Blob([excelXml], { type: "application/vnd.ms-excel" });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${filename}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   } else {
-    const csv = generateOrgExcelTemplate(config);
+    // Simple CSV format (single sheet only)
+    const csv = generateOrgCSVTemplate(config);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     
