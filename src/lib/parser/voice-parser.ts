@@ -4,13 +4,14 @@
  * Parses spoken/dictated text into CutPart objects.
  * Uses a SIMPLE, STRUCTURED format for high accuracy:
  * 
- * FORMAT: [QTY] [LENGTH] by [WIDTH] [OPERATIONS]
+ * FORMAT: [LENGTH] by [WIDTH] by [QTY] with [OPERATIONS]
  * 
  * Examples:
- * - "2 720 by 560" → 2 pcs, 720×560mm
- * - "4 800 by 400 edges" → 4 pcs, 800×400, all edges banded
- * - "600 by 300 two long groove" → 1 pc, 600×300, L1+L2 banded, has groove
+ * - "720 by 560" → 1 pc, 720×560mm
+ * - "800 by 400 by 2 with edges" → 2 pcs, 800×400, all edges banded
+ * - "600 by 300 by 4 with two long groove" → 4 pcs, 600×300, L1+L2 banded, has groove
  * 
+ * For voice note uploads, use "next" between parts, "done" when finished.
  * This structured format is much more accurate than natural language.
  */
 
@@ -49,13 +50,13 @@ export interface VoiceParserOptions {
 // ============================================================
 
 export const VOICE_FORMAT_HELP = {
-  format: "[QTY] [LENGTH] by [WIDTH] [OPERATIONS]",
+  format: "[LENGTH] by [WIDTH] by [QTY] with [OPERATIONS]",
   examples: [
-    { spoken: "2 720 by 560", result: "2× 720×560mm" },
-    { spoken: "800 by 400 edges", result: "1× 800×400mm, all edges" },
-    { spoken: "4 600 by 300 two long", result: "4× 600×300mm, 2 long edges" },
-    { spoken: "500 by 200 groove", result: "1× 500×200mm, has groove" },
-    { spoken: "3 700 by 350 front edge white", result: "3× 700×350mm, front edge, white" },
+    { spoken: "720 by 560", result: "1× 720×560mm" },
+    { spoken: "800 by 400 by 2 with edges", result: "2× 800×400mm, all edges" },
+    { spoken: "600 by 300 by 4 with two long", result: "4× 600×300mm, 2 long edges" },
+    { spoken: "500 by 200 with groove", result: "1× 500×200mm, has groove" },
+    { spoken: "700 by 350 by 3 with front edge", result: "3× 700×350mm, front edge" },
   ],
   operations: {
     "edges/all": "All 4 edges banded",
@@ -67,9 +68,9 @@ export const VOICE_FORMAT_HELP = {
     "white/ply/black/mdf": "Material type",
   },
   tips: [
-    "Say 'next' between parts",
+    "For uploads: Say 'next' between parts, 'done' when finished",
     "Speak numbers clearly: 'seven twenty' = 720",
-    "Say 'done' when finished",
+    "Quantity is optional (defaults to 1)",
   ],
 };
 
@@ -266,12 +267,12 @@ const GROOVE_PATTERNS = [
 /**
  * Parse voice/dictation input into a CutPart
  * 
- * SIMPLE FORMAT: [QTY] [LENGTH] by [WIDTH] [OPERATIONS]
+ * SIMPLE FORMAT: [LENGTH] by [WIDTH] by [QTY] with [OPERATIONS]
  * 
  * Examples:
- * - "2 720 by 560" → 2 pcs, 720×560mm
- * - "800 by 400 edges" → 1 pc, 800×400, all edges
- * - "4 600 by 300 two long groove" → 4 pcs, 600×300, L1+L2, has groove
+ * - "720 by 560" → 1 pc, 720×560mm
+ * - "800 by 400 by 2 with edges" → 2 pcs, 800×400, all edges
+ * - "600 by 300 by 4 with two long groove" → 4 pcs, 600×300, L1+L2, has groove
  */
 export function parseVoiceInput(
   text: string,
@@ -296,14 +297,30 @@ export function parseVoiceInput(
     };
   }
   
-  // Extract quantity (look at start of phrase)
+  // Extract quantity - look for "by [QTY]" after dimensions
+  // Format: [L] by [W] by [QTY] with [OPS]
   let qty = 1;
-  const qtyMatch = normalizedText.match(/^(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+/i);
-  if (qtyMatch) {
-    const parsed = parseSpokenNumber(qtyMatch[1]);
+  
+  // Try to find quantity after "by [width] by [qty]" pattern
+  const qtyAfterDimsPattern = /\bby\s+\d+(?:\.\d+)?\s+by\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b/i;
+  const qtyAfterDims = normalizedText.match(qtyAfterDimsPattern);
+  if (qtyAfterDims) {
+    const parsed = parseSpokenNumber(qtyAfterDims[1]);
     if (parsed && parsed >= 1 && parsed <= 500) {
       qty = parsed;
       confidence = 0.95;
+    }
+  }
+  
+  // Fallback: look for quantity at the start (legacy format support)
+  if (qty === 1) {
+    const qtyMatch = normalizedText.match(/^(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+\d/i);
+    if (qtyMatch) {
+      const parsed = parseSpokenNumber(qtyMatch[1]);
+      if (parsed && parsed >= 1 && parsed <= 500) {
+        qty = parsed;
+        confidence = 0.9; // Lower confidence for legacy format
+      }
     }
   }
   
