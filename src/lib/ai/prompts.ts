@@ -857,21 +857,23 @@ export function buildParsePrompt(options: PromptOptions): string {
   let prompt = "";
   
   // Select base prompt based on input type
+  // PRIORITY: isMessyData > isPastedText (messy pasted text needs AI interpretation)
   if (options.isVoice) {
     // Voice input - use simple structured format
     prompt = VOICE_INPUT_PROMPT;
   } else if (options.isImage) {
     // Image/scan OCR - use comprehensive image prompt
     prompt = IMAGE_ANALYSIS_PROMPT;
-  } else if (options.isPastedText) {
-    // Pasted text with potential headers - use text paste prompt
-    prompt = TEXT_PASTE_PROMPT;
   } else if (options.templateId && options.templateConfig) {
-    // Known template format
+    // Known template format - highest priority for structured data
     prompt = getTemplatePrompt(options.templateId, options.templateConfig.fieldLayout);
   } else if (options.isMessyData) {
-    // Unstructured/messy data
+    // PRIORITY: Messy data detection takes precedence over isPastedText
+    // This handles numbered lists, non-standard formats, natural language, etc.
     prompt = MESSY_DATA_PROMPT;
+  } else if (options.isPastedText) {
+    // Structured pasted text with headers - use text paste prompt
+    prompt = TEXT_PASTE_PROMPT;
   } else {
     // Default: use text paste prompt since most text input has structure
     prompt = TEXT_PASTE_PROMPT;
