@@ -457,7 +457,7 @@ export async function createTrainingExample(
         rowCount: features.estimatedRows,
         hasEdgeNotation: features.hasEdgePatterns,
         hasGrooveNotation: features.hasGroovePatterns,
-        createdBy: input.createdById,
+        createdById: input.createdById,
       },
     });
 
