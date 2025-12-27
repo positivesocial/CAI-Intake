@@ -442,7 +442,8 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   const primaryColor = config.branding.primary_color || "#6B21A8"; // Purple default (like Cabinet AI)
   const secondaryColor = config.branding.secondary_color || "#4C1D95";
   const title = config.title || config.branding.template_title || "Smart Cutlist Template";
-  const rows = config.rows || 25;
+  const rows = config.rows || 30; // More rows for portrait
+  const orgName = config.branding.name || "Organization";
   
   // Build column headers based on enabled operations
   interface ColumnDef {
@@ -453,30 +454,31 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     subLabel?: string;
   }
   
+  // Portrait layout - narrower columns
   const columns: ColumnDef[] = [
-    { key: "#", label: "#", width: "24px" },
-    { key: "label", label: "Part Name", width: "auto" },
-    { key: "L", label: "L(mm)", width: "50px" },
-    { key: "W", label: "W(mm)", width: "50px" },
-    { key: "Thk", label: "Thk", width: "36px" },
-    { key: "qty", label: "Qty", width: "36px" },
-    { key: "material", label: "Material", width: "80px" },
+    { key: "#", label: "#", width: "22px" },
+    { key: "label", label: "Part Name", width: "100px" },
+    { key: "L", label: "L(mm)", width: "42px" },
+    { key: "W", label: "W(mm)", width: "42px" },
+    { key: "Thk", label: "Thk", width: "28px" },
+    { key: "qty", label: "Qty", width: "26px" },
+    { key: "material", label: "Material", width: "60px" },
   ];
   
   if (config.includeEdgebanding !== false) {
-    columns.push({ key: "edge", label: "Edge", subLabel: "(code)", width: "50px", isOps: true });
+    columns.push({ key: "edge", label: "Edge", subLabel: "(code)", width: "40px", isOps: true });
   }
   if (config.includeGrooves) {
-    columns.push({ key: "groove", label: "Groove", subLabel: "(GL/GW)", width: "55px", isOps: true });
+    columns.push({ key: "groove", label: "Groove", subLabel: "(GL/GW)", width: "45px", isOps: true });
   }
   if (config.includeDrilling) {
-    columns.push({ key: "drill", label: "Drill", subLabel: "(code)", width: "50px", isOps: true });
+    columns.push({ key: "drill", label: "Drill", subLabel: "(code)", width: "40px", isOps: true });
   }
   if (config.includeCNC) {
-    columns.push({ key: "cnc", label: "CNC", subLabel: "(code)", width: "55px", isOps: true });
+    columns.push({ key: "cnc", label: "CNC", subLabel: "(code)", width: "45px", isOps: true });
   }
   if (config.includeNotes !== false) {
-    columns.push({ key: "notes", label: "Notes", width: "auto" });
+    columns.push({ key: "notes", label: "Notes", width: "70px" });
   }
   
   // Generate QR data - MINIMAL content for robust scanning
@@ -495,14 +497,15 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>${title} - ${config.branding.name}</title>
+  <title>${title} - ${orgName}</title>
   <style>
     @page { 
-      size: A4 landscape; 
-      margin: 10mm; 
+      size: A4 portrait; 
+      margin: 12mm 10mm 10mm 10mm; 
     }
     @media print {
       .no-print { display: none !important; }
+      body { padding: 0; }
     }
     
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -512,37 +515,62 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       font-size: 9px; 
       color: #1a1a1a;
       line-height: 1.3;
-      padding: 0;
+      padding: 15mm 12mm 12mm 12mm;
       position: relative;
+      min-height: 100vh;
     }
     
-    /* Corner Alignment Markers */
+    /* Corner Alignment Markers - positioned in margin area */
     .corner-marker {
-      position: absolute;
-      width: 20px;
-      height: 20px;
+      position: fixed;
+      width: 15px;
+      height: 15px;
       border: 2px solid #000;
+      z-index: 100;
     }
-    .corner-tl { top: 5mm; left: 5mm; border-right: none; border-bottom: none; }
-    .corner-tr { top: 5mm; right: 5mm; border-left: none; border-bottom: none; }
-    .corner-bl { bottom: 5mm; left: 5mm; border-right: none; border-top: none; }
-    .corner-br { bottom: 5mm; right: 5mm; border-left: none; border-top: none; }
+    .corner-tl { top: 3mm; left: 3mm; border-right: none; border-bottom: none; }
+    .corner-tr { top: 3mm; right: 3mm; border-left: none; border-bottom: none; }
+    .corner-bl { bottom: 3mm; left: 3mm; border-right: none; border-top: none; }
+    .corner-br { bottom: 3mm; right: 3mm; border-left: none; border-top: none; }
+    
+    /* Page Number - top right corner */
+    .page-indicator {
+      position: fixed;
+      top: 4mm;
+      right: 25mm;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 9px;
+      font-weight: 600;
+      z-index: 100;
+    }
+    
+    .page-num-box {
+      width: 18px;
+      height: 16px;
+      border: 1.5px solid #333;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: white;
+    }
     
     /* Header Area */
     .header-container {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       border-bottom: 2px solid ${primaryColor};
-      padding-bottom: 8px;
+      padding-bottom: 6px;
     }
     
-    /* Left: Logo & Branding */
+    /* Left: QR + Branding */
     .header-left {
       display: flex;
-      align-items: center;
-      gap: 10px;
+      align-items: flex-start;
+      gap: 8px;
     }
     
     .qr-section {
@@ -550,139 +578,111 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     }
     
     .qr-code-container {
-      width: 70px;
-      height: 70px;
+      width: 55px;
+      height: 55px;
       border: 1px solid #ccc;
       display: flex;
       align-items: center;
       justify-content: center;
       background: white;
-      border-radius: 4px;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    
+    .qr-code-container canvas,
+    .qr-code-container img {
+      max-width: 100% !important;
+      max-height: 100% !important;
     }
     
     .template-id {
       font-family: 'Consolas', 'Monaco', monospace;
-      font-size: 7px;
+      font-size: 6px;
       color: #666;
       margin-top: 2px;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.3px;
     }
     
     .branding-info {
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 1px;
     }
     
     .org-name {
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 700;
       color: #000;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 0.5px;
     }
     
     .template-title {
-      font-size: 11px;
+      font-size: 9px;
       color: #666;
     }
     
     .logo {
-      max-height: 50px;
-      max-width: 100px;
+      max-height: 40px;
+      max-width: 80px;
     }
     
-    /* Center: Project Information */
-    .header-center {
+    /* Right: Project Information */
+    .header-right {
       flex: 1;
-      max-width: 400px;
-      margin: 0 16px;
+      max-width: 280px;
     }
     
     .project-info-box {
       border: 1.5px solid #333;
-      padding: 6px 10px;
+      padding: 5px 8px;
     }
     
     .project-info-title {
-      font-size: 9px;
+      font-size: 8px;
       font-weight: 700;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
       color: #333;
     }
     
     .project-fields {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 4px 12px;
+      gap: 3px 8px;
     }
     
     .field-row {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 3px;
     }
     
     .field-label {
-      font-size: 8px;
+      font-size: 7px;
       font-weight: 600;
       white-space: nowrap;
-      min-width: 70px;
+      min-width: 55px;
     }
     
     .field-input {
       flex: 1;
       border-bottom: 1px solid #333;
-      min-width: 60px;
-      height: 14px;
-    }
-    
-    .field-input.small {
-      width: 30px;
-      min-width: 30px;
-      flex: none;
-    }
-    
-    .page-fields {
-      display: flex;
-      align-items: center;
-      gap: 3px;
-    }
-    
-    /* Right: Page indicator box */
-    .header-right {
-      text-align: right;
-    }
-    
-    .page-box {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 9px;
-      font-weight: 600;
-    }
-    
-    .page-num-box {
-      width: 24px;
-      height: 20px;
-      border: 1.5px solid #333;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      min-width: 40px;
+      height: 12px;
     }
     
     /* Main Table */
     .main-table {
       width: 100%;
       border-collapse: collapse;
-      margin: 8px 0;
+      margin: 6px 0;
       table-layout: fixed;
     }
     
     .main-table th,
     .main-table td {
       border: 1px solid #333;
-      padding: 2px 3px;
+      padding: 1px 2px;
       text-align: center;
       vertical-align: middle;
     }
@@ -691,65 +691,65 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       background: ${primaryColor};
       color: white;
       font-weight: 600;
-      font-size: 8px;
-      padding: 4px 2px;
+      font-size: 7px;
+      padding: 3px 2px;
     }
     
     .main-table th.ops-header {
-      background: #E9D5FF; /* Light purple for ops columns */
+      background: #E9D5FF;
       color: ${primaryColor};
     }
     
     .main-table th .sub-label {
       font-weight: 400;
-      font-size: 7px;
+      font-size: 6px;
       opacity: 0.9;
       display: block;
     }
     
     .main-table td {
-      height: 18px;
-      font-size: 9px;
+      height: 16px;
+      font-size: 8px;
     }
     
     .main-table td:first-child {
       color: #666;
-      font-size: 8px;
+      font-size: 7px;
       background: #fafafa;
     }
     
     .main-table td.part-name {
       text-align: left;
-      padding-left: 6px;
+      padding-left: 4px;
     }
     
     /* Fill-in Guide */
     .fill-in-guide {
-      margin-top: 10px;
+      margin-top: 8px;
       border: 1px solid #ddd;
-      font-size: 8px;
+      font-size: 7px;
     }
     
     .guide-header {
       color: white;
       font-weight: 700;
-      font-size: 9px;
-      padding: 4px 10px;
-      letter-spacing: 1px;
+      font-size: 8px;
+      padding: 3px 8px;
+      letter-spacing: 0.5px;
     }
     
     .guide-content {
       display: flex;
       flex-wrap: wrap;
       gap: 0;
-      padding: 6px 10px;
+      padding: 4px 8px;
       background: #fafafa;
     }
     
     .guide-section {
       flex: 1;
-      min-width: 120px;
-      padding: 4px 8px;
+      min-width: 100px;
+      padding: 3px 6px;
       border-right: 1px solid #e0e0e0;
     }
     
@@ -759,15 +759,17 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     
     .guide-section.ocr-tips {
       background: #FEF3C7;
-      border-radius: 4px;
-      margin-left: 8px;
+      border-radius: 3px;
+      margin-left: 6px;
       border-right: none;
+      flex: 0 0 auto;
+      min-width: 80px;
     }
     
     .guide-title {
       font-weight: 700;
-      font-size: 8px;
-      margin-bottom: 3px;
+      font-size: 7px;
+      margin-bottom: 2px;
       color: #333;
     }
     
@@ -778,50 +780,55 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     }
     
     .guide-item {
-      font-size: 7px;
+      font-size: 6.5px;
       color: #555;
     }
     
     .guide-item code {
       background: ${primaryColor}15;
       color: ${primaryColor};
-      padding: 0 3px;
+      padding: 0 2px;
       border-radius: 2px;
       font-family: 'Consolas', monospace;
       font-weight: 600;
-      font-size: 7px;
+      font-size: 6.5px;
     }
     
     .ocr-tips .guide-item {
       font-weight: 700;
       color: #92400E;
+      font-size: 7px;
     }
     
     /* Materials Reference */
+    .materials-ref-container {
+      margin-top: 4px;
+      font-size: 6.5px;
+    }
+    
     .materials-ref {
       display: inline-flex;
       align-items: flex-start;
-      gap: 6px;
-      margin-right: 16px;
-      margin-top: 4px;
+      gap: 4px;
+      margin-right: 12px;
     }
     
     .ref-title {
       font-weight: 600;
-      font-size: 7px;
+      font-size: 6.5px;
       color: #666;
     }
     
     .ref-items {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px;
+      gap: 3px;
     }
     
     .ref-item {
-      font-size: 7px;
+      font-size: 6.5px;
       background: #f0f0f0;
-      padding: 1px 4px;
+      padding: 1px 3px;
       border-radius: 2px;
     }
     
@@ -833,24 +840,14 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     
     /* Footer */
     .footer {
-      margin-top: 8px;
+      margin-top: 6px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 7px;
+      font-size: 6.5px;
       color: #888;
-      padding-top: 4px;
+      padding-top: 3px;
       border-top: 1px solid #e0e0e0;
-    }
-    
-    .footer-brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    
-    .powered-by {
-      color: #aaa;
     }
     
     /* Print Button */
@@ -882,43 +879,44 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   <div class="corner-marker corner-bl"></div>
   <div class="corner-marker corner-br"></div>
   
+  <!-- Page Indicator - Top Right -->
+  <div class="page-indicator">
+    Page: <span class="page-num-box"></span> of <span class="page-num-box"></span>
+  </div>
+  
   <!-- Header -->
   <div class="header-container">
     <!-- Left: QR + Branding -->
     <div class="header-left">
       <div class="qr-section">
-        <div class="qr-code-container" id="qr-placeholder" data-qr="${encodeURIComponent(qrContent)}">
-          <!-- Placeholder SVG - replaced by QR code with logo -->
-          <svg viewBox="0 0 70 70" style="width:100%;height:100%">
-            <rect fill="#f5f5f5" width="70" height="70"/>
-            <text x="35" y="35" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="#999">QR</text>
-          </svg>
+        <div class="qr-code-container" id="qr-placeholder">
+          <!-- QR code will be generated here -->
         </div>
         <div class="template-id">${templateId}</div>
       </div>
       
       <div class="branding-info">
-        ${config.branding.logo_url ? `<img src="${config.branding.logo_url}" alt="" class="logo">` : ""}
-        <div class="org-name">${config.branding.name}</div>
+        ${config.branding.logo_url ? `<img src="${config.branding.logo_url}" alt="" class="logo" onerror="this.style.display='none'">` : ""}
+        <div class="org-name">${orgName}</div>
         <div class="template-title">${title} v${version}</div>
       </div>
     </div>
     
-    <!-- Center: Project Information -->
-    <div class="header-center">
+    <!-- Right: Project Information -->
+    <div class="header-right">
       <div class="project-info-box">
-        <div class="project-info-title">PROJECT INFORMATION (Must fill for multi-page)</div>
+        <div class="project-info-title">PROJECT INFO (Must fill for multi-page)</div>
         <div class="project-fields">
           <div class="field-row">
-            <span class="field-label">Project Name:</span>
+            <span class="field-label">Project:</span>
             <span class="field-input"></span>
           </div>
           <div class="field-row">
-            <span class="field-label">Project Code:</span>
+            <span class="field-label">Code:</span>
             <span class="field-input"></span>
           </div>
           <div class="field-row">
-            <span class="field-label">Customer Name:</span>
+            <span class="field-label">Customer:</span>
             <span class="field-input"></span>
           </div>
           <div class="field-row">
@@ -926,21 +924,14 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
             <span class="field-input"></span>
           </div>
           <div class="field-row">
-            <span class="field-label">Customer Email:</span>
+            <span class="field-label">Email:</span>
             <span class="field-input"></span>
           </div>
           <div class="field-row">
-            <span class="field-label">Section/Area:</span>
+            <span class="field-label">Section:</span>
             <span class="field-input"></span>
           </div>
         </div>
-      </div>
-    </div>
-    
-    <!-- Right: Page indicator -->
-    <div class="header-right">
-      <div class="page-box">
-        Page: <span class="page-num-box"></span> of <span class="page-num-box"></span>
       </div>
     </div>
   </div>
@@ -973,90 +964,78 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   <!-- Fill-in Guide -->
   ${fillInGuide}
   
-  <!-- Materials Reference (inline below guide) -->
-  <div style="margin-top: 6px;">
+  <!-- Materials Reference -->
+  <div class="materials-ref-container">
     ${materialsRef}
   </div>
   
   <!-- Footer -->
   <div class="footer">
-    <div class="footer-brand">
-      <span>${config.branding.name} | ${config.branding.contact_info || ""}</span>
-      <span>•</span>
-      <span>CabinetAI™ Smart Template v${version} | Page</span>
-    </div>
-    <div class="powered-by">
-      Powered by CAI Intake
-    </div>
+    <span>${orgName}${config.branding.contact_info ? ` | ${config.branding.contact_info}` : ""}</span>
+    <span>CabinetAI™ Smart Template v${version}</span>
   </div>
   
-  <!-- Print Button (hidden when printing) -->
+  <!-- Print Button -->
   <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
   
-  <!-- QR Code Generation with CAI Logo -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- QR Code Generation -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const qrPlaceholder = document.getElementById('qr-placeholder');
-      if (qrPlaceholder && typeof QRCode !== 'undefined') {
-        const qrData = decodeURIComponent(qrPlaceholder.dataset.qr);
-        qrPlaceholder.innerHTML = '';
-        
-        // Create QR with HIGH error correction (30% can be obscured for logo)
-        const qr = new QRCode(qrPlaceholder, {
-          text: qrData,
-          width: 70,
-          height: 70,
-          colorDark: '#000000',
-          colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.H  // High = 30% error recovery
-        });
-        
-        // Add CAI funnel logo to center after QR renders
-        setTimeout(function() {
-          const canvas = qrPlaceholder.querySelector('canvas');
-          if (canvas) {
-            const ctx = canvas.getContext('2d');
-            const size = canvas.width;
-            const logoSize = size * 0.22; // Logo takes ~22% of QR (within 30% limit)
-            const logoX = (size - logoSize) / 2;
-            const logoY = (size - logoSize) / 2;
-            
-            // White circle background for logo
-            ctx.beginPath();
-            ctx.arc(size/2, size/2, logoSize/2 + 2, 0, 2 * Math.PI);
-            ctx.fillStyle = '#ffffff';
-            ctx.fill();
-            
-            // Draw CAI funnel logo (simplified geometric version)
-            ctx.fillStyle = '#6B21A8'; // Purple brand color
-            ctx.beginPath();
-            // Funnel shape - wide at top, narrow at bottom
-            const cx = size / 2;
-            const cy = size / 2;
-            const w = logoSize * 0.7;
-            const h = logoSize * 0.8;
-            // Top wide part
-            ctx.moveTo(cx - w/2, cy - h/2);
-            ctx.lineTo(cx + w/2, cy - h/2);
-            // Right slope to narrow
-            ctx.lineTo(cx + w/6, cy + h/4);
-            // Bottom spout
-            ctx.lineTo(cx + w/6, cy + h/2);
-            ctx.lineTo(cx - w/6, cy + h/2);
-            ctx.lineTo(cx - w/6, cy + h/4);
-            // Left slope back up
-            ctx.closePath();
-            ctx.fill();
-            
-            // Small circle at bottom of funnel (drip)
-            ctx.beginPath();
-            ctx.arc(cx, cy + h/2 + 3, 2, 0, 2 * Math.PI);
-            ctx.fill();
+    (function() {
+      var qrContainer = document.getElementById('qr-placeholder');
+      if (!qrContainer) return;
+      
+      var qrData = "${qrContent}";
+      
+      // Try using qrcode-generator library
+      if (typeof qrcode !== 'undefined') {
+        try {
+          var qr = qrcode(0, 'H'); // Type 0 = auto, H = high error correction
+          qr.addData(qrData);
+          qr.make();
+          
+          // Generate SVG for better print quality
+          var size = 55;
+          var modules = qr.getModuleCount();
+          var cellSize = size / modules;
+          
+          var svg = '<svg viewBox="0 0 ' + size + ' ' + size + '" xmlns="http://www.w3.org/2000/svg">';
+          svg += '<rect fill="white" width="' + size + '" height="' + size + '"/>';
+          
+          for (var row = 0; row < modules; row++) {
+            for (var col = 0; col < modules; col++) {
+              if (qr.isDark(row, col)) {
+                svg += '<rect x="' + (col * cellSize) + '" y="' + (row * cellSize) + '" width="' + cellSize + '" height="' + cellSize + '" fill="black"/>';
+              }
+            }
           }
-        }, 100);
+          
+          // Add CAI funnel logo in center
+          var logoSize = size * 0.2;
+          var cx = size / 2;
+          var cy = size / 2;
+          
+          // White circle background
+          svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + (logoSize/2 + 1) + '" fill="white"/>';
+          
+          // Purple funnel
+          var w = logoSize * 0.65;
+          var h = logoSize * 0.75;
+          svg += '<path d="M' + (cx - w/2) + ' ' + (cy - h/2) + ' L' + (cx + w/2) + ' ' + (cy - h/2) + ' L' + (cx + w/6) + ' ' + (cy + h/4) + ' L' + (cx + w/6) + ' ' + (cy + h/2) + ' L' + (cx - w/6) + ' ' + (cy + h/2) + ' L' + (cx - w/6) + ' ' + (cy + h/4) + ' Z" fill="${primaryColor}"/>';
+          svg += '<circle cx="' + cx + '" cy="' + (cy + h/2 + 2) + '" r="1.5" fill="${primaryColor}"/>';
+          
+          svg += '</svg>';
+          
+          qrContainer.innerHTML = svg;
+        } catch(e) {
+          console.error('QR generation failed:', e);
+          qrContainer.innerHTML = '<div style="font-size:8px;color:#999;text-align:center;padding:15px;">' + qrData + '</div>';
+        }
+      } else {
+        // Fallback: show template ID as text
+        qrContainer.innerHTML = '<div style="font-size:7px;color:#666;text-align:center;padding:10px;word-break:break-all;">' + qrData + '</div>';
       }
-    });
+    })();
   </script>
 </body>
 </html>
@@ -1081,6 +1060,7 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
 export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
   const version = config.version || "1.0";
   const templateId = `CAI-${config.branding.org_id}-v${version}`;
+  const orgName = config.branding.name || "Organization";
   const rows = config.rows || 50;
   
   // Build headers
@@ -1095,72 +1075,85 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
   ];
   
   if (config.includeEdgebanding !== false) {
-    headers.push("Edge (code)");
+    headers.push("Edge");
   }
   if (config.includeGrooves) {
-    headers.push("Groove (GL/GW)");
+    headers.push("Groove");
   }
   if (config.includeDrilling) {
-    headers.push("Drill (code)");
+    headers.push("Drill");
   }
   if (config.includeCNC) {
-    headers.push("CNC (code)");
+    headers.push("CNC");
   }
   if (config.includeNotes !== false) {
     headers.push("Notes");
   }
   
-  // Build CSV
+  // Build CSV with proper structure
   const csvRows: string[] = [];
   
-  // Template metadata row
-  csvRows.push(`"${config.branding.name}","${templateId}","Smart Cutlist Template v${version}"`);
+  // Header row with org info
+  csvRows.push(`"${orgName}","","","${templateId}","","","Smart Cutlist Template v${version}"`);
   csvRows.push("");
   
-  // Project info rows
-  csvRows.push(`"PROJECT INFORMATION (Must fill for multi-page)"`);
-  csvRows.push(`"Project Name:","","Project Code:","","Page:","of"`);
-  csvRows.push(`"Customer Name:","","Phone:","","Section/Area:",""`);
+  // Project info section
+  csvRows.push(`"PROJECT INFO (Must fill for multi-page)"`);
+  csvRows.push(`"Project:","","","Code:","","","Page:","","of",""`);
+  csvRows.push(`"Customer:","","","Phone:","","","Section:",""`);
   csvRows.push("");
   
-  // Headers
+  // Column headers
   csvRows.push(headers.map(h => `"${h}"`).join(","));
   
   // Data rows (numbered)
   for (let i = 1; i <= rows; i++) {
-    const row = [i.toString(), ...Array(headers.length - 1).fill("")];
+    const row = [`"${i}"`, ...Array(headers.length - 1).fill('""')];
     csvRows.push(row.join(","));
   }
   
-  // Fill-in guide
+  // Fill-in guide section
   csvRows.push("");
-  csvRows.push(`"FILL-IN GUIDE"`);
+  csvRows.push(`"FILL-IN GUIDE - Use these codes in the respective columns"`);
+  csvRows.push("");
   
   if (config.includeEdgebanding !== false) {
-    const ebCodes = (config.shortcodes?.filter(s => s.category === "edgebanding") || getDefaultEdgebandingCodes())
-      .map(s => `${s.code}=${s.name}`).join("; ");
-    csvRows.push(`"Edgebanding:","${ebCodes}"`);
+    const ebCodes = (config.shortcodes?.filter(s => s.category === "edgebanding") || getDefaultEdgebandingCodes());
+    csvRows.push(`"EDGEBANDING CODES:"`);
+    ebCodes.forEach(sc => {
+      csvRows.push(`"","${sc.code}","${sc.name}"`);
+    });
+    csvRows.push("");
   }
   
   if (config.includeGrooves) {
-    const grvCodes = (config.shortcodes?.filter(s => s.category === "grooving") || getDefaultGroovingCodes())
-      .map(s => `${s.code}=${s.name}`).join("; ");
-    csvRows.push(`"Grooving:","${grvCodes}"`);
+    const grvCodes = (config.shortcodes?.filter(s => s.category === "grooving") || getDefaultGroovingCodes());
+    csvRows.push(`"GROOVING CODES:"`);
+    grvCodes.forEach(sc => {
+      csvRows.push(`"","${sc.code}","${sc.name}"`);
+    });
+    csvRows.push("");
   }
   
   if (config.includeDrilling) {
-    const drillCodes = (config.shortcodes?.filter(s => s.category === "drilling") || getDefaultDrillingCodes())
-      .map(s => `${s.code}=${s.name}`).join("; ");
-    csvRows.push(`"Drilling:","${drillCodes}"`);
+    const drillCodes = (config.shortcodes?.filter(s => s.category === "drilling") || getDefaultDrillingCodes());
+    csvRows.push(`"DRILLING CODES:"`);
+    drillCodes.forEach(sc => {
+      csvRows.push(`"","${sc.code}","${sc.name}"`);
+    });
+    csvRows.push("");
   }
   
   if (config.includeCNC) {
-    const cncCodes = (config.shortcodes?.filter(s => s.category === "cnc") || getDefaultCNCCodes())
-      .map(s => `${s.code}=${s.name}`).join("; ");
-    csvRows.push(`"CNC:","${cncCodes}"`);
+    const cncCodes = (config.shortcodes?.filter(s => s.category === "cnc") || getDefaultCNCCodes());
+    csvRows.push(`"CNC CODES:"`);
+    cncCodes.forEach(sc => {
+      csvRows.push(`"","${sc.code}","${sc.name}"`);
+    });
+    csvRows.push("");
   }
   
-  csvRows.push(`"Best OCR:","BLOCK LETTERS, Clear photo"`);
+  csvRows.push(`"TIPS:","Use BLOCK LETTERS for best OCR accuracy"`);
   
   // Materials reference
   if (config.materials && config.materials.length > 0) {
@@ -1180,6 +1173,10 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
       csvRows.push(`"${e.code || e.edgeband_id.slice(0, 6)}","${e.name}","${e.thickness_mm}"`);
     });
   }
+  
+  // Footer
+  csvRows.push("");
+  csvRows.push(`"${orgName}","","","","","","CabinetAI Smart Template v${version}"`);
   
   return csvRows.join("\n");
 }
