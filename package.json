@@ -52,7 +52,6 @@
     "papaparse": "^5.5.3",
     "pdf-img-convert": "^2.0.0",
     "pdf-parse": "^2.4.5",
-    "pdfjs-dist": "^5.4.449",
     "qrcode": "^1.5.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
