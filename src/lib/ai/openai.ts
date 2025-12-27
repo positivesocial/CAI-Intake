@@ -730,14 +730,26 @@ export class OpenAIProvider implements AIProvider {
     
     try {
       const client = this.getClient();
-      const prompt = buildParsePrompt({
-        extractMetadata: options.extractMetadata,
-        isImage: true,
-        templateId: options.templateId,
-        templateConfig: options.templateConfig ? {
-          fieldLayout: options.templateConfig.fieldLayout,
-        } : undefined,
-      });
+      
+      // Use deterministic prompt if provided (for CAI template parsing)
+      // This bypasses the generic prompt builder and uses org-specific shortcodes
+      const prompt = options.deterministicPrompt 
+        ? options.deterministicPrompt
+        : buildParsePrompt({
+            extractMetadata: options.extractMetadata,
+            isImage: true,
+            templateId: options.templateId,
+            templateConfig: options.templateConfig ? {
+              fieldLayout: options.templateConfig.fieldLayout,
+            } : undefined,
+          });
+      
+      if (options.deterministicPrompt) {
+        logger.info("[OpenAI] 🎯 Using DETERMINISTIC template prompt for CAI template", {
+          templateId: options.templateId,
+          promptLength: options.deterministicPrompt.length,
+        });
+      }
 
       // Convert ArrayBuffer to base64 if needed
       let imageUrl: string;

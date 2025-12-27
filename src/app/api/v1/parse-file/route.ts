@@ -26,6 +26,13 @@ import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
 import { AnthropicProvider, type StreamingProgress } from "@/lib/ai/anthropic";
 import { resolveOperationsForParts } from "@/lib/operations/resolver";
+import { 
+  detectTemplateQR, 
+  getOrgTemplateConfig, 
+  buildDeterministicParsePrompt,
+  type QRDetectionResult,
+  type OrgTemplateConfig 
+} from "@/lib/ai/template-ocr";
 
 // Generate a unique request ID for tracking
 function generateRequestId(): string {
@@ -152,13 +159,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ============================================================
+    // TEMPLATE DETECTION & CONFIG LOADING
+    // ============================================================
+    let detectedTemplateId = templateId;
+    let detectedTemplateConfig = templateConfig;
+    let deterministicPrompt: string | undefined;
+    let qrDetectionResult: QRDetectionResult | undefined;
+    
     const parseOptions = {
       extractMetadata: true,
       confidence: "balanced" as const,
-      templateId: templateId || undefined,
-      templateConfig,
+      templateId: detectedTemplateId || undefined,
+      templateConfig: detectedTemplateConfig,
       defaultMaterialId: "MAT-WHITE-18",
       defaultThicknessMm: 18,
+      deterministicPrompt: undefined as string | undefined,
     };
 
     let aiResult;
@@ -181,6 +197,96 @@ export async function POST(request: NextRequest) {
         mimeType: file.type,
         loadTimeMs: Date.now() - imageLoadStart,
       });
+      
+      // ============================================================
+      // SERVER-SIDE QR TEMPLATE DETECTION
+      // If client didn't detect a template, try server-side detection
+      // ============================================================
+      if (!detectedTemplateId) {
+        try {
+          logger.info("📥 [ParseFile] Attempting server-side QR detection", { requestId });
+          const qrStartTime = Date.now();
+          
+          qrDetectionResult = await detectTemplateQR(originalBuffer);
+          
+          if (qrDetectionResult.found && qrDetectionResult.templateId) {
+            detectedTemplateId = qrDetectionResult.templateId;
+            
+            logger.info("📥 [ParseFile] 🎯 CAI Template detected via QR!", {
+              requestId,
+              templateId: detectedTemplateId,
+              orgId: qrDetectionResult.parsed?.orgId,
+              version: qrDetectionResult.parsed?.version,
+              qrDetectionMs: Date.now() - qrStartTime,
+            });
+            
+            // Load org config if we have the parsed info
+            if (qrDetectionResult.parsed?.orgId && qrDetectionResult.parsed?.version) {
+              const orgConfig = await getOrgTemplateConfig(
+                qrDetectionResult.parsed.orgId,
+                qrDetectionResult.parsed.version
+              );
+              
+              if (orgConfig) {
+                detectedTemplateConfig = orgConfig;
+                deterministicPrompt = buildDeterministicParsePrompt(orgConfig);
+                
+                logger.info("📥 [ParseFile] 🎯 Loaded org template config with shortcodes", {
+                  requestId,
+                  orgName: orgConfig.org_name,
+                  edgebandCodes: orgConfig.shortcodes.edgebanding?.length || 0,
+                  grooveCodes: orgConfig.shortcodes.grooving?.length || 0,
+                  drillingCodes: orgConfig.shortcodes.drilling?.length || 0,
+                  cncCodes: orgConfig.shortcodes.cnc?.length || 0,
+                });
+              }
+            }
+            
+            // Update parse options with detected template
+            parseOptions.templateId = detectedTemplateId;
+            parseOptions.templateConfig = detectedTemplateConfig;
+            parseOptions.deterministicPrompt = deterministicPrompt;
+          } else {
+            logger.debug("📥 [ParseFile] No CAI template QR found (generic document)", {
+              requestId,
+              qrFound: qrDetectionResult.found,
+              qrError: qrDetectionResult.error,
+              qrDetectionMs: Date.now() - qrStartTime,
+            });
+          }
+        } catch (qrError) {
+          logger.warn("📥 [ParseFile] QR detection failed (continuing without template)", {
+            requestId,
+            error: qrError instanceof Error ? qrError.message : "Unknown error",
+          });
+        }
+      } else {
+        // Client already detected template, try to load org config
+        logger.info("📥 [ParseFile] Using client-detected template", {
+          requestId,
+          templateId: detectedTemplateId,
+        });
+        
+        // Parse the template ID to get org info
+        const { parseTemplateId } = await import("@/lib/templates/org-template-generator");
+        const parsed = parseTemplateId(detectedTemplateId);
+        
+        if (parsed.isCAI && parsed.orgId && parsed.version) {
+          const orgConfig = await getOrgTemplateConfig(parsed.orgId, parsed.version);
+          
+          if (orgConfig) {
+            detectedTemplateConfig = orgConfig;
+            deterministicPrompt = buildDeterministicParsePrompt(orgConfig);
+            parseOptions.templateConfig = detectedTemplateConfig;
+            parseOptions.deterministicPrompt = deterministicPrompt;
+            
+            logger.info("📥 [ParseFile] 🎯 Loaded org config for client-detected template", {
+              requestId,
+              orgName: orgConfig.org_name,
+            });
+          }
+        }
+      }
       
       // Optimize large images before sending to AI
       let imageBuffer: Buffer;

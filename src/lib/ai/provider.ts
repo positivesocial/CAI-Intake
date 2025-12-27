@@ -35,6 +35,8 @@ export interface ParseOptions {
   isMessyData?: boolean;
   /** Organization ID for context-specific learning */
   organizationId?: string;
+  /** Pre-built deterministic prompt for CAI template parsing (bypasses prompt builder) */
+  deterministicPrompt?: string;
 }
 
 // ============================================================

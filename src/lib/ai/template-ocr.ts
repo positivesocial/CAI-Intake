@@ -104,7 +104,7 @@ export function registerOrgTemplateConfig(config: OrgTemplateConfig): void {
 
 /**
  * Get org template config by org_id and version
- * In production, this would query the database
+ * Fetches from database and populates with org's actual shortcodes
  */
 export async function getOrgTemplateConfig(
   orgId: string, 
@@ -117,12 +117,79 @@ export async function getOrgTemplateConfig(
     return templateConfigCache.get(key)!;
   }
   
-  // TODO: In production, fetch from database
-  // const config = await prisma.templateConfig.findFirst({
-  //   where: { org_id: orgId, version }
-  // });
+  // Dynamically import prisma to avoid client-side bundling issues
+  const { prisma } = await import("@/lib/prisma");
   
-  return null;
+  try {
+    // Fetch organization
+    const org = await prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, name: true },
+    });
+    
+    if (!org) {
+      console.warn(`[TemplateOCR] Organization not found: ${orgId}`);
+      return null;
+    }
+    
+    // Fetch all active operations for this org to build shortcode lists
+    const [edgebandOps, grooveOps, drillingOps, cncOps] = await Promise.all([
+      prisma.edgebandOperation.findMany({
+        where: { organizationId: orgId, isActive: true },
+        select: { code: true, name: true },
+      }),
+      prisma.grooveOperation.findMany({
+        where: { organizationId: orgId, isActive: true },
+        select: { code: true, name: true },
+      }),
+      prisma.drillingOperation.findMany({
+        where: { organizationId: orgId, isActive: true },
+        select: { code: true, name: true },
+      }),
+      prisma.cncOperation.findMany({
+        where: { organizationId: orgId, isActive: true },
+        select: { code: true, name: true },
+      }),
+    ]);
+    
+    // Build the config from org's actual operations
+    const config: OrgTemplateConfig = {
+      org_id: orgId,
+      org_name: org.name,
+      version,
+      columns: [
+        { key: "#", label: "#", type: "number", required: true },
+        { key: "label", label: "Part Name", type: "text", required: true },
+        { key: "L", label: "L(mm)", type: "number", required: true },
+        { key: "W", label: "W(mm)", type: "number", required: true },
+        { key: "T", label: "Thk", type: "number" },
+        { key: "qty", label: "Qty", type: "number", required: true },
+        { key: "material", label: "Mat", type: "code" },
+        { key: "edge", label: "Edge (code)", type: "shortcode", shortcodes: edgebandOps.map(o => o.code) },
+        { key: "groove", label: "Groove (GL/GW)", type: "shortcode", shortcodes: grooveOps.map(o => o.code) },
+        { key: "drill", label: "Drill (code)", type: "shortcode", shortcodes: drillingOps.map(o => o.code) },
+        { key: "cnc", label: "CNC (code)", type: "shortcode", shortcodes: cncOps.map(o => o.code) },
+        { key: "notes", label: "Notes", type: "text" },
+      ],
+      shortcodes: {
+        edgebanding: edgebandOps.map(o => o.code),
+        grooving: grooveOps.map(o => o.code),
+        drilling: drillingOps.map(o => o.code),
+        cnc: cncOps.map(o => o.code),
+      },
+    };
+    
+    // Cache for future requests
+    templateConfigCache.set(key, config);
+    
+    console.info(`[TemplateOCR] Loaded org config for ${org.name}: ${edgebandOps.length} edgeband, ${grooveOps.length} groove, ${drillingOps.length} drilling, ${cncOps.length} cnc codes`);
+    
+    return config;
+    
+  } catch (error) {
+    console.error(`[TemplateOCR] Error fetching org config:`, error);
+    return null;
+  }
 }
 
 // ============================================================
