@@ -2,12 +2,13 @@
  * CAI Intake - Excel/CSV Parser
  * 
  * Parses Excel and CSV files into canonical CutPart objects.
- * Supports column mapping and data extraction.
+ * Supports column mapping, data extraction, and multi-sheet workbooks.
  */
 
 import type { CutPart, IngestionMethod, GrainMode } from "../schema";
 import { generateId, parseNumber } from "../utils";
 import { DEFAULTS } from "../constants";
+import * as XLSX from "xlsx";
 
 /**
  * Column mapping configuration
@@ -381,7 +382,183 @@ export function suggestColumn(
   return typeof suggested === "number" ? suggested : undefined;
 }
 
+// ============================================================
+// EXCEL WORKBOOK (MULTI-SHEET) SUPPORT
+// ============================================================
 
+/**
+ * Sheet info for selection
+ */
+export interface SheetInfo {
+  name: string;
+  index: number;
+  rowCount: number;
+  colCount: number;
+  preview: string[][]; // First 5 rows for preview
+}
 
+/**
+ * Workbook info with all sheets
+ */
+export interface WorkbookInfo {
+  fileName: string;
+  sheetCount: number;
+  sheets: SheetInfo[];
+}
 
+/**
+ * Check if file is an Excel workbook (not CSV)
+ */
+export function isExcelFile(file: File): boolean {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  return ext === "xlsx" || ext === "xls" || ext === "xlsm" || ext === "xlsb";
+}
+
+/**
+ * Parse Excel workbook and get sheet info
+ */
+export async function parseWorkbook(file: File): Promise<WorkbookInfo> {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  
+  const sheets: SheetInfo[] = workbook.SheetNames.map((name, index) => {
+    const sheet = workbook.Sheets[name];
+    const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+    
+    // Get all data as 2D array
+    const data: string[][] = XLSX.utils.sheet_to_json(sheet, { 
+      header: 1, 
+      defval: "" 
+    }) as string[][];
+    
+    return {
+      name,
+      index,
+      rowCount: range.e.r + 1,
+      colCount: range.e.c + 1,
+      preview: data.slice(0, 5), // First 5 rows
+    };
+  });
+  
+  return {
+    fileName: file.name,
+    sheetCount: workbook.SheetNames.length,
+    sheets,
+  };
+}
+
+/**
+ * Get data from a specific sheet
+ */
+export async function getSheetData(
+  file: File, 
+  sheetIndex: number
+): Promise<string[][]> {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  
+  const sheetName = workbook.SheetNames[sheetIndex];
+  if (!sheetName) {
+    throw new Error(`Sheet index ${sheetIndex} not found`);
+  }
+  
+  const sheet = workbook.Sheets[sheetName];
+  const data: string[][] = XLSX.utils.sheet_to_json(sheet, { 
+    header: 1, 
+    defval: "" 
+  }) as string[][];
+  
+  return data;
+}
+
+/**
+ * Get sheet names from workbook
+ */
+export async function getSheetNames(file: File): Promise<string[]> {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  return workbook.SheetNames;
+}
+
+/**
+ * Smart detect which sheet likely contains the parts list
+ * Returns index of the sheet most likely to contain parts data
+ */
+export function detectPartsSheet(sheets: SheetInfo[]): number {
+  // Look for sheets with typical parts list characteristics:
+  // 1. Has headers like "length", "width", "qty", "material"
+  // 2. Has reasonable number of rows (not too few, not too many)
+  // 3. Sheet name hints (parts, cutlist, BOM, etc.)
+  
+  const partsNamePatterns = [
+    /parts?/i,
+    /cutlist/i,
+    /cut.*list/i,
+    /bom/i,
+    /bill.*of.*materials?/i,
+    /pieces?/i,
+    /panels?/i,
+    /components?/i,
+  ];
+  
+  const headerPatterns = [
+    /length|len|^l$/i,
+    /width|wid|^w$/i,
+    /qty|quantity/i,
+    /material|mat/i,
+    /part|name|label/i,
+  ];
+  
+  let bestScore = -1;
+  let bestIndex = 0;
+  
+  sheets.forEach((sheet, index) => {
+    let score = 0;
+    
+    // Check sheet name
+    for (const pattern of partsNamePatterns) {
+      if (pattern.test(sheet.name)) {
+        score += 10;
+        break;
+      }
+    }
+    
+    // Check headers in first row
+    const headers = sheet.preview[0] || [];
+    for (const header of headers) {
+      for (const pattern of headerPatterns) {
+        if (pattern.test(String(header))) {
+          score += 5;
+          break;
+        }
+      }
+    }
+    
+    // Prefer sheets with reasonable data (5-500 rows typically)
+    if (sheet.rowCount >= 5 && sheet.rowCount <= 500) {
+      score += 3;
+    }
+    
+    // Prefer sheets with more columns (parts lists typically have 5-15 columns)
+    if (sheet.colCount >= 4 && sheet.colCount <= 20) {
+      score += 2;
+    }
+    
+    // Avoid sheets that look like instructions or notes
+    const skipPatterns = [/instruction/i, /note/i, /readme/i, /help/i, /info/i];
+    for (const pattern of skipPatterns) {
+      if (pattern.test(sheet.name)) {
+        score -= 15;
+        break;
+      }
+    }
+    
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  });
+  
+  return bestIndex;
+}
 

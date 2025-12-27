@@ -5,6 +5,7 @@
  * 
  * A dialog wrapper for the Excel import wizard.
  * Used when Excel/CSV files are dropped on the smart file uploader.
+ * Supports multi-sheet Excel workbooks with sheet selection.
  */
 
 import * as React from "react";
@@ -14,13 +15,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet, Layers, Sparkles } from "lucide-react";
 import {
   parseCSV,
   parseExcelData,
   autoDetectMapping,
+  isExcelFile,
+  parseWorkbook,
+  getSheetData,
+  detectPartsSheet,
   type ColumnMapping,
   type ExcelParseResult,
+  type WorkbookInfo,
+  type SheetInfo,
 } from "@/lib/parsers/excel-parser";
 import { useIntakeStore, type ParsedPartWithStatus } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -45,7 +52,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type WizardStep = "mapping" | "preview" | "complete";
+type WizardStep = "sheets" | "mapping" | "preview" | "complete";
 
 const REQUIRED_FIELDS: (keyof ColumnMapping)[] = ["L", "W"];
 const OPTIONAL_FIELDS: (keyof ColumnMapping)[] = [
@@ -102,6 +109,11 @@ export function ExcelImportDialog({
   const [dataRowStart, setDataRowStart] = React.useState(1);
   const [parseResult, setParseResult] = React.useState<ExcelParseResult | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  
+  // Multi-sheet support
+  const [workbookInfo, setWorkbookInfo] = React.useState<WorkbookInfo | null>(null);
+  const [selectedSheetIndex, setSelectedSheetIndex] = React.useState<number>(0);
+  const [suggestedSheetIndex, setSuggestedSheetIndex] = React.useState<number | null>(null);
 
   // Load file when opened
   React.useEffect(() => {
@@ -117,32 +129,85 @@ export function ExcelImportDialog({
       setHeaderRowIndex(0);
       setDataRowStart(1);
       setParseResult(null);
+      setWorkbookInfo(null);
+      setSelectedSheetIndex(0);
+      setSuggestedSheetIndex(null);
     }
   }, [open, file]);
 
   const loadFile = async (f: File) => {
     setIsLoading(true);
     try {
-      const text = await f.text();
+      // Check if it's an Excel workbook (not CSV)
+      if (isExcelFile(f)) {
+        // Parse workbook to get sheet info
+        const workbook = await parseWorkbook(f);
+        setWorkbookInfo(workbook);
+        
+        if (workbook.sheetCount > 1) {
+          // Multiple sheets - show sheet selection
+          const suggested = detectPartsSheet(workbook.sheets);
+          setSuggestedSheetIndex(suggested);
+          setSelectedSheetIndex(suggested);
+          setStep("sheets");
+        } else {
+          // Single sheet - go straight to mapping
+          const data = await getSheetData(f, 0);
+          setRawData(data);
+          if (data.length > 0) {
+            setHeaders(data[0].map(String));
+            const detectedMapping = autoDetectMapping(data[0].map(String));
+            setMapping(detectedMapping);
+          }
+          setStep("mapping");
+        }
+      } else {
+        // CSV/TSV file - parse as text
+        const text = await f.text();
 
-      // Detect delimiter
-      const firstLine = text.split("\n")[0];
-      const delimiter = firstLine.includes("\t")
-        ? "\t"
-        : firstLine.includes(";")
-        ? ";"
-        : ",";
+        // Detect delimiter
+        const firstLine = text.split("\n")[0];
+        const delimiter = firstLine.includes("\t")
+          ? "\t"
+          : firstLine.includes(";")
+          ? ";"
+          : ",";
 
-      const rows = parseCSV(text, delimiter);
-      setRawData(rows);
+        const rows = parseCSV(text, delimiter);
+        setRawData(rows);
 
-      if (rows.length > 0) {
-        setHeaders(rows[0]);
-        const detectedMapping = autoDetectMapping(rows[0]);
-        setMapping(detectedMapping);
+        if (rows.length > 0) {
+          setHeaders(rows[0]);
+          const detectedMapping = autoDetectMapping(rows[0]);
+          setMapping(detectedMapping);
+        }
+        setStep("mapping");
       }
     } catch (error) {
       console.error("Failed to load file:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Load selected sheet data
+  const loadSheet = async (sheetIndex: number) => {
+    if (!file) return;
+    
+    setIsLoading(true);
+    try {
+      const data = await getSheetData(file, sheetIndex);
+      setRawData(data);
+      if (data.length > 0) {
+        setHeaders(data[0].map(String));
+        const detectedMapping = autoDetectMapping(data[0].map(String));
+        setMapping(detectedMapping);
+      }
+      setHeaderRowIndex(0);
+      setDataRowStart(1);
+      setStep("mapping");
+    } catch (error) {
+      console.error("Failed to load sheet:", error);
     } finally {
       setIsLoading(false);
     }
@@ -234,25 +299,28 @@ export function ExcelImportDialog({
 
         {/* Progress indicator */}
         <div className="flex items-center gap-2">
-          {(["mapping", "preview", "complete"] as WizardStep[]).map((s, i) => (
+          {(workbookInfo && workbookInfo.sheetCount > 1 
+            ? ["sheets", "mapping", "preview", "complete"] as WizardStep[]
+            : ["mapping", "preview", "complete"] as WizardStep[]
+          ).map((s, i, arr) => (
             <React.Fragment key={s}>
               <div
                 className={cn(
                   "flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium",
                   step === s
                     ? "bg-[var(--cai-teal)] text-[var(--cai-navy)]"
-                    : i < ["mapping", "preview", "complete"].indexOf(step)
+                    : arr.indexOf(step) > i
                     ? "bg-[var(--cai-teal)]/20 text-[var(--cai-teal)]"
                     : "bg-[var(--muted)] text-[var(--muted-foreground)]"
                 )}
               >
                 {i + 1}
               </div>
-              {i < 2 && (
+              {i < arr.length - 1 && (
                 <div
                   className={cn(
                     "flex-1 h-0.5",
-                    i < ["mapping", "preview", "complete"].indexOf(step)
+                    arr.indexOf(step) > i
                       ? "bg-[var(--cai-teal)]"
                       : "bg-[var(--muted)]"
                   )}
@@ -269,7 +337,83 @@ export function ExcelImportDialog({
           </div>
         ) : (
           <>
-            {/* Step 1: Column Mapping */}
+            {/* Sheet Selection (for multi-sheet Excel files) */}
+            {step === "sheets" && workbookInfo && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                  <Layers className="h-4 w-4" />
+                  <span>This workbook has {workbookInfo.sheetCount} sheets. Select the one containing your parts list:</span>
+                </div>
+                
+                <div className="grid gap-3">
+                  {workbookInfo.sheets.map((sheet, index) => {
+                    const isSuggested = index === suggestedSheetIndex;
+                    const isSelected = index === selectedSheetIndex;
+                    
+                    return (
+                      <button
+                        key={sheet.name}
+                        onClick={() => setSelectedSheetIndex(index)}
+                        className={cn(
+                          "text-left p-4 rounded-lg border-2 transition-all",
+                          isSelected
+                            ? "border-[var(--cai-teal)] bg-[var(--cai-teal)]/5"
+                            : "border-[var(--border)] hover:border-[var(--cai-teal)]/50",
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{sheet.name}</span>
+                            {isSuggested && (
+                              <Badge variant="teal" className="text-xs gap-1">
+                                <Sparkles className="h-3 w-3" />
+                                Suggested
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-sm text-[var(--muted-foreground)]">
+                            {sheet.rowCount} rows × {sheet.colCount} cols
+                          </span>
+                        </div>
+                        
+                        {/* Preview of first row (headers) */}
+                        {sheet.preview[0] && (
+                          <div className="flex flex-wrap gap-1 text-xs">
+                            {sheet.preview[0].slice(0, 8).map((cell, i) => (
+                              <Badge key={i} variant="outline" className="font-mono">
+                                {String(cell).substring(0, 15) || "(empty)"}
+                              </Badge>
+                            ))}
+                            {sheet.preview[0].length > 8 && (
+                              <Badge variant="outline" className="text-[var(--muted-foreground)]">
+                                +{sheet.preview[0].length - 8} more
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                {/* Actions */}
+                <div className="flex items-center justify-between pt-4">
+                  <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                    <X className="h-4 w-4 mr-1" />
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={() => loadSheet(selectedSheetIndex)}
+                  >
+                    Use "{workbookInfo.sheets[selectedSheetIndex]?.name}"
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Column Mapping */}
             {step === "mapping" && rawData.length > 0 && (
               <div className="space-y-6">
                 {/* Row configuration */}
@@ -367,10 +511,17 @@ export function ExcelImportDialog({
 
                 {/* Actions */}
                 <div className="flex items-center justify-between pt-4">
-                  <Button variant="ghost" onClick={() => onOpenChange(false)}>
-                    <X className="h-4 w-4 mr-1" />
-                    Cancel
-                  </Button>
+                  {workbookInfo && workbookInfo.sheetCount > 1 ? (
+                    <Button variant="ghost" onClick={() => setStep("sheets")}>
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Change Sheet
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                      <X className="h-4 w-4 mr-1" />
+                      Cancel
+                    </Button>
+                  )}
                   <Button
                     variant="primary"
                     onClick={handlePreview}
@@ -383,7 +534,7 @@ export function ExcelImportDialog({
               </div>
             )}
 
-            {/* Step 2: Preview */}
+            {/* Preview */}
             {step === "preview" && parseResult && (
               <div className="space-y-4">
                 {/* Summary */}
