@@ -69,6 +69,7 @@ export const BASE_CUTLIST_PROMPT = `You are an expert cutlist parser for woodwor
 - You understand grain/rotation: GL (grain length), GW (grain width), "can rotate", "fixed"
 - You recognize edge banding: L1, L2, W1, W2 columns with checkmarks (✓, X, /)
 - You recognize groove columns: GL (groove length), GW (groove width) with checkmarks
+- You extract notes/instructions embedded in or after part descriptions
 
 ## Output Format
 Return a JSON array of parts with this structure:
@@ -142,6 +143,28 @@ Return a JSON array of parts with this structure:
 }
 \`\`\`
 
+## Notes Extraction (CRITICAL)
+The "notes" field should capture ANY special instructions, descriptions, or context:
+
+**Extract notes from:**
+1. Explicit "notes:" text → "notes: vents" → notes: "vents"
+2. Parenthetical descriptions → "(grooved)" → notes: "grooved"
+3. Manufacturing hints → "inset back", "exposed corners" → include in notes
+4. CNC/drilling prose → "radius R3 on corners", "pocket for handle" → notes
+5. Special requirements → "confirm grain", "where needed" → notes
+6. Section context → If under "Drawer boxes:" section, include "Drawer box" as context
+
+**Examples:**
+- "Drawer face 395x160 qty 5 edge all round notes: vents" → notes: "vents"
+- "TOP PANEL 2400X1200 (1) EDGE:2L2W" → notes: null (no extra info)
+- "720 x 560 x 6mm – inset back – groove depth 10" → notes: "inset back, groove depth 10mm"
+- "bottom 510 x 460 x 6 – 4pcs (grooved)" → notes: "grooved"
+- Part in "Drawer boxes:" section → notes: "Drawer box part"
+
+**Aggregate related context:**
+If the document has general notes like "confirmat where needed" or "grain vertical on sides", 
+apply them to relevant parts (sides, doors, etc.) in their notes field.
+
 ## Rules
 1. Dimensions: Always in mm. Convert inches (multiply by 25.4)
 2. Length is always the longer dimension (L >= W) - swap if needed
@@ -151,12 +174,14 @@ Return a JSON array of parts with this structure:
 6. Keep material codes short (W, Ply, B, M) - don't expand
 7. Checkmarks/ticks in edge columns = that edge has banding
 8. Checkmarks/ticks in groove columns = has groove in that direction
+9. **ALWAYS extract notes** - any text that provides context, instructions, or descriptions
 
 ## Important
 - Return ONLY valid JSON, no additional text
 - Include ALL parts you can identify, even partial ones with lower confidence
 - If dimensions seem impossible (>5000mm), flag with lower confidence
-- NEVER skip rows - extract every single row from the input`;
+- NEVER skip rows - extract every single row from the input
+- **NEVER lose notes** - if there's descriptive text, capture it`;
 
 // ============================================================
 // TEXT PASTE PROMPT (for copy-paste input)
@@ -303,6 +328,137 @@ Output:
   {"row":4,"material":"B","length":780,"width":560,"quantity":1,"edgeBanding":{"detected":true,"L1":true,"L2":true,"W1":true,"W2":true,"edges":["L1","L2","W1","W2"]},"grooving":{"detected":true,"GL":false,"GW":true},"confidence":0.98}
 ]
 \`\`\`
+
+Return ONLY valid JSON array. No markdown, no explanations.`;
+
+// ============================================================
+// FREE-FORM / NATURAL LANGUAGE PROMPT
+// ============================================================
+
+export const FREE_FORM_CUTLIST_PROMPT = `You are an expert cutlist parser specializing in extracting part lists from messy, free-form, or natural language text.
+
+## Context
+The user has pasted text that may include:
+- Mixed format part lists (different notation styles in same document)
+- Natural language descriptions ("I need 2 side panels...")
+- Handwritten note transcriptions
+- Email excerpts with part specifications
+- Section headers, job info, and contextual notes
+- Multiple quantity/dimension formats
+
+## Your Task
+Extract EVERY part mentioned, even if the format is inconsistent or messy.
+
+## Part Detection Strategies
+
+**1. Numbered/Bulleted Lists:**
+"1) Sides – 600 x 520 x 18 – Qty 20 – White PB – edge: 2L2W"
+→ Extract: Sides, 600x520x18, qty 20, material: White PB, edges: L1,L2,W1,W2
+
+**2. Natural Language:**
+"I need 2 side panels 720x560 in white melamine with edge banding"
+→ Extract: side panels, 720x560, qty 2, material: white melamine, edges detected
+
+**3. Section-Based:**
+"Drawer boxes:
+  sides: 450 x 150 x 16 (8)
+  back: 500 x 140 x 16 x4"
+→ Extract both parts with "Drawer box" context in notes
+
+**4. Mixed Formats:**
+Handle ALL of these quantity formats: "Qty 20", "x5", "qty:2", "(3pcs)", "qty 5", "QTY=9", "pcs 6", "(1)"
+Handle ALL dimension formats: "600 x 520", "764*520", "400 by 540", "560 X 397", "720×560"
+
+## CRITICAL: Notes Extraction
+
+**ALWAYS capture contextual information in the notes field:**
+
+| Source | Example | Notes Value |
+|--------|---------|-------------|
+| Inline notes | "notes: vents" | "vents" |
+| Parenthetical | "(grooved)" | "grooved" |
+| Prose description | "inset back" | "inset back" |
+| CNC instructions | "radius R3 on corners" | "radius R3 on corners" |
+| Section context | Part under "Drawer boxes:" | "Drawer box part" |
+| General instructions | "confirm grain vertical" | Apply to relevant parts |
+| Manufacturing hints | "exposed corners" | "exposed corners" |
+| Hardware refs | "pocket for handle" | "pocket for handle" |
+
+**Aggregate context:**
+- Job-level notes (e.g., "NOTES: white where not stated") apply as defaults
+- Section headers provide context (e.g., "Drawer boxes:" means parts are drawer components)
+- Global instructions (e.g., "confirmat where needed", "grain vertical on sides") should be noted on relevant parts
+
+## Output Format
+
+\`\`\`json
+[
+  {
+    "row": 1,
+    "label": "Part label/name",
+    "length": 600,
+    "width": 520,
+    "thickness": 18,
+    "quantity": 20,
+    "material": "White PB",
+    "allowRotation": false,
+    "edgeBanding": {
+      "detected": true,
+      "L1": true, "L2": true, "W1": true, "W2": true,
+      "edges": ["L1", "L2", "W1", "W2"],
+      "description": "all edges (2L2W)"
+    },
+    "grooving": {
+      "detected": true,
+      "GL": true, "GW": false,
+      "description": "groove along length"
+    },
+    "cncOperations": {
+      "detected": true,
+      "description": "drill H2 pattern"
+    },
+    "notes": "All notes, context, special instructions here",
+    "confidence": 0.9
+  }
+]
+\`\`\`
+
+## Edge Banding Interpretation
+
+| Input | Interpretation |
+|-------|----------------|
+| "edge: 2L2W" | L1, L2, W1, W2 (all 4 edges) |
+| "edging 1L" | L1 only |
+| "edge: 1W" | W1 only |
+| "edge all round" | L1, L2, W1, W2 |
+| "front edge only" | L1 (visible front edge) |
+| "no edge" | No edgebanding |
+| "2L" | L1, L2 (both long edges) |
+
+## Grooving Interpretation
+
+| Input | Interpretation |
+|-------|----------------|
+| "groove GL" | GL: true (groove parallel to length) |
+| "groove GW" | GW: true (groove parallel to width) |
+| "groove depth 10" | Groove detected, depth 10mm in notes |
+| "(grooved)" | Generic groove detected |
+| "back panel groove" | GL: true (typical for back panels) |
+
+## Material Interpretation
+- "White PB", "white pb", "W" → "White PB"
+- "Black PB", "BLACK PB", "B" → "Black PB"
+- "Ply", "plywood", "White plywood" → "Ply" (add "white" to notes if specified)
+- "Harvard Cherry", "Petrol Blue" → Keep decorative names as-is
+- "S-2 Plyboard" → Keep brand/grade names
+
+## Rules
+1. Extract EVERY part - don't skip any, even if format is unusual
+2. Length >= Width - swap if needed
+3. Default thickness: 18mm, default quantity: 1
+4. NEVER lose notes - capture ALL contextual information
+5. Lower confidence for parts with ambiguous specifications
+6. Include section context in notes when relevant
 
 Return ONLY valid JSON array. No markdown, no explanations.`;
 
@@ -570,28 +726,8 @@ ${BASE_CUTLIST_PROMPT}`;
 // MESSY DATA PROMPT
 // ============================================================
 
-export const MESSY_DATA_PROMPT = `You are parsing MESSY or UNSTRUCTURED cutlist data. This could be:
-- Free-form notes
-- Email/message content
-- Mixed format input
-- Incomplete specifications
-
-## Strategy for Messy Data
-1. Be more flexible with formats
-2. Use context to infer missing data
-3. Set lower confidence for uncertain parts
-4. Extract what you can, mark unknowns
-
-## Common Patterns in Messy Data
-- "2 shelves 600x400" → 2 parts, label "shelf", 600x400mm
-- "carcass sides (pair)" → 2 parts, label "carcass side"
-- "same as above but 500 wide" → inherit from previous, adjust width
-- "plus 2 more backs" → additional parts referencing context
-
-${BASE_CUTLIST_PROMPT}
-
-## Additional Rule for Messy Data
-When uncertain, include the part with a lower confidence score (0.5-0.7) rather than omitting it. Include warnings in a "warnings" array field.`;
+// MESSY_DATA_PROMPT is now an alias for FREE_FORM_CUTLIST_PROMPT
+export const MESSY_DATA_PROMPT = FREE_FORM_CUTLIST_PROMPT;
 
 // ============================================================
 // VOICE INPUT PROMPT (Structured, minimal format)
