@@ -126,11 +126,10 @@ export function SetupStep() {
       grooves: true,
       cnc_holes: true,
       cnc_routing: true,
-      custom_cnc: true,
     });
   };
 
-  const hasCNCEnabled = !!capabilities.grooves || !!capabilities.cnc_holes || !!capabilities.cnc_routing || !!capabilities.custom_cnc;
+  const hasCNCEnabled = !!capabilities.grooves || !!capabilities.cnc_holes || !!capabilities.cnc_routing;
 
   return (
     <div className="space-y-8 max-w-2xl mx-auto">
@@ -289,23 +288,26 @@ export function SetupStep() {
             color="#10B981"
           />
 
-          {/* Custom CNC */}
-          <CapabilityToggle
-            label="Custom CNC Operations"
-            description="Custom programs, special operations, macros"
-            icon={<Settings className="h-5 w-5" />}
-            enabled={capabilities.custom_cnc ?? false}
-            onChange={(v) => setCapabilities({ custom_cnc: v })}
-            color="#10B981"
-          />
+          {/* Divider */}
+          <div className="relative py-2">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-[var(--border)]" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="bg-[var(--background)] px-3 text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
+                Organization
+              </span>
+            </div>
+          </div>
 
           {/* Advanced Grouping */}
           <CapabilityToggle
-            label="Advanced Grouping"
-            description="Group parts by cabinet, assembly, or custom groups"
+            label="Part Grouping"
+            description="Group parts by cabinet, room, assembly, or custom groups"
             icon={<Layers className="h-5 w-5" />}
             enabled={capabilities.advanced_grouping ?? false}
             onChange={(v) => setCapabilities({ advanced_grouping: v })}
+            color="#6366F1"
           />
         </div>
       </section>

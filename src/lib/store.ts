@@ -275,11 +275,11 @@ const defaultEdgebands: EdgebandDef[] = [
 const defaultCapabilities: CutlistCapabilities = {
   core_parts: true,
   edging: true,
-  grooves: false,
-  cnc_holes: false,
-  cnc_routing: false,
-  custom_cnc: false,
-  advanced_grouping: false,
+  grooves: true,
+  cnc_holes: true,
+  cnc_routing: true,
+  // Note: custom_cnc removed - not implemented
+  advanced_grouping: true,
   part_notes: true,
 };
 

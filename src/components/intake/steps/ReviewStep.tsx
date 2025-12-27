@@ -4,6 +4,8 @@ import * as React from "react";
 import {
   Trash2,
   Plus,
+  BarChart3,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +38,7 @@ export function ReviewStep() {
   } = useIntakeStore();
 
   const [showStats, setShowStats] = React.useState(true);
+  const [showMobileStats, setShowMobileStats] = React.useState(false);
   const [showAddModal, setShowAddModal] = React.useState(false);
   const [newPartForm, setNewPartForm] = React.useState({
     label: "",
@@ -122,6 +125,17 @@ export function ReviewStep() {
           >
             <Trash2 className="h-4 w-4" />
             <span className="hidden sm:inline ml-1">Clear</span>
+          </Button>
+
+          {/* Toggle stats - mobile (opens drawer) */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowMobileStats(true)}
+            className="xl:hidden"
+          >
+            <BarChart3 className="h-4 w-4" />
+            <span className="hidden sm:inline ml-1">Stats</span>
           </Button>
 
           {/* Toggle stats sidebar - desktop */}
@@ -247,6 +261,30 @@ export function ReviewStep() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mobile Stats Drawer */}
+      {showMobileStats && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={() => setShowMobileStats(false)}
+          />
+          <div className="fixed inset-x-0 bottom-0 z-50 bg-[var(--card)] rounded-t-3xl max-h-[80vh] overflow-auto safe-area-inset-bottom animate-slide-up">
+            <div className="sticky top-0 flex items-center justify-between p-4 border-b border-[var(--border)] bg-[var(--card)]">
+              <h2 className="font-semibold text-lg">Cutlist Statistics</h2>
+              <button
+                onClick={() => setShowMobileStats(false)}
+                className="p-2 hover:bg-[var(--muted)] rounded-full"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 pb-20">
+              <StatsSidebar />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

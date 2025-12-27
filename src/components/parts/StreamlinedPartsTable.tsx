@@ -30,6 +30,7 @@ import {
   ChevronUp,
   Check,
   Package,
+  FolderOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -274,6 +275,18 @@ function PartRow({
           <span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Fixed orientation">
             <Lock className="h-3.5 w-3.5" />
           </span>
+        )}
+      </td>
+
+      {/* Group */}
+      <td className="px-2 py-2 text-center">
+        {part.group_id ? (
+          <Badge variant="outline" className="font-normal text-xs bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-400 dark:border-indigo-800">
+            <FolderOpen className="h-3 w-3 mr-1" />
+            {part.group_id}
+          </Badge>
+        ) : (
+          <span className="text-[var(--muted-foreground)] text-xs">—</span>
         )}
       </td>
 
@@ -587,6 +600,25 @@ export function StreamlinedPartsTable() {
     });
   };
 
+  // Apply bulk group change to all selected parts
+  const handleBulkGroup = (groupId: string | undefined) => {
+    selectedPartIds.forEach(partId => {
+      const part = parts.find(p => p.part_id === partId);
+      if (part) {
+        updatePart(partId, { ...part, group_id: groupId });
+      }
+    });
+  };
+
+  // Get unique groups from current parts for bulk group dropdown
+  const uniqueGroups = React.useMemo(() => {
+    const groups = new Set<string>();
+    parts.forEach(p => {
+      if (p.group_id) groups.add(p.group_id);
+    });
+    return Array.from(groups).sort();
+  }, [parts]);
+
   // Calculate totals
   const totalPieces = parts.reduce((sum, p) => sum + p.qty, 0);
   const totalArea = parts.reduce((sum, p) => sum + p.qty * p.size.L * p.size.W, 0);
@@ -679,6 +711,39 @@ export function StreamlinedPartsTable() {
                       <DropdownMenuItem onClick={() => handleBulkRotation(false)}>
                         <Lock className="h-4 w-4 mr-2 text-amber-600" />
                         Lock rotation
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Group Bulk Action */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 px-2">
+                        <FolderOpen className="h-4 w-4 mr-1" />
+                        Group
+                        <ChevronDown className="h-3 w-3 ml-1" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                      <DropdownMenuLabel className="text-xs">Set Group</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => handleBulkGroup(undefined)}>
+                        <span className="text-[var(--muted-foreground)]">No group</span>
+                      </DropdownMenuItem>
+                      {uniqueGroups.map((g) => (
+                        <DropdownMenuItem key={g} onClick={() => handleBulkGroup(g)}>
+                          <FolderOpen className="h-4 w-4 mr-2 text-indigo-600" />
+                          {g}
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem 
+                        onClick={() => {
+                          const name = prompt("Enter new group name:");
+                          if (name?.trim()) handleBulkGroup(name.trim());
+                        }}
+                      >
+                        <span className="text-[var(--cai-teal)]">+ Create new group...</span>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -824,6 +889,9 @@ export function StreamlinedPartsTable() {
                       </th>
                       <th className="w-12 px-2 py-2 text-center text-xs font-medium" title="Can Rotate">
                         Rot
+                      </th>
+                      <th className="px-2 py-2 text-center text-xs font-medium" title="Group/Assembly">
+                        Group
                       </th>
                       <th className="px-2 py-2 text-center text-xs font-medium text-teal-600">
                         Ops
