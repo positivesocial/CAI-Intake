@@ -18,6 +18,7 @@ import {
   Layers,
   PanelLeftClose,
   PanelLeft,
+  QrCode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +50,11 @@ const NAV_ITEMS = [
     label: "Materials",
     href: "/materials",
     icon: Layers,
+  },
+  {
+    label: "Templates",
+    href: "/templates",
+    icon: QrCode,
   },
 ];
 

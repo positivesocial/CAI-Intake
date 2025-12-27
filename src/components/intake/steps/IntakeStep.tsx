@@ -7,7 +7,6 @@ import {
   FileSpreadsheet,
   Mic,
   Upload,
-  QrCode,
   Inbox,
   ChevronRight,
   AlertCircle,
@@ -24,7 +23,6 @@ import {
   ExcelImport,
   VoiceDictation,
   FileUpload,
-  TemplateGenerator,
 } from "@/components/intake";
 import type { StreamlinedEntryFormRef } from "@/components/intake/StreamlinedEntryForm";
 import { useIntakeStore } from "@/lib/store";
@@ -62,12 +60,6 @@ const INTAKE_MODES = [
     icon: Upload,
     description: "PDF, images, docs",
   },
-  {
-    id: "template",
-    label: "Template",
-    icon: QrCode,
-    description: "QR-coded forms",
-  },
 ] as const;
 
 export function IntakeStep() {
@@ -95,7 +87,7 @@ export function IntakeStep() {
         value={activeMode}
         onValueChange={(v) => setActiveMode(v as typeof activeMode)}
       >
-        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto p-1">
+        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 h-auto p-1">
           {INTAKE_MODES.map((mode) => {
             const Icon = mode.icon;
             return (
@@ -145,11 +137,6 @@ export function IntakeStep() {
         {/* File Upload */}
         <TabsContent value="file" className="mt-4">
           <FileUpload />
-        </TabsContent>
-
-        {/* Template */}
-        <TabsContent value="template" className="mt-4">
-          <TemplateGenerator />
         </TabsContent>
       </Tabs>
 
