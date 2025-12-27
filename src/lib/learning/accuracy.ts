@@ -459,41 +459,48 @@ export async function getAccuracyTrends(
     groupBy?: "day" | "week" | "month";
   }
 ): Promise<AccuracyTrend[]> {
-  const supabase = getClient();
-  if (!supabase) return [];
-
   const days = options?.days || 30;
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
   try {
-    let query = supabase
-      .from("parsing_accuracy_logs")
-      .select("accuracy, total_parts, provider, created_at")
-      .gte("created_at", startDate.toISOString())
-      .order("created_at", { ascending: true });
+    const whereClause: {
+      createdAt: { gte: Date };
+      organizationId?: string;
+      provider?: string;
+    } = {
+      createdAt: { gte: startDate },
+    };
 
     if (organizationId) {
-      query = query.eq("organization_id", organizationId);
+      whereClause.organizationId = organizationId;
     }
 
     if (options?.provider) {
-      query = query.eq("provider", options.provider);
+      whereClause.provider = options.provider;
     }
 
-    const { data, error } = await query;
+    const data = await prisma.parsingAccuracyLog.findMany({
+      where: whereClause,
+      select: {
+        accuracy: true,
+        totalParts: true,
+        provider: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
-    if (error) throw error;
     if (!data || data.length === 0) return [];
 
     // Group by date
     const grouped = new Map<string, { accuracy: number[]; parts: number }>();
     
     for (const row of data) {
-      const date = new Date(row.created_at).toISOString().split("T")[0];
+      const date = row.createdAt.toISOString().split("T")[0];
       const existing = grouped.get(date) || { accuracy: [], parts: 0 };
       existing.accuracy.push(row.accuracy);
-      existing.parts += row.total_parts;
+      existing.parts += row.totalParts;
       grouped.set(date, existing);
     }
 
@@ -515,23 +522,23 @@ export async function getAccuracyByCategory(
   organizationId?: string,
   options?: { field?: string }
 ): Promise<AccuracyBreakdown[]> {
-  const supabase = getClient();
-  if (!supabase) return [];
-
   try {
-    let query = supabase
-      .from("parsing_accuracy_logs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const whereClause: { organizationId?: string } = {};
 
     if (organizationId) {
-      query = query.eq("organization_id", organizationId);
+      whereClause.organizationId = organizationId;
     }
 
-    const { data, error } = await query;
+    const data = await prisma.parsingAccuracyLog.findMany({
+      where: whereClause,
+      select: {
+        accuracy: true,
+        provider: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
 
-    if (error) throw error;
     if (!data || data.length === 0) return [];
 
     // Group by provider and calculate averages
@@ -583,33 +590,37 @@ export async function getAccuracyByCategory(
 export async function identifyWeakAreas(
   organizationId?: string
 ): Promise<WeakArea[]> {
-  const supabase = getClient();
-  if (!supabase) return [];
-
   try {
-    let query = supabase
-      .from("parsing_accuracy_logs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(50);
+    const whereClause: { organizationId?: string } = {};
 
     if (organizationId) {
-      query = query.eq("organization_id", organizationId);
+      whereClause.organizationId = organizationId;
     }
 
-    const { data, error } = await query;
+    const data = await prisma.parsingAccuracyLog.findMany({
+      where: whereClause,
+      select: {
+        dimensionAccuracy: true,
+        materialAccuracy: true,
+        edgingAccuracy: true,
+        groovingAccuracy: true,
+        quantityAccuracy: true,
+        labelAccuracy: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
 
-    if (error) throw error;
     if (!data || data.length === 0) return [];
 
     // Calculate averages for each field
-    const fields = [
-      { key: "dimension_accuracy", name: "Dimensions" },
-      { key: "material_accuracy", name: "Materials" },
-      { key: "edging_accuracy", name: "Edge Banding" },
-      { key: "grooving_accuracy", name: "Grooving" },
-      { key: "quantity_accuracy", name: "Quantities" },
-      { key: "label_accuracy", name: "Labels" },
+    const fields: { key: keyof typeof data[0]; name: string }[] = [
+      { key: "dimensionAccuracy", name: "Dimensions" },
+      { key: "materialAccuracy", name: "Materials" },
+      { key: "edgingAccuracy", name: "Edge Banding" },
+      { key: "groovingAccuracy", name: "Grooving" },
+      { key: "quantityAccuracy", name: "Quantities" },
+      { key: "labelAccuracy", name: "Labels" },
     ];
 
     const weakAreas: WeakArea[] = [];
