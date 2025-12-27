@@ -43,6 +43,8 @@ interface TemplateConfig {
   includeDrilling: boolean;
   includeCNC: boolean;
   includeNotes: boolean;
+  includeFillInGuide: boolean;
+  includeMaterialsRef: boolean;
   rows: number;
   version: string;
 }
@@ -71,7 +73,9 @@ export function TemplateGenerator() {
     includeDrilling: false,
     includeCNC: false,
     includeNotes: true,
-    rows: 25,
+    includeFillInGuide: true,
+    includeMaterialsRef: true,
+    rows: 35,
     version: "1.0",
   });
 
@@ -218,6 +222,8 @@ export function TemplateGenerator() {
     includeDrilling: config.includeDrilling,
     includeCNC: config.includeCNC,
     includeNotes: config.includeNotes,
+    includeFillInGuide: config.includeFillInGuide,
+    includeMaterialsRef: config.includeMaterialsRef,
     materials: currentCutlist.materials.map(m => ({
       material_id: m.material_id,
       name: m.name,
@@ -339,13 +345,13 @@ export function TemplateGenerator() {
                   placeholder="1.0"
                 />
                 <Input
-                  label="Rows"
+                  label="Rows per page"
                   type="number"
-                  min="5"
-                  max="100"
+                  min="10"
+                  max="50"
                   value={config.rows}
                   onChange={(e) =>
-                    setConfig((c) => ({ ...c, rows: parseInt(e.target.value) || 25 }))
+                    setConfig((c) => ({ ...c, rows: parseInt(e.target.value) || 35 }))
                   }
                 />
               </div>
@@ -421,6 +427,41 @@ export function TemplateGenerator() {
                     }
                   />
                   <span>Notes column</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Additional Pages */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Additional Pages</p>
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer p-2 rounded-lg hover:bg-[var(--muted)] transition-colors">
+                  <input
+                    type="checkbox"
+                    className="rounded border-[var(--border)] accent-[var(--cai-teal)] h-4 w-4"
+                    checked={config.includeFillInGuide}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, includeFillInGuide: e.target.checked }))
+                    }
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <BookOpen className="h-3.5 w-3.5 text-purple-500" />
+                    Fill-in Guide (separate page)
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer p-2 rounded-lg hover:bg-[var(--muted)] transition-colors pl-8">
+                  <input
+                    type="checkbox"
+                    className="rounded border-[var(--border)] accent-[var(--cai-teal)] h-4 w-4"
+                    checked={config.includeMaterialsRef}
+                    disabled={!config.includeFillInGuide}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, includeMaterialsRef: e.target.checked }))
+                    }
+                  />
+                  <span className={config.includeFillInGuide ? "" : "text-[var(--muted-foreground)]"}>
+                    Include Materials & Edgebands reference
+                  </span>
                 </label>
               </div>
             </div>

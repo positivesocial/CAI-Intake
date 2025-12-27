@@ -81,6 +81,12 @@ export interface OrgTemplateConfig {
   includeCNC?: boolean;
   includeNotes?: boolean;
   
+  /** Include fill-in guide (on separate page) */
+  includeFillInGuide?: boolean;
+  
+  /** Include materials reference (on fill-in guide page) */
+  includeMaterialsRef?: boolean;
+  
   /** Organization's materials library */
   materials?: MaterialDef[];
   
@@ -490,18 +496,21 @@ function generateMaterialsReference(config: OrgTemplateConfig): string {
 // ============================================================
 
 export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplate {
-  // Template ID: CAI-{org_id}-v{version}
+  // Template ID: CAI-{short_org_id}-v{version}
   // - CAI prefix = CAI Intake template
-  // - org_id = Which organization (unique)
+  // - short_org_id = First 8 chars of org ID (for compact QR)
   // - version = Template version (increments when shortcodes change)
   const version = config.version || "1.0";
-  const templateId = `CAI-${config.branding.org_id}-v${version}`;
+  const shortOrgId = config.branding.org_id.slice(0, 8); // Use first 8 chars for compact ID
+  const templateId = `CAI-${shortOrgId}-v${version}`;
   const shortcodesHash = config.shortcodesHash || generateShortcodesHash(config.shortcodes);
   const primaryColor = config.branding.primary_color || "#6B21A8"; // Purple default (like Cabinet AI)
   const secondaryColor = config.branding.secondary_color || "#4C1D95";
   const title = config.title || config.branding.template_title || "Smart Cutlist Template";
-  const rows = config.rows || 30; // More rows for portrait
+  const rows = config.rows || 35; // 35 rows default (more since guide is on separate page)
   const orgName = config.branding.name || "Organization";
+  const includeFillInGuide = config.includeFillInGuide !== false; // Default true
+  const includeMaterialsRef = config.includeMaterialsRef !== false; // Default true
   
   // Build column headers based on enabled operations
   interface ColumnDef {
@@ -512,31 +521,31 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     subLabel?: string;
   }
   
-  // Portrait layout - narrower columns
+  // Portrait layout - wider Part Name and Notes columns
   const columns: ColumnDef[] = [
-    { key: "#", label: "#", width: "22px" },
-    { key: "label", label: "Part Name", width: "100px" },
-    { key: "L", label: "L(mm)", width: "42px" },
-    { key: "W", label: "W(mm)", width: "42px" },
-    { key: "Thk", label: "Thk", width: "28px" },
-    { key: "qty", label: "Qty", width: "26px" },
-    { key: "material", label: "Material", width: "60px" },
+    { key: "#", label: "#", width: "20px" },
+    { key: "label", label: "Part Name", width: "120px" }, // Wider for part names
+    { key: "L", label: "L(mm)", width: "38px" },
+    { key: "W", label: "W(mm)", width: "38px" },
+    { key: "Thk", label: "Thk", width: "26px" },
+    { key: "qty", label: "Qty", width: "24px" },
+    { key: "material", label: "Material", width: "55px" },
   ];
   
   if (config.includeEdgebanding !== false) {
-    columns.push({ key: "edge", label: "Edge", subLabel: "(code)", width: "40px", isOps: true });
+    columns.push({ key: "edge", label: "Edge", subLabel: "(code)", width: "42px", isOps: true });
   }
   if (config.includeGrooves) {
-    columns.push({ key: "groove", label: "Groove", subLabel: "(GL/GW)", width: "45px", isOps: true });
+    columns.push({ key: "groove", label: "Groove", subLabel: "(GL/GW)", width: "48px", isOps: true });
   }
   if (config.includeDrilling) {
-    columns.push({ key: "drill", label: "Drill", subLabel: "(code)", width: "40px", isOps: true });
+    columns.push({ key: "drill", label: "Drill", subLabel: "(code)", width: "42px", isOps: true });
   }
   if (config.includeCNC) {
-    columns.push({ key: "cnc", label: "CNC", subLabel: "(code)", width: "45px", isOps: true });
+    columns.push({ key: "cnc", label: "CNC", subLabel: "(code)", width: "48px", isOps: true });
   }
   if (config.includeNotes !== false) {
-    columns.push({ key: "notes", label: "Notes", width: "70px" });
+    columns.push({ key: "notes", label: "Notes", width: "90px" }); // Wider notes column
   }
   
   // Generate QR data - MINIMAL content for robust scanning
@@ -544,15 +553,43 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   const qrContent = qrDataObj.qr_content; // Just the template ID string
   const fullMetadata = JSON.stringify(qrDataObj.full_metadata); // Stored separately
   
-  // Generate QR code SVG directly (no CDN dependency)
-  const qrCodeSVG = generateQRCodeSVG(qrContent, primaryColor, 55);
+  // Generate QR code SVG directly (no CDN dependency) - LARGER 70px
+  const qrCodeSVG = generateQRCodeSVG(qrContent, primaryColor, 70);
   
-  // Generate fill-in guide
-  const fillInGuide = generateFillInGuide(config, primaryColor);
+  // Generate fill-in guide (for separate page)
+  const fillInGuide = includeFillInGuide ? generateFillInGuide(config, primaryColor) : "";
   
-  // Generate materials reference
-  const materialsRef = generateMaterialsReference(config);
+  // Generate materials reference (for fill-in guide page)
+  const materialsRef = includeMaterialsRef ? generateMaterialsReference(config) : "";
   
+  // Generate Fill-in Guide Page HTML (separate page)
+  const fillInGuidePage = includeFillInGuide ? `
+    <div class="page-break"></div>
+    <div class="guide-page">
+      <div class="guide-page-header">
+        <div class="guide-page-title">
+          <span class="org-name-small">${orgName}</span>
+          <span class="guide-title-text">FILL-IN GUIDE & REFERENCE</span>
+        </div>
+        <div class="template-ref">${templateId}</div>
+      </div>
+      
+      ${fillInGuide}
+      
+      ${materialsRef ? `
+        <div class="materials-ref-section">
+          <h3>Materials & Edgebands Reference</h3>
+          ${materialsRef}
+        </div>
+      ` : ""}
+      
+      <div class="guide-page-footer">
+        <span>${orgName}</span>
+        <span>CabinetAI™ Smart Template v${version}</span>
+      </div>
+    </div>
+  ` : "";
+
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -562,11 +599,12 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
   <style>
     @page { 
       size: A4 portrait; 
-      margin: 12mm 10mm 10mm 10mm; 
+      margin: 8mm 8mm 8mm 8mm; 
     }
     @media print {
       .no-print { display: none !important; }
       body { padding: 0; }
+      .page-break { page-break-before: always; }
     }
     
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -576,29 +614,34 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       font-size: 9px; 
       color: #1a1a1a;
       line-height: 1.3;
-      padding: 15mm 12mm 12mm 12mm;
+      padding: 10mm;
       position: relative;
-      min-height: 100vh;
     }
     
-    /* Corner Alignment Markers - positioned in margin area */
+    /* Page Break */
+    .page-break {
+      page-break-before: always;
+      height: 0;
+    }
+    
+    /* Corner Alignment Markers - positioned in actual page margins */
     .corner-marker {
       position: fixed;
-      width: 15px;
-      height: 15px;
+      width: 12px;
+      height: 12px;
       border: 2px solid #000;
-      z-index: 100;
+      z-index: 1000;
     }
-    .corner-tl { top: 3mm; left: 3mm; border-right: none; border-bottom: none; }
-    .corner-tr { top: 3mm; right: 3mm; border-left: none; border-bottom: none; }
-    .corner-bl { bottom: 3mm; left: 3mm; border-right: none; border-top: none; }
-    .corner-br { bottom: 3mm; right: 3mm; border-left: none; border-top: none; }
+    .corner-tl { top: 2mm; left: 2mm; border-right: none; border-bottom: none; }
+    .corner-tr { top: 2mm; right: 2mm; border-left: none; border-bottom: none; }
+    .corner-bl { bottom: 2mm; left: 2mm; border-right: none; border-top: none; }
+    .corner-br { bottom: 2mm; right: 2mm; border-left: none; border-top: none; }
     
     /* Page Number - top right corner */
     .page-indicator {
       position: fixed;
-      top: 4mm;
-      right: 25mm;
+      top: 2mm;
+      right: 20mm;
       display: flex;
       align-items: center;
       gap: 3px;
@@ -608,8 +651,8 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     }
     
     .page-num-box {
-      width: 18px;
-      height: 16px;
+      width: 16px;
+      height: 14px;
       border: 1.5px solid #333;
       display: inline-flex;
       align-items: center;
@@ -617,48 +660,42 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       background: white;
     }
     
-    /* Header Area */
+    /* Header Area - Compact */
     .header-container {
       display: flex;
-      justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 6px;
-      border-bottom: 2px solid ${primaryColor};
+      gap: 12px;
+      margin-bottom: 8px;
       padding-bottom: 6px;
+      border-bottom: 2px solid ${primaryColor};
     }
     
-    /* Left: QR + Branding */
-    .header-left {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-    }
-    
+    /* QR + Branding Section */
     .qr-section {
       text-align: center;
+      flex-shrink: 0;
     }
     
     .qr-code-container {
-      width: 55px;
-      height: 55px;
+      width: 70px;
+      height: 70px;
       border: 1px solid #ccc;
       display: flex;
       align-items: center;
       justify-content: center;
       background: white;
-      border-radius: 3px;
+      border-radius: 4px;
       overflow: hidden;
     }
     
-    .qr-code-container canvas,
-    .qr-code-container img {
-      max-width: 100% !important;
-      max-height: 100% !important;
+    .qr-code-container svg {
+      width: 100%;
+      height: 100%;
     }
     
     .template-id {
       font-family: 'Consolas', 'Monaco', monospace;
-      font-size: 6px;
+      font-size: 7px;
       color: #666;
       margin-top: 2px;
       letter-spacing: 0.3px;
@@ -667,11 +704,12 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     .branding-info {
       display: flex;
       flex-direction: column;
-      gap: 1px;
+      gap: 2px;
+      padding-top: 4px;
     }
     
     .org-name {
-      font-size: 14px;
+      font-size: 16px;
       font-weight: 700;
       color: #000;
       text-transform: uppercase;
@@ -679,64 +717,71 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     }
     
     .template-title {
-      font-size: 9px;
+      font-size: 10px;
       color: #666;
     }
     
     .logo {
-      max-height: 40px;
+      max-height: 35px;
       max-width: 80px;
     }
     
-    /* Right: Project Information */
-    .header-right {
-      flex: 1;
-      max-width: 280px;
+    /* PROJECT INFORMATION - Full Width Before Table */
+    .project-info-section {
+      margin-bottom: 10px;
+      border: 2px solid ${primaryColor};
+      border-radius: 4px;
+      overflow: hidden;
     }
     
-    .project-info-box {
-      border: 1.5px solid #333;
-      padding: 5px 8px;
-    }
-    
-    .project-info-title {
-      font-size: 8px;
+    .project-info-header {
+      background: ${primaryColor};
+      color: white;
       font-weight: 700;
-      margin-bottom: 4px;
-      color: #333;
+      font-size: 10px;
+      padding: 5px 10px;
+      letter-spacing: 0.5px;
+    }
+    
+    .project-info-content {
+      padding: 10px 12px;
+      background: #fafafa;
     }
     
     .project-fields {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 3px 8px;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px 16px;
     }
     
     .field-row {
       display: flex;
-      align-items: center;
-      gap: 3px;
+      align-items: baseline;
+      gap: 6px;
+    }
+    
+    .field-row.full-width {
+      grid-column: span 2;
     }
     
     .field-label {
-      font-size: 7px;
+      font-size: 9px;
       font-weight: 600;
       white-space: nowrap;
-      min-width: 55px;
+      color: #333;
     }
     
     .field-input {
       flex: 1;
-      border-bottom: 1px solid #333;
-      min-width: 40px;
-      height: 12px;
+      border-bottom: 1.5px solid #333;
+      min-width: 60px;
+      height: 18px;
     }
     
     /* Main Table */
     .main-table {
       width: 100%;
       border-collapse: collapse;
-      margin: 6px 0;
       table-layout: fixed;
     }
     
@@ -752,8 +797,8 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
       background: ${primaryColor};
       color: white;
       font-weight: 600;
-      font-size: 7px;
-      padding: 3px 2px;
+      font-size: 8px;
+      padding: 4px 2px;
     }
     
     .main-table th.ops-header {
@@ -769,7 +814,7 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     }
     
     .main-table td {
-      height: 16px;
+      height: 15px;
       font-size: 8px;
     }
     
@@ -781,133 +826,208 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     
     .main-table td.part-name {
       text-align: left;
-      padding-left: 4px;
+      padding-left: 3px;
     }
     
-    /* Fill-in Guide */
-    .fill-in-guide {
-      margin-top: 8px;
-      border: 1px solid #ddd;
+    /* Footer */
+    .footer {
+      margin-top: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       font-size: 7px;
+      color: #888;
+      padding-top: 3px;
+      border-top: 1px solid #e0e0e0;
+    }
+    
+    /* ========================================= */
+    /* FILL-IN GUIDE PAGE STYLES */
+    /* ========================================= */
+    
+    .guide-page {
+      padding: 10mm;
+    }
+    
+    .guide-page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid ${primaryColor};
+    }
+    
+    .guide-page-title {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    
+    .org-name-small {
+      font-size: 12px;
+      font-weight: 700;
+      color: #333;
+      text-transform: uppercase;
+    }
+    
+    .guide-title-text {
+      font-size: 16px;
+      font-weight: 700;
+      color: ${primaryColor};
+    }
+    
+    .template-ref {
+      font-family: 'Consolas', monospace;
+      font-size: 9px;
+      color: #666;
+    }
+    
+    /* Fill-in Guide - Larger on dedicated page */
+    .guide-page .fill-in-guide {
+      margin-bottom: 20px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .fill-in-guide {
+      border: 1px solid #ddd;
+      font-size: 8px;
     }
     
     .guide-header {
+      background: ${primaryColor};
       color: white;
       font-weight: 700;
-      font-size: 8px;
-      padding: 3px 8px;
+      font-size: 10px;
+      padding: 6px 12px;
       letter-spacing: 0.5px;
     }
     
     .guide-content {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0;
-      padding: 4px 8px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      padding: 12px;
       background: #fafafa;
     }
     
     .guide-section {
-      flex: 1;
-      min-width: 100px;
-      padding: 3px 6px;
-      border-right: 1px solid #e0e0e0;
-    }
-    
-    .guide-section:last-child {
-      border-right: none;
+      padding: 8px;
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
     }
     
     .guide-section.ocr-tips {
       background: #FEF3C7;
-      border-radius: 3px;
-      margin-left: 6px;
-      border-right: none;
-      flex: 0 0 auto;
-      min-width: 80px;
+      border-color: #F59E0B;
     }
     
     .guide-title {
       font-weight: 700;
-      font-size: 7px;
-      margin-bottom: 2px;
-      color: #333;
+      font-size: 9px;
+      margin-bottom: 6px;
+      color: ${primaryColor};
+      border-bottom: 1px solid #e0e0e0;
+      padding-bottom: 4px;
     }
     
     .guide-codes {
       display: flex;
       flex-direction: column;
-      gap: 1px;
+      gap: 3px;
     }
     
     .guide-item {
-      font-size: 6.5px;
-      color: #555;
+      font-size: 8px;
+      color: #333;
+      display: flex;
+      gap: 4px;
     }
     
     .guide-item code {
-      background: ${primaryColor}15;
+      background: ${primaryColor}20;
       color: ${primaryColor};
-      padding: 0 2px;
+      padding: 1px 4px;
       border-radius: 2px;
       font-family: 'Consolas', monospace;
-      font-weight: 600;
-      font-size: 6.5px;
+      font-weight: 700;
+      font-size: 8px;
+      min-width: 35px;
+      text-align: center;
+    }
+    
+    .ocr-tips .guide-title {
+      color: #92400E;
     }
     
     .ocr-tips .guide-item {
-      font-weight: 700;
+      font-weight: 600;
       color: #92400E;
-      font-size: 7px;
+      font-size: 9px;
     }
     
-    /* Materials Reference */
-    .materials-ref-container {
-      margin-top: 4px;
-      font-size: 6.5px;
+    /* Materials Reference Section */
+    .materials-ref-section {
+      margin-top: 20px;
+      padding: 12px;
+      background: #f8f8f8;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .materials-ref-section h3 {
+      font-size: 11px;
+      font-weight: 700;
+      color: ${primaryColor};
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #ddd;
     }
     
     .materials-ref {
-      display: inline-flex;
-      align-items: flex-start;
-      gap: 4px;
-      margin-right: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
     }
     
     .ref-title {
-      font-weight: 600;
-      font-size: 6.5px;
-      color: #666;
+      font-weight: 700;
+      font-size: 9px;
+      color: #333;
+      margin-right: 8px;
     }
     
     .ref-items {
       display: flex;
       flex-wrap: wrap;
-      gap: 3px;
+      gap: 6px;
     }
     
     .ref-item {
-      font-size: 6.5px;
-      background: #f0f0f0;
-      padding: 1px 3px;
-      border-radius: 2px;
+      font-size: 8px;
+      background: white;
+      padding: 3px 6px;
+      border-radius: 3px;
+      border: 1px solid #ddd;
     }
     
     .ref-item code {
       color: ${primaryColor};
-      font-weight: 600;
-      margin-right: 2px;
+      font-weight: 700;
+      margin-right: 4px;
     }
     
-    /* Footer */
-    .footer {
-      margin-top: 6px;
+    .guide-page-footer {
+      margin-top: 20px;
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      font-size: 6.5px;
+      font-size: 8px;
       color: #888;
-      padding-top: 3px;
+      padding-top: 8px;
       border-top: 1px solid #e0e0e0;
     }
     
@@ -945,53 +1065,50 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     Page: <span class="page-num-box"></span> of <span class="page-num-box"></span>
   </div>
   
-  <!-- Header -->
+  <!-- Header - QR + Branding -->
   <div class="header-container">
-    <!-- Left: QR + Branding -->
-    <div class="header-left">
-      <div class="qr-section">
-        <div class="qr-code-container">
-          ${qrCodeSVG}
-        </div>
-        <div class="template-id">${templateId}</div>
+    <div class="qr-section">
+      <div class="qr-code-container">
+        ${qrCodeSVG}
       </div>
-      
-      <div class="branding-info">
-        ${config.branding.logo_url ? `<img src="${config.branding.logo_url}" alt="" class="logo" onerror="this.style.display='none'">` : ""}
-        <div class="org-name">${orgName}</div>
-        <div class="template-title">${title} v${version}</div>
-      </div>
+      <div class="template-id">${templateId}</div>
     </div>
     
-    <!-- Right: Project Information -->
-    <div class="header-right">
-      <div class="project-info-box">
-        <div class="project-info-title">PROJECT INFO (Must fill for multi-page)</div>
-        <div class="project-fields">
-          <div class="field-row">
-            <span class="field-label">Project:</span>
-            <span class="field-input"></span>
-          </div>
-          <div class="field-row">
-            <span class="field-label">Code:</span>
-            <span class="field-input"></span>
-          </div>
-          <div class="field-row">
-            <span class="field-label">Customer:</span>
-            <span class="field-input"></span>
-          </div>
-          <div class="field-row">
-            <span class="field-label">Phone:</span>
-            <span class="field-input"></span>
-          </div>
-          <div class="field-row">
-            <span class="field-label">Email:</span>
-            <span class="field-input"></span>
-          </div>
-          <div class="field-row">
-            <span class="field-label">Section:</span>
-            <span class="field-input"></span>
-          </div>
+    <div class="branding-info">
+      ${config.branding.logo_url ? `<img src="${config.branding.logo_url}" alt="" class="logo" onerror="this.style.display='none'">` : ""}
+      <div class="org-name">${orgName}</div>
+      <div class="template-title">${title} v${version}</div>
+    </div>
+  </div>
+  
+  <!-- PROJECT INFORMATION - Full Width, Before Table -->
+  <div class="project-info-section">
+    <div class="project-info-header">📋 PROJECT INFORMATION (Required for multi-page cutlists)</div>
+    <div class="project-info-content">
+      <div class="project-fields">
+        <div class="field-row full-width">
+          <span class="field-label">Project Name:</span>
+          <span class="field-input"></span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Code:</span>
+          <span class="field-input"></span>
+        </div>
+        <div class="field-row full-width">
+          <span class="field-label">Customer:</span>
+          <span class="field-input"></span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Phone:</span>
+          <span class="field-input"></span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Section/Area:</span>
+          <span class="field-input"></span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Date:</span>
+          <span class="field-input"></span>
         </div>
       </div>
     </div>
@@ -1022,19 +1139,14 @@ export function generateOrgTemplate(config: OrgTemplateConfig): GeneratedTemplat
     </tbody>
   </table>
   
-  <!-- Fill-in Guide -->
-  ${fillInGuide}
-  
-  <!-- Materials Reference -->
-  <div class="materials-ref-container">
-    ${materialsRef}
-  </div>
-  
   <!-- Footer -->
   <div class="footer">
     <span>${orgName}${config.branding.contact_info ? ` | ${config.branding.contact_info}` : ""}</span>
     <span>CabinetAI™ Smart Template v${version}</span>
   </div>
+  
+  <!-- Fill-in Guide Page (Optional - Separate Page) -->
+  ${fillInGuidePage}
   
   <!-- Print Button -->
   <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
