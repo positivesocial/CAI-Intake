@@ -491,6 +491,7 @@ export function detectPartsSheet(sheets: SheetInfo[]): number {
   // 3. Sheet name hints (parts, cutlist, BOM, etc.)
   
   const partsNamePatterns = [
+    /^parts?\s*list$/i,  // Exact "Parts List" match (CAI template)
     /parts?/i,
     /cutlist/i,
     /cut.*list/i,
@@ -544,8 +545,19 @@ export function detectPartsSheet(sheets: SheetInfo[]): number {
       score += 2;
     }
     
-    // Avoid sheets that look like instructions or notes
-    const skipPatterns = [/instruction/i, /note/i, /readme/i, /help/i, /info/i];
+    // Avoid sheets that look like instructions, notes, or reference material
+    const skipPatterns = [
+      /instruction/i, 
+      /note/i, 
+      /readme/i, 
+      /help/i, 
+      /^info$/i,           // Skip "Info" but not "Project Info"
+      /project\s*info/i,   // Skip "Project Info" (CAI template sheet 1)
+      /fill.*in.*guide/i,  // Skip "Fill-In Guide"
+      /materials?\s*ref/i, // Skip "Materials Reference"
+      /reference/i,
+      /guide/i,
+    ];
     for (const pattern of skipPatterns) {
       if (pattern.test(sheet.name)) {
         score -= 15;

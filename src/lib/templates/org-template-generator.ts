@@ -1248,58 +1248,130 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
   };
   
   // ============================================
-  // SHEET 1: Parts List (Cutlist)
+  // SHEET 1: Project Info
   // ============================================
-  const partsSheetRows: string[] = [];
+  const projectInfoRows: string[] = [];
   
-  // Row 1: Header with org name and template ID
-  partsSheetRows.push(row([
+  // Header with org name and template ID
+  projectInfoRows.push(row([
     cell(orgName, "String", "OrgName"),
     cell("", "String"),
-    cell("", "String"),
     cell(templateId, "String", "TemplateId"),
-    cell("", "String"),
-    cell("", "String"),
+  ]));
+  projectInfoRows.push(row([
     cell(`Smart Cutlist Template v${version}`, "String", "SubTitle"),
   ]));
+  projectInfoRows.push(row([cell("")]));
   
-  // Row 2: Empty
-  partsSheetRows.push(row([cell("")]));
-  
-  // Row 3: Project Info Header
-  partsSheetRows.push(row([
-    cell("📋 PROJECT INFORMATION (Required for multi-page cutlists)", "String", "SectionHeader"),
+  // Project Info Section
+  projectInfoRows.push(row([
+    cell("📋 PROJECT INFORMATION", "String", "SectionHeader"),
   ]));
+  projectInfoRows.push(row([cell("Fill in the details below. This info helps track multi-page cutlists.")]));
+  projectInfoRows.push(row([cell("")]));
   
-  // Row 4-5: Project fields
-  partsSheetRows.push(row([
+  // Project fields
+  projectInfoRows.push(row([
     cell("Project Name:", "String", "FieldLabel"),
     cell("", "String", "FieldInput"),
     cell("", "String", "FieldInput"),
-    cell("Code:", "String", "FieldLabel"),
+  ]));
+  projectInfoRows.push(row([
+    cell("Project Code:", "String", "FieldLabel"),
     cell("", "String", "FieldInput"),
+  ]));
+  projectInfoRows.push(row([cell("")]));
+  
+  // Customer fields
+  projectInfoRows.push(row([
+    cell("Customer Name:", "String", "FieldLabel"),
+    cell("", "String", "FieldInput"),
+    cell("", "String", "FieldInput"),
+  ]));
+  projectInfoRows.push(row([
+    cell("Phone:", "String", "FieldLabel"),
+    cell("", "String", "FieldInput"),
+  ]));
+  projectInfoRows.push(row([
+    cell("Email:", "String", "FieldLabel"),
+    cell("", "String", "FieldInput"),
+  ]));
+  projectInfoRows.push(row([cell("")]));
+  
+  // Page tracking
+  projectInfoRows.push(row([
+    cell("📄 PAGE TRACKING", "String", "SectionHeader"),
+  ]));
+  projectInfoRows.push(row([
     cell("Page:", "String", "FieldLabel"),
     cell("", "String", "FieldInput"),
     cell("of", "String"),
     cell("", "String", "FieldInput"),
   ]));
-  
-  partsSheetRows.push(row([
-    cell("Customer:", "String", "FieldLabel"),
-    cell("", "String", "FieldInput"),
-    cell("", "String", "FieldInput"),
-    cell("Phone:", "String", "FieldLabel"),
-    cell("", "String", "FieldInput"),
+  projectInfoRows.push(row([
     cell("Section/Area:", "String", "FieldLabel"),
     cell("", "String", "FieldInput"),
+  ]));
+  projectInfoRows.push(row([
     cell("Date:", "String", "FieldLabel"),
     cell("", "String", "FieldInput"),
   ]));
+  projectInfoRows.push(row([cell("")]));
   
-  // Row 6: Empty
+  // Instructions
+  projectInfoRows.push(row([cell("")]));
+  projectInfoRows.push(row([
+    cell("📝 HOW TO USE", "String", "SectionHeader"),
+  ]));
+  projectInfoRows.push(row([cell("1. Fill in the project information above")]));
+  projectInfoRows.push(row([cell("2. Go to the 'Parts List' sheet and enter your parts")]));
+  projectInfoRows.push(row([cell("3. Use shortcodes from 'Fill-In Guide' for operations")]));
+  projectInfoRows.push(row([cell("4. Print, fill by hand, photograph, and upload to CAI Intake")]));
+  projectInfoRows.push(row([cell("")]));
+  projectInfoRows.push(row([
+    cell("💡 Tip: Use BLOCK LETTERS when filling by hand for best OCR accuracy!", "String", "TipCell"),
+  ]));
+  
+  // Footer
+  projectInfoRows.push(row([cell("")]));
+  projectInfoRows.push(row([cell("")]));
+  projectInfoRows.push(row([
+    cell(`CabinetAI™ Smart Template v${version}`, "String", "Footer"),
+  ]));
+  
+  const projectInfoSheet = `
+    <Worksheet ss:Name="Project Info">
+      <Table>
+        <Column ss:Width="120"/>
+        <Column ss:Width="180"/>
+        <Column ss:Width="30"/>
+        <Column ss:Width="80"/>
+        ${projectInfoRows.join("\n        ")}
+      </Table>
+    </Worksheet>`;
+  
+  // ============================================
+  // SHEET 2: Parts List (Cutlist)
+  // ============================================
+  const partsSheetRows: string[] = [];
+  
+  // Row 1: Simple header referencing Project Info sheet
+  partsSheetRows.push(row([
+    cell("PARTS LIST", "String", "SectionHeader"),
+    cell("", "String"),
+    cell("", "String"),
+    cell("", "String"),
+    cell("", "String"),
+    cell(templateId, "String", "TemplateId"),
+  ]));
+  partsSheetRows.push(row([
+    cell("(See 'Project Info' sheet for project details)", "String", "SubTitle"),
+  ]));
+  
+  // Empty row before headers
   partsSheetRows.push(row([cell("")]));
   
-  // Row 7: Column headers
+  // Column headers
   partsSheetRows.push(row(headers.map(h => cell(h, "String", "ColumnHeader"))));
   
   // Data rows
@@ -1320,7 +1392,7 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
     cell("", "String"),
     cell("", "String"),
     cell("", "String"),
-    cell(`CabinetAI™ Smart Template v${version}`, "String", "Footer"),
+    cell(`Page __ of __`, "String", "Footer"),
   ]));
   
   // Column widths for Parts sheet
@@ -1332,7 +1404,7 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
   if (config.includeNotes !== false) colWidths.push(100);
   
   const partsSheet = `
-    <Worksheet ss:Name="Cutlist">
+    <Worksheet ss:Name="Parts List">
       <Table>
         ${colWidths.map(w => `<Column ss:Width="${w}"/>`).join("\n        ")}
         ${partsSheetRows.join("\n        ")}
@@ -1556,7 +1628,12 @@ export function generateOrgExcelTemplate(config: OrgTemplateConfig): string {
     <Style ss:ID="CodeCell">
       <Font ss:FontName="Consolas" ss:Size="9" ss:Bold="1" ss:Color="${primaryColor}"/>
     </Style>
+    <Style ss:ID="TipCell">
+      <Font ss:FontName="Segoe UI" ss:Size="9" ss:Italic="1" ss:Color="${primaryColor}"/>
+      <Interior ss:Color="${primaryColor}10" ss:Pattern="Solid"/>
+    </Style>
   </Styles>
+  ${projectInfoSheet}
   ${partsSheet}
   ${guideSheet}
   ${materialsSheet}
