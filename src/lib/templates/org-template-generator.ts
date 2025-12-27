@@ -362,129 +362,19 @@ function getDefaultCNCCodes(): OpsShortcode[] {
 }
 
 // ============================================================
-// FETCH ORG OPERATIONS AS SHORTCODES
+// NOTE: Database fetching is done via API routes
+// See /api/v1/template-shortcodes for server-side fetching
 // ============================================================
 
 /**
- * Fetch organization's operations from the database and convert to shortcodes.
- * This function should be called server-side before generating templates.
- * 
- * @param organizationId - The organization ID to fetch operations for
- * @returns Array of OpsShortcode for use in template generation
+ * Build template config with provided shortcodes.
+ * Use the /api/v1/template-shortcodes API to fetch org shortcodes first.
  */
-export async function fetchOrgShortcodes(organizationId: string): Promise<OpsShortcode[]> {
-  // Import prisma dynamically to avoid bundling issues in client code
-  const { prisma } = await import("@/lib/prisma");
-  
-  const shortcodes: OpsShortcode[] = [];
-  
-  try {
-    // Fetch edgeband operations
-    const edgebandOps = await prisma.edgebandOperation.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { organizationId: null }, // System defaults
-          { organizationId: organizationId },
-        ],
-      },
-      orderBy: [{ usageCount: "desc" }, { code: "asc" }],
-    });
-    
-    edgebandOps.forEach(op => {
-      shortcodes.push({
-        id: op.id,
-        code: op.code,
-        name: op.name,
-        description: op.description || undefined,
-        category: "edgebanding",
-      });
-    });
-    
-    // Fetch groove operations
-    const grooveOps = await prisma.grooveOperation.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { organizationId: null },
-          { organizationId: organizationId },
-        ],
-      },
-      orderBy: [{ usageCount: "desc" }, { code: "asc" }],
-    });
-    
-    grooveOps.forEach(op => {
-      shortcodes.push({
-        id: op.id,
-        code: op.code,
-        name: op.name,
-        description: op.description || undefined,
-        category: "grooving",
-      });
-    });
-    
-    // Fetch drilling operations
-    const drillingOps = await prisma.drillingOperation.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { organizationId: null },
-          { organizationId: organizationId },
-        ],
-      },
-      orderBy: [{ usageCount: "desc" }, { code: "asc" }],
-    });
-    
-    drillingOps.forEach(op => {
-      shortcodes.push({
-        id: op.id,
-        code: op.code,
-        name: op.name,
-        description: op.description || undefined,
-        category: "drilling",
-      });
-    });
-    
-    // Fetch CNC operations
-    const cncOps = await prisma.cncOperation.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { organizationId: null },
-          { organizationId: organizationId },
-        ],
-      },
-      orderBy: [{ usageCount: "desc" }, { code: "asc" }],
-    });
-    
-    cncOps.forEach(op => {
-      shortcodes.push({
-        id: op.id,
-        code: op.code,
-        name: op.name,
-        description: op.description || undefined,
-        category: "cnc",
-      });
-    });
-    
-  } catch (error) {
-    console.error("Error fetching org shortcodes:", error);
-    // Return empty array - the template will use defaults
-  }
-  
-  return shortcodes;
-}
-
-/**
- * Build template config with org's actual shortcodes from database
- */
-export async function buildTemplateConfigWithOrgOps(
+export function buildTemplateConfigWithShortcodes(
   branding: OrganizationBranding,
+  shortcodes: OpsShortcode[],
   baseConfig: Partial<OrgTemplateConfig> = {}
-): Promise<OrgTemplateConfig> {
-  // Fetch org's operations as shortcodes
-  const shortcodes = await fetchOrgShortcodes(branding.org_id);
-  
+): OrgTemplateConfig {
   // Generate hash for versioning
   const shortcodesHash = generateShortcodesHash(shortcodes);
   

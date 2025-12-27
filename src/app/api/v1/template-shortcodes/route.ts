@@ -5,7 +5,110 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { fetchOrgShortcodes } from "@/lib/templates/org-template-generator";
+import { prisma } from "@/lib/db";
+import type { OpsShortcode } from "@/lib/templates/org-template-generator";
+
+/**
+ * Fetch organization's operations from the database and convert to shortcodes
+ */
+async function fetchOrgShortcodes(organizationId: string): Promise<OpsShortcode[]> {
+  const shortcodes: OpsShortcode[] = [];
+  
+  try {
+    // Fetch edgeband operations
+    const edgebandOps = await prisma.edgebandOperation.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { organizationId: null }, // System defaults
+          { organizationId: organizationId },
+        ],
+      },
+      orderBy: [{ usageCount: "desc" }, { code: "asc" }],
+    });
+    
+    edgebandOps.forEach(op => {
+      shortcodes.push({
+        id: op.id,
+        code: op.code,
+        name: op.name,
+        description: op.description || undefined,
+        category: "edgebanding",
+      });
+    });
+    
+    // Fetch groove operations
+    const grooveOps = await prisma.grooveOperation.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { organizationId: null },
+          { organizationId: organizationId },
+        ],
+      },
+      orderBy: [{ usageCount: "desc" }, { code: "asc" }],
+    });
+    
+    grooveOps.forEach(op => {
+      shortcodes.push({
+        id: op.id,
+        code: op.code,
+        name: op.name,
+        description: op.description || undefined,
+        category: "grooving",
+      });
+    });
+    
+    // Fetch drilling operations
+    const drillingOps = await prisma.drillingOperation.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { organizationId: null },
+          { organizationId: organizationId },
+        ],
+      },
+      orderBy: [{ usageCount: "desc" }, { code: "asc" }],
+    });
+    
+    drillingOps.forEach(op => {
+      shortcodes.push({
+        id: op.id,
+        code: op.code,
+        name: op.name,
+        description: op.description || undefined,
+        category: "drilling",
+      });
+    });
+    
+    // Fetch CNC operations
+    const cncOps = await prisma.cncOperation.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { organizationId: null },
+          { organizationId: organizationId },
+        ],
+      },
+      orderBy: [{ usageCount: "desc" }, { code: "asc" }],
+    });
+    
+    cncOps.forEach(op => {
+      shortcodes.push({
+        id: op.id,
+        code: op.code,
+        name: op.name,
+        description: op.description || undefined,
+        category: "cnc",
+      });
+    });
+    
+  } catch (error) {
+    console.error("Error fetching org shortcodes:", error);
+  }
+  
+  return shortcodes;
+}
 
 export async function GET(request: NextRequest) {
   try {
