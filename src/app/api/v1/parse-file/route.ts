@@ -558,7 +558,7 @@ export async function POST(request: NextRequest) {
       });
       
       const pdfStartTime = Date.now();
-      aiResult = await processPDF(file, provider, parseOptions, requestId);
+      aiResult = await processPDF(file, provider, parseOptions, requestId, detectedTemplateId || undefined);
       
       logger.info("📥 [ParseFile] PDF processing completed", {
         requestId,
@@ -887,9 +887,13 @@ async function processPDF(
   provider: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   parseOptions: any,
-  requestId: string
+  requestId: string,
+  initialTemplateId?: string // Template ID detected from QR code (if any)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
+  // Track template ID - may be detected from QR or from text content
+  let detectedTemplateId = initialTemplateId;
+  let qrDetectionResult: { found: boolean; templateId?: string; parsed?: { orgId?: string; version?: string } } | null = null;
   const pdfStartTime = Date.now();
   const pythonOCR = getPythonOCRClient();
   
