@@ -640,8 +640,10 @@ export function BulkOpsPanel({
                       <SelectValue placeholder="Select CNC operation..." />
                     </SelectTrigger>
                     <SelectContent position="popper" sideOffset={4} className="max-h-60 z-[200]">
-                      {cnc.map((c) => (
-                        <SelectItem key={c.id} value={c.code} disabled={localOps.cnc.types.includes(c.code)}>
+                      {cnc
+                        .filter((c) => !localOps.cnc.types.includes(c.code))
+                        .map((c) => (
+                        <SelectItem key={c.id} value={c.code}>
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-emerald-600 font-bold">{c.code}</span>
                             <span className="text-[var(--muted-foreground)]">{c.name}</span>
