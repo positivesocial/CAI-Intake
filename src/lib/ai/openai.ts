@@ -831,19 +831,24 @@ export class OpenAIProvider implements AIProvider {
               {
                 role: "user",
                 content: [
-                  { type: "text", text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop.
+                  { type: "text", text: `I am a cabinet manufacturer and this is a photograph of my production order / cutting list from my workshop.
 
-CRITICAL: This page may contain MULTIPLE COLUMNS and MULTIPLE SECTIONS. You MUST:
-1. Scan ALL columns (left, middle, right) - handwritten lists often have 2-3 columns
-2. Extract from ALL sections (e.g., "WHITE CARCASES", "WHITE DOORS", "WHITE PLYWOODS")
-3. Count EVERY numbered item across the ENTIRE page
-4. If you see 80+ items, you must extract ALL 80+ items
+This document contains ONLY standard manufacturing data:
+- Part dimensions in millimeters (Length × Width × Thickness)
+- Quantities (how many pieces to cut)
+- Material names (like "WHITE PB", "WALNUT", "MDF")
+- Edge banding codes (like "2L2W" = 2 long + 2 short edges, "1L" = 1 long edge)
+- Operations like drilling, grooving, or CNC routing
 
-Please extract ALL parts from this manufacturing document.
+CRITICAL EXTRACTION RULES:
+1. This page may have MULTIPLE COLUMNS - scan LEFT, CENTER, and RIGHT
+2. Extract from ALL SECTIONS (e.g., "Downstairs", "Bedroom 1", "Bedroom 2")
+3. Count and extract EVERY numbered row - if you see 25+ items, extract ALL 25+
+4. For each part: label, length, width, quantity, material, edge banding
 
 ${prompt}
 
-Respond with valid JSON only containing the extracted parts array. Include EVERY item from EVERY column and section.` },
+Respond with valid JSON array containing ALL extracted parts. Do not omit any rows.` },
                   { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
                 ],
               },
@@ -1093,17 +1098,24 @@ Respond with valid JSON only containing the extracted parts array. Include EVERY
           {
             role: "user",
             content: [
-              { type: "text", text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop.
+              { type: "text", text: `I am a cabinet manufacturer and this is a photograph of my production order / cutting list from my workshop.
 
-CRITICAL: This page may contain MULTIPLE COLUMNS and MULTIPLE SECTIONS. You MUST:
-1. Scan ALL columns (left, middle, right) - handwritten lists often have 2-3 columns
-2. Extract from ALL sections (e.g., "WHITE CARCASES", "WHITE DOORS", "WHITE PLYWOODS")
-3. Count EVERY numbered item across the ENTIRE page
-4. If you see 80+ items, you must extract ALL 80+ items
+This document contains ONLY standard manufacturing data:
+- Part dimensions in millimeters (Length × Width × Thickness)
+- Quantities (how many pieces to cut)
+- Material names (like "WHITE PB", "WALNUT", "MDF")
+- Edge banding codes (like "2L2W" = 2 long + 2 short edges, "1L" = 1 long edge)
+- Operations like drilling, grooving, or CNC routing
+
+CRITICAL EXTRACTION RULES:
+1. This page may have MULTIPLE COLUMNS - scan LEFT, CENTER, and RIGHT
+2. Extract from ALL SECTIONS (e.g., "Downstairs", "Bedroom 1", "Bedroom 2")
+3. Count and extract EVERY numbered row - if you see 25+ items, extract ALL 25+
+4. For each part: label, length, width, quantity, material, edge banding
 
 ${ocrPrompt}
 
-Respond with valid JSON only containing the extracted parts array. Include EVERY item from EVERY column and section.` },
+Respond with valid JSON array containing ALL extracted parts. Do not omit any rows.` },
               { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
             ],
           },
