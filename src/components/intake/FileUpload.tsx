@@ -318,15 +318,24 @@ export function FileUpload() {
     fileUploadLogger.endSession();
     
     if (!cancelRef.current) {
-      const stats = batchStats;
-      console.info(`📤 [FileUpload] Batch complete`, {
-        processed: stats.processedFiles,
-        failed: stats.failedFiles,
-        partsFound: stats.totalPartsFound,
-        elapsed: `${stats.elapsedSeconds}s`,
-      });
-      toast.success("Processing complete!", {
-        description: `Found ${stats.totalPartsFound} parts from ${stats.processedFiles} files.`,
+      // Calculate final stats from the files array (React state is stale in async closure)
+      setFiles((currentFiles) => {
+        const completedFiles = currentFiles.filter(f => f.status === "complete");
+        const failedFiles = currentFiles.filter(f => f.status === "error");
+        const totalParts = completedFiles.reduce((sum, f) => sum + (f.parsedItems || 0), 0);
+        const elapsedSecs = Math.floor((Date.now() - (batchStats.startTime || Date.now())) / 1000);
+        
+        console.info(`📤 [FileUpload] Batch complete`, {
+          processed: completedFiles.length,
+          failed: failedFiles.length,
+          partsFound: totalParts,
+          elapsed: `${elapsedSecs}s`,
+        });
+        toast.success("Processing complete!", {
+          description: `Found ${totalParts} parts from ${completedFiles.length} file${completedFiles.length !== 1 ? 's' : ''}.`,
+        });
+        
+        return currentFiles; // Return unchanged
       });
     }
   };
