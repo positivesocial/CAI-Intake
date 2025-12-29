@@ -322,7 +322,7 @@ export function FileUpload() {
       setFiles((currentFiles) => {
         const completedFiles = currentFiles.filter(f => f.status === "complete");
         const failedFiles = currentFiles.filter(f => f.status === "error");
-        const totalParts = completedFiles.reduce((sum, f) => sum + (f.parsedItems || 0), 0);
+        const totalParts = completedFiles.reduce((sum, f) => sum + (f.result?.partsCount || 0), 0);
         const elapsedSecs = Math.floor((Date.now() - (batchStats.startTime || Date.now())) / 1000);
         
         console.info(`📤 [FileUpload] Batch complete`, {
