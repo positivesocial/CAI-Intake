@@ -860,6 +860,18 @@ Respond with valid JSON only containing the extracted parts array. Include EVERY
       );
 
       const rawResponse = response.choices[0]?.message?.content || "";
+      const finishReason = response.choices[0]?.finish_reason;
+      
+      // Log detailed response info for debugging
+      if (!rawResponse || rawResponse.length < 10) {
+        logger.warn("🖼️ [OpenAI] Received empty or very short response", {
+          rawResponse,
+          finishReason,
+          model: response.model,
+          tokensUsed: response.usage,
+          choicesCount: response.choices?.length,
+        });
+      }
       
       // Record token usage for audit
       if (response.usage) {

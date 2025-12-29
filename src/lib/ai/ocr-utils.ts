@@ -151,6 +151,15 @@ export function classifyError(error: Error): ErrorCategory {
     return "TIMEOUT";
   }
   
+  // Billing / credit errors - not retryable
+  if (message.includes("credit balance") ||
+      message.includes("billing") ||
+      message.includes("purchase credits") ||
+      message.includes("insufficient credits") ||
+      message.includes("quota exceeded")) {
+    return "BILLING_ERROR";
+  }
+  
   // Content filter / refusal
   if (message.includes("sorry") ||
       message.includes("can't assist") ||
@@ -184,8 +193,8 @@ export function classifyError(error: Error): ErrorCategory {
 export function isRetryableError(error: Error): boolean {
   const category = classifyError(error);
   
-  // Don't retry content filter rejections
-  if (category === "CONTENT_FILTER") {
+  // Don't retry content filter rejections or billing errors
+  if (category === "CONTENT_FILTER" || category === "BILLING_ERROR") {
     return false;
   }
   
