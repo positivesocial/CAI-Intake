@@ -102,8 +102,11 @@ Return a JSON array of parts with this structure:
     },
     "cncOperations": {
       "detected": false,
-      "holes": 0,
-      "routing": false
+      "holes": [],
+      "drilling": [],
+      "routing": [],
+      "pockets": [],
+      "description": ""
     },
     "notes": "Any special instructions",
     "confidence": 0.95,
@@ -142,6 +145,43 @@ Return a JSON array of parts with this structure:
   "description": "groove on length"
 }
 \`\`\`
+
+## CNC Operations Object Structure (IMPORTANT)
+\`\`\`json
+{
+  "detected": true,           // true if ANY CNC operation present
+  "holes": ["H2", "5mm shelf pins", "32mm system"],  // Hole patterns detected
+  "drilling": ["confirmat", "hinge holes", "shelf pin holes"],  // Drilling operations
+  "routing": ["radius R3", "finger pull", "profile edge"],  // Routing operations
+  "pockets": ["handle pocket", "hinge cup", "cable grommet"],  // Pocket/recess operations
+  "description": "drill H2, radius R3 on corners"
+}
+\`\`\`
+
+## CNC/Drilling Detection (CRITICAL - Look for these!)
+
+### COLUMN-BASED CNC DETECTION:
+Look for columns labeled: CNC, DRILL, HOLES, ROUTING, OPS, OPERATIONS, H1, H2, HINGES, SHELF PINS, CONFIRMAT
+
+### CNC INDICATORS in text/notes:
+- **Hole patterns**: "H2", "H1", "drill H2", "5mm holes", "8mm holes", "shelf pin holes", "32mm system"
+- **Confirmat/screws**: "confirmat", "confirmats where needed", "screw holes", "fixing holes"
+- **Hinge drilling**: "hinge holes", "cup hinges", "35mm hinge", "hinge boring"
+- **Shelf supports**: "shelf pins", "5mm pins both sides", "adjustable shelves"
+- **Routing**: "radius R3", "R5 radius", "rounded corners", "finger pull", "profile", "chamfer"
+- **Pockets**: "pocket for handle", "handle recess", "hinge cup pocket", "cable grommet"
+- **General CNC markers**: "CNC", "CNC required", "machining", "boring"
+
+### EXAMPLES:
+| Input Text | CNC Operations |
+|------------|----------------|
+| "drill H2" | holes: ["H2"], drilling: ["H2 pattern"], description: "drill H2 pattern" |
+| "confirmat where needed" | drilling: ["confirmat"], description: "confirmat holes where needed" |
+| "5mm pins both sides" | holes: ["5mm shelf pins"], drilling: ["shelf pin holes both sides"] |
+| "radius R3 on exposed corners" | routing: ["radius R3"], description: "R3 radius on exposed corners" |
+| "pocket for handle on drawers" | pockets: ["handle pocket"], description: "handle pocket" |
+| "CNC" or "CNC required" | detected: true, description: "CNC operations required" |
+| Column "H2" with checkmark | holes: ["H2"], drilling: ["H2"], description: "H2 drilling" |
 
 ## Notes Extraction (CRITICAL)
 The "notes" field should capture ANY special instructions, descriptions, or context:
@@ -428,6 +468,10 @@ Handle ALL dimension formats: "600 x 520", "764*520", "400 by 540", "560 X 397",
     },
     "cncOperations": {
       "detected": true,
+      "holes": ["H2"],
+      "drilling": ["H2 pattern"],
+      "routing": [],
+      "pockets": [],
       "description": "drill H2 pattern"
     },
     "notes": "All notes, context, special instructions here",
@@ -464,6 +508,21 @@ Handle ALL dimension formats: "600 x 520", "764*520", "400 by 540", "560 X 397",
 | "groove depth 10" | Groove detected, depth 10mm in notes |
 | "(grooved)" | Generic groove detected |
 | "back panel groove" | GL: true (typical for back panels) |
+
+## CNC/DRILLING Operations Interpretation (CRITICAL - ALWAYS CHECK!)
+
+| Input | CNC Operations |
+|-------|----------------|
+| "drill H2", "H2" | holes: ["H2"], drilling: ["H2"], detected: true |
+| "CNC", "cnc required" | detected: true, description: "CNC operations" |
+| "confirmat", "confirmats where needed" | drilling: ["confirmat"], description: "confirmat holes" |
+| "5mm pins both sides" | drilling: ["shelf pins"], description: "5mm shelf pin holes" |
+| "hinge holes", "cup hinges", "35mm hinge" | drilling: ["hinge boring"], pockets: ["hinge cup"] |
+| "radius R3", "R5 on corners" | routing: ["radius R3/R5"], description: "corner radius" |
+| "pocket for handle" | pockets: ["handle pocket"], description: "handle recess" |
+| "finger pull" | routing: ["finger pull"], description: "finger pull routing" |
+| "shelves – 5mm pins" | Parts labeled "shelves" need drilling: ["shelf pins"] |
+| "doors - drill H2" | Parts labeled "doors" need holes: ["H2"] |
 
 ## Material Interpretation
 - "White PB", "white pb", "W" → "White PB"
@@ -672,6 +731,8 @@ For EACH numbered row, extract:
 5. QTY (quantity) - default to 1 if unclear
 6. Check EACH edge column (L1, L2, W1, W2) for checkmarks
 7. Check EACH groove column (GL, GW) for checkmarks
+8. Check for CNC/DRILL columns (H1, H2, CNC, HOLES) for checkmarks
+9. Look for notes mentioning: drill, CNC, radius, pocket, pins, confirmat, hinge
 
 ## STEP 3: HANDWRITING RECOGNITION TIPS
 
@@ -694,7 +755,7 @@ Dimension sanity checks:
 **CRITICAL: Return ONLY raw JSON - NO markdown code blocks, NO backticks, NO explanations.**
 
 Return a JSON array starting with [ and ending with ]. Example structure:
-[{"row": 1, "label": "", "length": 780, "width": 560, "thickness": 18, "quantity": 2, "material": "W", "edgeBanding": {"detected": true, "L1": true, "L2": false, "W1": false, "W2": false, "edges": ["L1"], "description": "1 long edge"}, "grooving": {"detected": true, "GL": true, "GW": false, "description": "groove on length"}, "confidence": 0.95}]
+[{"row": 1, "label": "", "length": 780, "width": 560, "thickness": 18, "quantity": 2, "material": "W", "edgeBanding": {"detected": true, "L1": true, "L2": false, "W1": false, "W2": false, "edges": ["L1"], "description": "1 long edge"}, "grooving": {"detected": true, "GL": true, "GW": false, "description": "groove on length"}, "cncOperations": {"detected": false, "holes": [], "drilling": [], "routing": [], "pockets": [], "description": ""}, "confidence": 0.95}]
 
 Each object MUST have:
 - row: row/item number
@@ -705,6 +766,7 @@ Each object MUST have:
 - material: material code (W, Ply, B, etc.)
 - edgeBanding: {detected, L1, L2, W1, W2, edges[], description}
 - grooving: {detected, GL, GW, description}
+- cncOperations: {detected, holes[], drilling[], routing[], pockets[], description}
 - confidence: 0.0-1.0
 
 ## EDGE BANDING OBJECT FORMAT
@@ -730,6 +792,25 @@ The grooving object MUST include:
 Examples:
 - Checkmark in GL column: \`{ detected: true, GL: true, GW: false, description: "groove on length" }\`
 - Checkmarks in both: \`{ detected: true, GL: true, GW: true, description: "grooves on both length and width" }\`
+
+## CNC OPERATIONS OBJECT FORMAT (IMPORTANT - ALWAYS CHECK FOR THESE!)
+
+Look for columns labeled: CNC, DRILL, HOLES, OPS, H1, H2, HINGES, ROUTING, etc.
+
+The cncOperations object structure:
+\`{ detected: true, holes: ["H2"], drilling: ["confirmat"], routing: ["R3"], pockets: ["handle"], description: "drill H2, R3 corners" }\`
+
+### CNC INDICATORS TO LOOK FOR:
+- **Hole pattern columns**: "H1", "H2", "DRILL", "HOLES" - checkmarks mean drilling required
+- **Text mentions**: "CNC", "drill", "boring", "hinge holes", "shelf pins", "confirmat"
+- **Routing indicators**: "radius R3", "R5", "rounded corners", "finger pull", "profile"
+- **Pocket indicators**: "pocket for handle", "hinge cup", "cable grommet"
+- **Shelf pin holes**: "5mm pins both sides", "adjustable shelf holes", "32mm system"
+
+### Examples:
+- Checkmark in H2 column: \`{ detected: true, holes: ["H2"], description: "H2 drilling" }\`
+- "CNC" written in notes: \`{ detected: true, description: "CNC operations required" }\`
+- "5mm pins" for shelf parts: \`{ detected: true, drilling: ["shelf pins"], description: "5mm shelf pin holes" }\`
 
 ## IMPORTANT RULES
 

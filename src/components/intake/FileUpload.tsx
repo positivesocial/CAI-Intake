@@ -131,7 +131,7 @@ function formatElapsedTime(seconds: number): string {
 }
 
 // Maximum number of files to process concurrently
-const MAX_CONCURRENT_FILES = 3;
+const MAX_CONCURRENT_FILES = 10;
 
 export function FileUpload() {
   const addToInbox = useIntakeStore((state) => state.addToInbox);
