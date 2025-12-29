@@ -1665,11 +1665,11 @@ export function IntakeInbox() {
       {/* Main Content - Split View when in Compare Mode */}
       <div className={cn(
         "flex",
-        compareMode ? "flex-col lg:flex-row" : "flex-col"
+        compareMode ? "flex-col lg:flex-row h-[700px] lg:h-[650px]" : "flex-col"
       )}>
-        {/* Source Files Panel (Compare Mode) */}
+        {/* Source Files Panel (Compare Mode) - Fixed height, independent scroll */}
         {compareMode && hasSourceFiles && (
-          <div className="lg:w-1/2 h-[400px] lg:h-[600px] border-b lg:border-b-0 lg:border-r border-[var(--border)] flex-shrink-0">
+          <div className="lg:w-1/2 h-[350px] lg:h-full border-b lg:border-b-0 lg:border-r border-[var(--border)] flex-shrink-0 overflow-hidden">
             <SourceFilesPanel
               files={sourceFilePreviews.map((f): SourceFile => ({
                 id: f.id,
@@ -1684,8 +1684,11 @@ export function IntakeInbox() {
           </div>
         )}
 
-        {/* Parts Content */}
-        <div className={cn("flex-1 flex flex-col min-w-0", compareMode && "lg:w-1/2")}>
+        {/* Parts Content - Fixed height in compare mode, independent scroll */}
+        <div className={cn(
+          "flex-1 flex flex-col min-w-0", 
+          compareMode && "lg:w-1/2 h-[350px] lg:h-full overflow-hidden"
+        )}>
           {/* Mass edit toolbar */}
           <MassEditToolbar
             selectedCount={selectedCount}
@@ -1740,10 +1743,10 @@ export function IntakeInbox() {
             />
           )}
 
-          {/* Table */}
+          {/* Table - scrolls independently in compare mode */}
           <div className={cn(
-            "overflow-x-auto flex-1",
-            compareMode && "max-h-[500px] lg:max-h-none overflow-y-auto"
+            "overflow-x-auto flex-1 min-h-0",
+            compareMode && "overflow-y-auto"
           )} onKeyDown={handleTableKeyDown}>
             <table className="w-full min-w-[800px]">
               <thead className="bg-[var(--muted)]/50 border-b border-[var(--border)] sticky top-0 z-10">
