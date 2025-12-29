@@ -130,6 +130,9 @@ function formatElapsedTime(seconds: number): string {
   return `${mins}m ${secs}s`;
 }
 
+// Maximum number of files to process concurrently
+const MAX_CONCURRENT_FILES = 3;
+
 export function FileUpload() {
   const addToInbox = useIntakeStore((state) => state.addToInbox);
   const addPendingFileId = useIntakeStore((state) => state.addPendingFileId);
@@ -267,7 +270,7 @@ export function FileUpload() {
     }
   };
 
-  // Start processing all queued files
+  // Start processing all queued files in parallel (with concurrency limit)
   const startProcessing = async () => {
     const queuedFiles = files.filter((f) => f.status === "queued");
     if (queuedFiles.length === 0) {
@@ -279,9 +282,10 @@ export function FileUpload() {
 
     // Start a new logging session
     const sessionId = fileUploadLogger.startSession();
-    console.info(`📤 [FileUpload] Starting batch processing`, {
+    console.info(`📤 [FileUpload] Starting PARALLEL batch processing`, {
       sessionId,
       fileCount: queuedFiles.length,
+      maxConcurrent: MAX_CONCURRENT_FILES,
       totalSize: `${(queuedFiles.reduce((s, f) => s + f.file.size, 0) / 1024).toFixed(1)}KB`,
       files: queuedFiles.map(f => f.file.name),
     });
@@ -290,27 +294,57 @@ export function FileUpload() {
     setIsCancelled(false);
     cancelRef.current = false;
     
+    const startTime = Date.now();
     setBatchStats({
       totalFiles: queuedFiles.length,
       processedFiles: 0,
       failedFiles: 0,
       totalPartsFound: 0,
-      startTime: Date.now(),
+      startTime,
       elapsedSeconds: 0,
     });
 
-    for (const uploadedFile of queuedFiles) {
-      if (cancelRef.current) {
-        console.info(`📤 [FileUpload] Processing cancelled by user`);
-        // Mark remaining files as cancelled
-        setFiles((prev) =>
-          prev.map((f) =>
-            f.status === "queued" ? { ...f, status: "cancelled" as ProcessingStatus } : f
-          )
-        );
-        break;
+    // Process files in parallel with concurrency limit
+    const processWithLimit = async () => {
+      const queue = [...queuedFiles];
+      const activePromises: Promise<void>[] = [];
+      
+      const processNext = async (): Promise<void> => {
+        while (queue.length > 0 && !cancelRef.current) {
+          const file = queue.shift();
+          if (!file) break;
+          
+          try {
+            await processFile(file);
+          } catch (error) {
+            console.error(`📤 [FileUpload] File processing error`, {
+              fileId: file.id.substring(0, 8),
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
+        }
+      };
+      
+      // Start MAX_CONCURRENT_FILES workers
+      for (let i = 0; i < Math.min(MAX_CONCURRENT_FILES, queuedFiles.length); i++) {
+        activePromises.push(processNext());
       }
-      await processFile(uploadedFile);
+      
+      // Wait for all workers to complete
+      await Promise.all(activePromises);
+    };
+
+    await processWithLimit();
+
+    // Check if cancelled mid-processing
+    if (cancelRef.current) {
+      console.info(`📤 [FileUpload] Processing cancelled by user`);
+      // Mark remaining queued files as cancelled
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.status === "queued" ? { ...f, status: "cancelled" as ProcessingStatus } : f
+        )
+      );
     }
 
     setIsProcessing(false);
@@ -322,15 +356,16 @@ export function FileUpload() {
       // Calculate final stats from the files array (React state is stale in async closure)
       setFiles((currentFiles) => {
         const completedFiles = currentFiles.filter(f => f.status === "complete");
-        const failedFiles = currentFiles.filter(f => f.status === "error");
+        const failedFilesCount = currentFiles.filter(f => f.status === "error").length;
         const totalParts = completedFiles.reduce((sum, f) => sum + (f.result?.partsCount || 0), 0);
-        const elapsedSecs = Math.floor((Date.now() - (batchStats.startTime || Date.now())) / 1000);
+        const elapsedSecs = Math.floor((Date.now() - startTime) / 1000);
         
         console.info(`📤 [FileUpload] Batch complete`, {
           processed: completedFiles.length,
-          failed: failedFiles.length,
+          failed: failedFilesCount,
           partsFound: totalParts,
           elapsed: `${elapsedSecs}s`,
+          concurrency: MAX_CONCURRENT_FILES,
         });
         toast.success("Processing complete!", {
           description: `Found ${totalParts} parts from ${completedFiles.length} file${completedFiles.length !== 1 ? 's' : ''}.`,
@@ -932,19 +967,25 @@ export function FileUpload() {
           </div>
         </div>
         <p className="text-sm text-[var(--muted-foreground)] mt-1">
-          Add files to the queue, then click Start Processing. AI extracts parts with edge banding, grooving, and CNC data.
+          Add files to the queue, then click Start Processing. Files process in parallel ({MAX_CONCURRENT_FILES} at a time) with AI extraction.
         </p>
       </CardHeader>
 
       <CardContent className="space-y-4">
         {/* Live Stats During Processing */}
         {isProcessing && (
-          <div className="grid grid-cols-4 gap-4 p-4 bg-[var(--muted)] rounded-lg">
+          <div className="grid grid-cols-5 gap-4 p-4 bg-[var(--muted)] rounded-lg">
             <div className="text-center">
               <div className="text-2xl font-bold text-[var(--cai-teal)] tabular-nums">
                 {batchStats.processedFiles}/{batchStats.totalFiles}
               </div>
-              <div className="text-xs text-[var(--muted-foreground)]">Files Processed</div>
+              <div className="text-xs text-[var(--muted-foreground)]">Completed</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600 tabular-nums animate-pulse">
+                {files.filter(f => f.status === "processing" || f.status === "detecting_qr").length}
+              </div>
+              <div className="text-xs text-[var(--muted-foreground)]">Active Now</div>
             </div>
             <div className="text-center">
               <div className={cn(
