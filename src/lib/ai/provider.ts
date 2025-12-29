@@ -542,7 +542,7 @@ export function expandCompactParts(compactParts: CompactPart[]): ParsedPartResul
   return compactParts.map((cp, index) => {
     const edgeBanding = expandEdgeBandingCode(cp.e);
     const grooving = expandGrooveCode(cp.g);
-    const material = expandMaterialCode(cp.m);
+    const materialLabel = expandMaterialCode(cp.m);
     
     // Parse notes for CNC/drilling hints
     const notes = cp.n || "";
@@ -550,41 +550,71 @@ export function expandCompactParts(compactParts: CompactPart[]): ParsedPartResul
     const hasCNC = notesLower.includes("cnc") || notesLower.includes("r3") || notesLower.includes("radius");
     const hasDrilling = notesLower.includes("drill") || notesLower.includes("hole") || notesLower.includes("h1") || notesLower.includes("h2");
     
-    return {
-      id: `part_${Date.now()}_${index}`,
-      row: cp.r || (index + 1),
-      label: material || `Part ${cp.r || index + 1}`,
-      length: cp.l,
-      width: cp.w,
-      thickness: cp.t || 18,
-      quantity: cp.q || 1,
-      material: cp.m || "",
-      grain: "none",
+    const partId = `part_${Date.now()}_${index}`;
+    
+    // Build the CutPart object
+    const part: CutPart = {
+      part_id: partId,
+      qty: cp.q || 1,
+      size: { L: cp.l, W: cp.w },
+      thickness_mm: cp.t || 18,
+      material_id: cp.m || "", // Will be resolved later by material matching
+      label: materialLabel || `Part ${cp.r || index + 1}`,
       allow_rotation: false,
-      edgeBanding: {
-        ...edgeBanding,
-        edgebandMaterial: undefined,
+      group_id: undefined,
+      ops: {
+        edgebanding: edgeBanding.detected ? {
+          L1: edgeBanding.L1 ? { edgeband_id: undefined } : undefined,
+          L2: edgeBanding.L2 ? { edgeband_id: undefined } : undefined,
+          W1: edgeBanding.W1 ? { edgeband_id: undefined } : undefined,
+          W2: edgeBanding.W2 ? { edgeband_id: undefined } : undefined,
+        } : undefined,
+        grooves: grooving.detected ? [{
+          edge: grooving.GL ? "L1" : "W1",
+          offset_mm: 0,
+          width_mm: 4,
+          depth_mm: 10,
+        }] : undefined,
+        drilling: hasDrilling ? [{
+          pattern_id: undefined,
+          description: notes,
+        }] : undefined,
+        cnc: hasCNC ? [{
+          operation_id: undefined,
+          description: notes,
+        }] : undefined,
       },
-      grooving: {
-        ...grooving,
-        profileHint: undefined,
+      notes: notes ? { operator: notes } : undefined,
+      audit: {
+        source_method: "file_upload",
+        confidence: 0.9,
+        warnings: [],
       },
-      drilling: {
-        detected: hasDrilling,
-        holes: hasDrilling ? [notes] : [],
-        patterns: [],
-        description: hasDrilling ? notes : "",
+    };
+    
+    // Build the ParsedPartResult wrapper
+    return {
+      part,
+      confidence: 0.9,
+      extractedMetadata: {
+        grooving: {
+          detected: grooving.detected,
+          description: grooving.description,
+        },
+        edgeBanding: {
+          detected: edgeBanding.detected,
+          edges: edgeBanding.edges,
+          description: edgeBanding.description,
+        },
+        cncOperations: {
+          detected: hasCNC || hasDrilling,
+          holes: hasDrilling ? 1 : 0,
+          routing: hasCNC,
+          description: notes,
+        },
       },
-      cncOperations: {
-        detected: hasCNC,
-        routing: hasCNC ? [notes] : [],
-        pockets: [],
-        custom: [],
-        description: hasCNC ? notes : "",
-      },
-      notes: notes,
-      confidence: 0.9, // High default confidence for successfully extracted parts
       warnings: [],
+      originalText: `Row ${cp.r || index + 1}: ${cp.l}x${cp.w} qty:${cp.q || 1}`,
     };
   });
 }
