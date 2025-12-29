@@ -163,8 +163,8 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
       warnings.push(`Schema validation had issues but extracted ${parts.length} parts`);
       
       // Log specific validation errors for debugging
-      for (const error of result.error.errors.slice(0, 5)) {
-        warnings.push(`Field ${error.path.join(".")}: ${error.message}`);
+      for (const issue of result.error.issues.slice(0, 5)) {
+        warnings.push(`Field ${issue.path.join(".")}: ${issue.message}`);
       }
       
       return {
@@ -176,8 +176,8 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
     }
     
     errors.push("Response doesn't match expected schema");
-    for (const error of result.error.errors.slice(0, 5)) {
-      errors.push(`${error.path.join(".")}: ${error.message}`);
+    for (const issue of result.error.issues.slice(0, 5)) {
+      errors.push(`${issue.path.join(".")}: ${issue.message}`);
     }
     
     return {
