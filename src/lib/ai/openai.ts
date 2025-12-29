@@ -1518,7 +1518,8 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         extractedMetadata: {
           grooving: aiPart.grooving,
           edgeBanding: aiPart.edgeBanding,
-          cncOperations: aiPart.cncOperations,
+          // Cast to match expected type - the actual structure is handled in ops mapping above
+          cncOperations: aiPart.cncOperations as unknown as { detected: boolean; holes?: number; routing?: boolean; description?: string; },
         },
         warnings: [
           ...validationErrors,
