@@ -42,6 +42,7 @@ import { type ParsedPartResult } from "@/lib/ai";
 import { detectTemplateQR, type QRDetectionResult } from "@/lib/ai/template-qr-client";
 import { toast } from "sonner";
 import { fileUploadLogger, createFileContext } from "@/lib/logging/file-upload-logger";
+import { notifyFileProcessed, notifyFileError } from "@/lib/notifications";
 import { ExcelImportDialog } from "./ExcelImportDialog";
 
 type FileType = "pdf" | "image" | "excel" | "csv" | "text" | "unknown";
@@ -774,6 +775,9 @@ export function FileUpload() {
         totalProcessingTimeMs: processingTime,
         metadata: metadata.edgeBanding || metadata.grooving || metadata.cncOps ? metadata : undefined,
       });
+      
+      // Add notification for successful processing
+      notifyFileProcessed(uploadedFile.file.name, parts.length);
 
       setFiles((prev) =>
         prev.map((f) =>
@@ -828,6 +832,9 @@ export function FileUpload() {
         error: errorMessage,
         processingTimeMs: Date.now() - startTime,
       });
+      
+      // Add notification for failed processing
+      notifyFileError(uploadedFile.file.name, errorMessage);
       
       setFiles((prev) =>
         prev.map((f) =>

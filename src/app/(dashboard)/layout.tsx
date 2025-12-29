@@ -14,7 +14,6 @@ import {
   Menu,
   X,
   Plus,
-  Bell,
   Layers,
   PanelLeftClose,
   PanelLeft,
@@ -23,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle, ThemeToggleCompact } from "@/components/ui/theme-toggle";
+import { NotificationDropdown } from "@/components/ui/notification-dropdown";
 import { useAuthStore } from "@/lib/auth/store";
 import { ROLE_DISPLAY_NAMES } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
@@ -207,10 +207,7 @@ export default function DashboardLayout({
             <ThemeToggle />
 
             {/* Notifications */}
-            <button className="p-2 hover:bg-[var(--muted)] rounded-lg relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-            </button>
+            <NotificationDropdown />
 
             {/* User Menu */}
             <div className="relative">
