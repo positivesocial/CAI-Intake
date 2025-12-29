@@ -799,34 +799,35 @@ Each object MUST have:
 - cncOperations: {detected, routing[], pockets[], custom[], description}
 - confidence: 0.0-1.0
 
-## ANTI-REPETITION RULES (CRITICALLY IMPORTANT!)
+## READ EACH ROW INDEPENDENTLY (CRITICALLY IMPORTANT!)
 
-**DO NOT REPEAT THE SAME VALUES ACROSS MULTIPLE ROWS!**
+Each row must be read from its ACTUAL CELLS in the document. Do not assume or copy values.
 
-Each row in a cutlist contains UNIQUE data. If you find yourself returning the same dimensions or labels for multiple consecutive rows, YOU ARE DOING IT WRONG.
+### THE CORRECT APPROACH:
+For each row, physically look at:
+- The LENGTH cell for THAT row → extract that number
+- The WIDTH cell for THAT row → extract that number  
+- The LABEL cell for THAT row → extract that text
+- The QTY cell for THAT row → extract that number
 
-### DETECTING HALLUCINATION:
-❌ WRONG: Rows 5-25 all have "Bedroom Doors" with 550x438mm
-✅ RIGHT: Each row should have its OWN unique dimensions read from that specific row
+### LEGITIMATE vs HALLUCINATION:
+✅ **LEGITIMATE**: If the document actually shows 20 parts all with 500x400mm, return 20 parts with 500x400mm
+❌ **HALLUCINATION**: If you can't read rows 7-25, don't copy row 6's values - instead:
+   1. Try harder to read the handwriting
+   2. If truly unreadable, set confidence to 0.3-0.5
+   3. Add warning: "Row X difficult to read, verify dimensions"
 
-### IF YOU CANNOT READ A ROW CLEARLY:
-1. **Try harder** - zoom in mentally, consider handwriting variations
-2. **Use row context** - if row 7 is between 6 and 8, its dimensions should be different from both
-3. **Mark as uncertain** - set confidence to 0.3-0.5 instead of repeating previous values
-4. **Add warning** - "Could not read clearly, verify dimensions"
-5. **NEVER copy** - Do NOT copy values from adjacent rows
+### IF A CELL IS HARD TO READ:
+- Look at the digit shapes carefully (1 vs 7, 6 vs 0, 5 vs S)
+- Consider context (cabinet parts are usually 100-2500mm)
+- Set lower confidence (0.5-0.7) if uncertain
+- Add to warnings array: "verify row X dimensions"
 
-### VALIDATION CHECK BEFORE RETURNING:
-After building your JSON array, scan for repetition:
-- If >3 consecutive rows have IDENTICAL dimensions → RE-READ those rows
-- If >50% of rows have the SAME label → RE-READ the label column
-- Different rows almost always have different dimensions
-
-### EACH ROW IS INDEPENDENT:
-- Row 1: Read label, L, W from row 1's cells
-- Row 2: Read label, L, W from row 2's cells (NOT copied from row 1!)
-- Row 3: Read label, L, W from row 3's cells (NOT copied from row 1 or 2!)
-- ...and so on
+### KEY RULE:
+If you find yourself about to enter the same values for row N as row N-1:
+- STOP and re-examine row N's actual cells
+- If they truly ARE the same, that's fine - return them with high confidence
+- If you can't actually read them, don't guess - use low confidence
 
 ## FINAL VERIFICATION (CRITICAL!)
 Before returning your response:

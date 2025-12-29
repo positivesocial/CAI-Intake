@@ -1706,11 +1706,10 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
     console.log(`🔄 Unique dimensions (${uniqueDimensions.length}): ${uniqueDimensions.slice(0, 10).join(", ")}${uniqueDimensions.length > 10 ? "..." : ""}`);
     console.log(`🔄 Unique materials (${uniqueMaterials.length}): ${uniqueMaterials.join(", ")}`);
     
-    // ====== DUPLICATE DETECTION / HALLUCINATION CHECK ======
+    // ====== QUALITY CHECK (not necessarily errors - could be legitimate) ======
     const duplicateRatio = parts.length > 0 ? (parts.length - uniqueDimensions.length) / parts.length : 0;
-    const labelDuplicateRatio = parts.length > 0 ? (parts.length - uniqueLabels.length) / parts.length : 0;
     
-    // Check for consecutive duplicates (strongest hallucination indicator)
+    // Check for consecutive duplicates (may indicate hallucination OR legitimate repeated parts)
     let maxConsecutiveDuplicates = 1;
     let currentConsecutive = 1;
     for (let i = 1; i < parts.length; i++) {
@@ -1724,32 +1723,20 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
       }
     }
     
-    // Check for potential issues
-    let hallucinationWarning = "";
-    if (uniqueLabels.length === 1 && parts.length > 3) {
-      hallucinationWarning = "All parts have same label";
-      console.log("⚠️ WARNING: All parts have the same label - AI may have misread the template!");
+    // Log quality indicators (NOT errors - just observations for review)
+    // NOTE: Repetition is NOT automatically wrong - cutlists often have identical parts
+    if (uniqueLabels.length === 1 && parts.length > 10) {
+      console.log("ℹ️ NOTE: All parts have the same label (may be legitimate or may need verification)");
     }
-    if (uniqueDimensions.length === 1 && parts.length > 5) {
-      hallucinationWarning = "All parts have same dimensions";
-      console.log("⚠️ WARNING: All parts have the same dimensions - AI may have misread the template!");
+    if (uniqueDimensions.length <= 3 && parts.length > 15) {
+      console.log(`ℹ️ NOTE: Only ${uniqueDimensions.length} unique dimensions for ${parts.length} parts (may be legitimate repeated parts)`);
     }
-    if (maxConsecutiveDuplicates >= 5) {
-      hallucinationWarning = `${maxConsecutiveDuplicates} consecutive parts have identical dimensions`;
-      console.log(`🚨 CRITICAL: ${maxConsecutiveDuplicates} consecutive rows have IDENTICAL dimensions!`);
-      console.log("🚨 This strongly suggests the AI hallucinated/repeated values instead of reading each row.");
-    }
-    if (duplicateRatio > 0.7 && parts.length > 10) {
-      hallucinationWarning = `${Math.round(duplicateRatio * 100)}% of parts have duplicate dimensions`;
-      console.log(`⚠️ WARNING: ${Math.round(duplicateRatio * 100)}% duplicate dimensions - likely AI hallucination!`);
+    if (maxConsecutiveDuplicates >= 10) {
+      // Only flag if VERY high consecutive (10+) - this is unusual even for repeated parts
+      console.log(`ℹ️ NOTE: ${maxConsecutiveDuplicates} consecutive parts with same dimensions - verify if intended`);
     }
     
-    // Add warning to errors array so it surfaces in the response
-    if (hallucinationWarning && !errors.includes(hallucinationWarning)) {
-      errors.push(`⚠️ QUALITY WARNING: ${hallucinationWarning}. Results may be inaccurate - please verify.`);
-    }
-    
-    console.log(`🔄 Duplicate stats: ${Math.round(duplicateRatio * 100)}% dim dupes, ${maxConsecutiveDuplicates} max consecutive`);
+    console.log(`🔄 Quality stats: ${uniqueDimensions.length} unique dims, ${uniqueLabels.length} unique labels, max ${maxConsecutiveDuplicates} consecutive same`);
     console.log("🔄 ========== [OpenAI] END FINAL OUTPUT ==========\n\n");
 
     return {
