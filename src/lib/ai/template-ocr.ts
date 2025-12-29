@@ -393,6 +393,190 @@ export async function detectTemplateQRFromBase64(base64Data: string): Promise<QR
 }
 
 // ============================================================
+// TEXT-BASED TEMPLATE DETECTION (FALLBACK)
+// ============================================================
+
+/**
+ * Result of text-based template detection
+ */
+export interface TextTemplateDetectionResult {
+  found: boolean;
+  templateId?: string;
+  version?: string;
+  confidence: number;
+  detectionMethod: "text_pattern" | "header_match" | "branding_match";
+  rawMatch?: string;
+  parsed?: ParsedTemplateId;
+}
+
+/**
+ * Patterns to look for in image text to identify CAI templates
+ */
+const CAI_TEMPLATE_PATTERNS = [
+  // Full template ID formats
+  /CAI[-\s]?(\d+\.\d+)[-\s]?(\d+)/i,                    // CAI-1.0-12345678
+  /CAI[-\s]?(v?\d+(?:\.\d+)?)[-\s]?([\w\d]+)/i,         // CAI-v1.0-abc123
+  /CAI[-\s]?([a-z0-9]+)[-\s]?v(\d+(?:\.\d+)?)/i,        // CAI-org_id-v1.0
+  
+  // Version patterns
+  /Template\s+(?:v|version)\s*(\d+(?:\.\d+)?)/i,        // Template v1.0
+  /CAI\s+(?:v|version)\s*(\d+(?:\.\d+)?)/i,             // CAI v1.0
+  /(?:v|version)\s*(\d+(?:\.\d+)?)\s*(?:template)?/i,   // v1.0 Template
+  
+  // Branding patterns
+  /CAI\s*Intake/i,                                       // CAI Intake
+  /Cutlist\s*(?:AI|Assistant)/i,                        // Cutlist AI / Cutlist Assistant
+];
+
+/**
+ * Detect CAI template from text extracted from image
+ * This is a fallback when QR detection fails
+ * 
+ * @param extractedText - Text extracted from the image (via OCR or AI)
+ * @returns Detection result with template info if found
+ */
+export function detectTemplateFromText(extractedText: string): TextTemplateDetectionResult {
+  if (!extractedText || extractedText.length < 3) {
+    return { found: false, confidence: 0, detectionMethod: "text_pattern" };
+  }
+  
+  const text = extractedText.trim();
+  
+  // Try each pattern
+  for (const pattern of CAI_TEMPLATE_PATTERNS) {
+    const match = text.match(pattern);
+    
+    if (match) {
+      console.log(`[TemplateOCR] Text pattern match: "${match[0]}"`);
+      
+      // Determine detection method based on pattern type
+      const patternStr = pattern.toString();
+      let detectionMethod: "text_pattern" | "header_match" | "branding_match" = "text_pattern";
+      
+      if (patternStr.includes("Template") || patternStr.includes("version")) {
+        detectionMethod = "header_match";
+      } else if (patternStr.includes("Intake") || patternStr.includes("Cutlist")) {
+        detectionMethod = "branding_match";
+      }
+      
+      // Try to extract template ID
+      let templateId: string | undefined;
+      let version: string | undefined;
+      
+      if (match[0].toUpperCase().includes("CAI")) {
+        // It's a CAI-format ID
+        templateId = match[0].replace(/\s+/g, "-").toUpperCase();
+        
+        // Try to parse as template ID
+        const parsed = parseTemplateId(templateId);
+        
+        if (parsed.isCAI) {
+          version = parsed.version || undefined;
+          
+          return {
+            found: true,
+            templateId,
+            version,
+            confidence: 0.8,
+            detectionMethod,
+            rawMatch: match[0],
+            parsed,
+          };
+        }
+      }
+      
+      // Extract version if present
+      if (match[1] && /^\d+(?:\.\d+)?$/.test(match[1])) {
+        version = match[1];
+      }
+      
+      return {
+        found: true,
+        templateId: templateId || match[0],
+        version,
+        confidence: detectionMethod === "branding_match" ? 0.6 : 0.75,
+        detectionMethod,
+        rawMatch: match[0],
+      };
+    }
+  }
+  
+  // Check for generic indicators
+  const hasCAI = /\bCAI\b/i.test(text);
+  const hasTemplate = /\bTemplate\b/i.test(text);
+  const hasCutlist = /\bCutlist\b/i.test(text);
+  
+  if (hasCAI && (hasTemplate || hasCutlist)) {
+    return {
+      found: true,
+      confidence: 0.5,
+      detectionMethod: "branding_match",
+      rawMatch: text.substring(0, 100),
+    };
+  }
+  
+  return { found: false, confidence: 0, detectionMethod: "text_pattern" };
+}
+
+/**
+ * AI prompt to detect CAI template identifiers in an image
+ */
+export const TEMPLATE_DETECTION_PROMPT = `Look at this image and determine if it's a CAI Intake template.
+
+CHECK FOR THESE INDICATORS:
+1. A QR code in the top-left corner
+2. Text containing "CAI", "CAI Intake", or "Cutlist"
+3. A template ID format like "CAI-1.0-12345678" or "CAI-org_id-v1.0"
+4. Headers saying "Template", "Version", or "v1.0"
+5. Structured table with columns for #, Part Name, L, W, Qty, Edge, etc.
+
+RESPOND WITH JSON ONLY:
+{
+  "isCAITemplate": true/false,
+  "templateId": "CAI-1.0-12345678" or null if not found,
+  "version": "1.0" or null if not found,
+  "confidence": 0.0-1.0,
+  "indicators": ["list", "of", "detected", "indicators"]
+}
+
+If this is NOT a CAI template, set isCAITemplate to false and explain in indicators why.`;
+
+/**
+ * Result of AI-based template detection
+ */
+export interface AITemplateDetectionResult {
+  isCAITemplate: boolean;
+  templateId: string | null;
+  version: string | null;
+  confidence: number;
+  indicators: string[];
+}
+
+/**
+ * Parse AI response for template detection
+ */
+export function parseTemplateDetectionResponse(response: string): AITemplateDetectionResult | null {
+  try {
+    // Strip markdown fences if present
+    let cleaned = response.trim();
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+    
+    const parsed = JSON.parse(cleaned);
+    
+    return {
+      isCAITemplate: !!parsed.isCAITemplate,
+      templateId: parsed.templateId || null,
+      version: parsed.version || null,
+      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0,
+      indicators: Array.isArray(parsed.indicators) ? parsed.indicators : [],
+    };
+  } catch {
+    console.warn("[TemplateOCR] Failed to parse template detection response");
+    return null;
+  }
+}
+
+// ============================================================
 // DETERMINISTIC TEMPLATE PARSER
 // ============================================================
 
