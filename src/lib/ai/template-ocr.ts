@@ -201,13 +201,17 @@ export async function getOrgTemplateConfig(
  * Detect QR code in an image and parse template ID
  * Uses sharp for Node.js compatible image processing
  * 
- * Strategy: Multiple scan approaches for high-res photographed images
- * 1. Scan top-left corner at multiple offsets (paper margins vary)
- * 2. Scan with binarization (threshold) for better contrast
- * 3. Scan resized versions at different scales
- * 4. Scan full image as fallback
+ * Strategy: Fast parallel scanning with timeout
+ * 1. Quick scan of most likely locations first (small corner regions)
+ * 2. If not found quickly, give up and let AI handle template detection
+ * 
+ * NOTE: QR detection on photographed documents is unreliable due to perspective
+ * distortion. The AI can detect templates via text analysis as a fallback.
  */
 export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetectionResult> {
+  const QR_TIMEOUT_MS = 3000; // Max 3 seconds for QR detection
+  const startTime = Date.now();
+  
   try {
     // Use sharp to decode image and get raw RGBA pixel data
     const image = sharp(Buffer.from(imageData));
@@ -217,16 +221,21 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
       return { found: false, error: "Could not read image dimensions" };
     }
     
-    console.log(`[TemplateOCR] Scanning image ${metadata.width}x${metadata.height} for QR code`);
+    console.log(`[TemplateOCR] Scanning image ${metadata.width}x${metadata.height} for QR code (max ${QR_TIMEOUT_MS}ms)`);
     
-    // Helper function to scan a region for QR code
-    const scanRegion = async (
+    // Helper function to check timeout
+    const isTimedOut = () => Date.now() - startTime > QR_TIMEOUT_MS;
+    
+    // Helper function to scan a region with a specific approach
+    const quickScan = async (
       left: number, 
       top: number, 
       width: number, 
       height: number,
-      label: string
+      useThreshold: boolean = false
     ): Promise<string | null> => {
+      if (isTimedOut()) return null;
+      
       try {
         // Ensure we don't exceed image bounds
         const safeLeft = Math.max(0, Math.min(left, metadata.width! - width));
@@ -236,57 +245,24 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
         
         if (safeWidth < 100 || safeHeight < 100) return null;
         
-        // Try multiple image processing approaches
-        const approaches = [
-          // Approach 1: Color image (RGBA)
-          () => sharp(Buffer.from(imageData))
-            .extract({ left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight })
-            .ensureAlpha()
-            .raw(),
-          
-          // Approach 2: Greyscale with normalize
-          () => sharp(Buffer.from(imageData))
-            .extract({ left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight })
-            .greyscale()
-            .normalise()
-            .toColorspace("srgb")
-            .ensureAlpha()
-            .raw(),
-          
-          // Approach 3: High contrast threshold (binarization)
-          () => sharp(Buffer.from(imageData))
-            .extract({ left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight })
-            .greyscale()
-            .threshold(128) // Binarize for cleaner QR detection
-            .toColorspace("srgb")
-            .ensureAlpha()
-            .raw(),
-          
-          // Approach 4: Sharpen + contrast
-          () => sharp(Buffer.from(imageData))
-            .extract({ left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight })
-            .sharpen()
-            .modulate({ brightness: 1.1, saturation: 0 }) // Slightly brighter, greyscale
-            .normalise()
-            .ensureAlpha()
-            .raw(),
-        ];
+        let pipeline = sharp(Buffer.from(imageData))
+          .extract({ left: safeLeft, top: safeTop, width: safeWidth, height: safeHeight });
         
-        for (let i = 0; i < approaches.length; i++) {
-          try {
-            const { data, info } = await approaches[i]().toBuffer({ resolveWithObject: true });
-            
-            if (info.channels === 4) {
-              const pixelData = new Uint8ClampedArray(data);
-              const code = jsQR(pixelData, info.width, info.height);
-              
-              if (code) {
-                console.log(`[TemplateOCR] QR found in ${label} (approach ${i + 1})`);
-                return code.data.trim();
-              }
-            }
-          } catch {
-            // Continue to next approach
+        if (useThreshold) {
+          pipeline = pipeline.greyscale().threshold(128).toColorspace("srgb");
+        }
+        
+        const { data, info } = await pipeline
+          .ensureAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
+        
+        if (info.channels === 4) {
+          const pixelData = new Uint8ClampedArray(data);
+          const code = jsQR(pixelData, info.width, info.height);
+          
+          if (code) {
+            return code.data.trim();
           }
         }
         
@@ -296,85 +272,97 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
       }
     };
     
-    // Strategy 1: Scan top-left corner at multiple positions
-    // Account for paper margins and different photo crops
-    const cornerSizes = [
-      // Small focused region (for close-up photos)
-      { w: Math.ceil(metadata.width * 0.15), h: Math.ceil(metadata.height * 0.12) },
-      // Medium region
-      { w: Math.ceil(metadata.width * 0.25), h: Math.ceil(metadata.height * 0.20) },
-      // Large region
-      { w: Math.min(Math.ceil(metadata.width * 0.35), 1800), h: Math.min(Math.ceil(metadata.height * 0.28), 1400) },
-    ];
+    // CAI templates have QR code in top-left corner
+    // Try the most likely locations first with minimal processing
     
-    const offsets = [
-      { x: 0, y: 0 },                                    // Exact corner
-      { x: Math.ceil(metadata.width * 0.02), y: Math.ceil(metadata.height * 0.02) },  // Small margin
-      { x: Math.ceil(metadata.width * 0.05), y: Math.ceil(metadata.height * 0.04) },  // Medium margin
-    ];
+    // 1. Small corner region (fastest) - QR is typically ~5-10% of image
+    const smallW = Math.ceil(metadata.width * 0.12);
+    const smallH = Math.ceil(metadata.height * 0.10);
     
-    for (const size of cornerSizes) {
-      for (const offset of offsets) {
-        const result = await scanRegion(
-          offset.x, 
-          offset.y, 
-          size.w, 
-          size.h, 
-          `corner ${size.w}x${size.h} offset (${offset.x},${offset.y})`
-        );
-        if (result) {
-          return processQRCode(result);
-        }
-      }
+    let result = await quickScan(0, 0, smallW, smallH, false);
+    if (result) {
+      console.log(`[TemplateOCR] QR found in small corner (color)`);
+      return processQRCode(result);
     }
     
-    console.log(`[TemplateOCR] QR not found in corner regions, trying scaled full image`);
+    if (isTimedOut()) {
+      console.log(`[TemplateOCR] QR detection timed out after ${Date.now() - startTime}ms`);
+      return { found: false };
+    }
     
-    // Strategy 2: Scan full image at different scales
-    const scales = [1500, 2000, 2500, 3500];
+    // 2. Small corner with threshold (for low contrast)
+    result = await quickScan(0, 0, smallW, smallH, true);
+    if (result) {
+      console.log(`[TemplateOCR] QR found in small corner (threshold)`);
+      return processQRCode(result);
+    }
     
-    for (const maxDim of scales) {
+    if (isTimedOut()) {
+      console.log(`[TemplateOCR] QR detection timed out after ${Date.now() - startTime}ms`);
+      return { found: false };
+    }
+    
+    // 3. Medium corner region
+    const medW = Math.ceil(metadata.width * 0.20);
+    const medH = Math.ceil(metadata.height * 0.16);
+    
+    result = await quickScan(0, 0, medW, medH, true);
+    if (result) {
+      console.log(`[TemplateOCR] QR found in medium corner (threshold)`);
+      return processQRCode(result);
+    }
+    
+    if (isTimedOut()) {
+      console.log(`[TemplateOCR] QR detection timed out after ${Date.now() - startTime}ms`);
+      return { found: false };
+    }
+    
+    // 4. Try with small margin (paper edge in photo)
+    const marginX = Math.ceil(metadata.width * 0.03);
+    const marginY = Math.ceil(metadata.height * 0.025);
+    
+    result = await quickScan(marginX, marginY, medW, medH, true);
+    if (result) {
+      console.log(`[TemplateOCR] QR found with margin offset (threshold)`);
+      return processQRCode(result);
+    }
+    
+    if (isTimedOut()) {
+      console.log(`[TemplateOCR] QR detection timed out after ${Date.now() - startTime}ms`);
+      return { found: false };
+    }
+    
+    // 5. Try upscaled corner for very high-res images where QR is tiny
+    if (metadata.width > 4000) {
       try {
-        const scaledImage = sharp(Buffer.from(imageData))
-          .resize(maxDim, maxDim, { fit: "inside", withoutEnlargement: true });
+        const cornerW = Math.ceil(metadata.width * 0.15);
+        const cornerH = Math.ceil(metadata.height * 0.12);
         
-        // Get metadata of scaled image
-        const scaledMeta = await scaledImage.clone().metadata();
-        const scaledW = scaledMeta.width || maxDim;
-        const scaledH = scaledMeta.height || maxDim;
+        const upscaled = await sharp(Buffer.from(imageData))
+          .extract({ left: 0, top: 0, width: cornerW, height: cornerH })
+          .resize(cornerW * 2, cornerH * 2) // 2x upscale
+          .greyscale()
+          .threshold(140)
+          .toColorspace("srgb")
+          .ensureAlpha()
+          .raw()
+          .toBuffer({ resolveWithObject: true });
         
-        // Scan the scaled image
-        for (const approach of ["color", "threshold", "enhanced"] as const) {
-          try {
-            let pipeline = scaledImage.clone();
-            
-            if (approach === "threshold") {
-              pipeline = pipeline.greyscale().threshold(128).toColorspace("srgb");
-            } else if (approach === "enhanced") {
-              pipeline = pipeline.greyscale().normalise().toColorspace("srgb");
-            }
-            
-            const { data, info } = await pipeline.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-            
-            if (info.channels === 4) {
-              const pixelData = new Uint8ClampedArray(data);
-              const code = jsQR(pixelData, info.width, info.height);
-              
-              if (code) {
-                console.log(`[TemplateOCR] QR found in full image (scale ${maxDim}, ${approach})`);
-                return processQRCode(code.data.trim());
-              }
-            }
-          } catch {
-            continue;
+        if (upscaled.info.channels === 4) {
+          const pixelData = new Uint8ClampedArray(upscaled.data);
+          const code = jsQR(pixelData, upscaled.info.width, upscaled.info.height);
+          
+          if (code) {
+            console.log(`[TemplateOCR] QR found in upscaled corner`);
+            return processQRCode(code.data.trim());
           }
         }
       } catch {
-        continue;
+        // Continue
       }
     }
     
-    console.log(`[TemplateOCR] No QR code found in image after all strategies`);
+    console.log(`[TemplateOCR] No QR code found after ${Date.now() - startTime}ms`);
     return { found: false };
     
   } catch (error) {
