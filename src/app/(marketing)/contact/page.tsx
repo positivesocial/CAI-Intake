@@ -19,15 +19,32 @@ export default function ContactPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  const [error, setError] = React.useState<string | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError(null);
     
-    // Simulate form submission
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    setIsSubmitting(false);
-    setSubmitted(true);
+    try {
+      const response = await fetch("/api/v1/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send message");
+      }
+
+      setIsSubmitting(false);
+      setSubmitted(true);
+    } catch (err) {
+      setIsSubmitting(false);
+      setError(err instanceof Error ? err.message : "Failed to send message. Please try again.");
+    }
   };
 
   if (submitted) {
@@ -76,6 +93,11 @@ export default function ContactPage() {
           {/* Contact Form */}
           <div className="bg-white/5 border border-white/10 rounded-xl p-8">
             <h2 className="text-2xl font-semibold mb-6">Send us a message</h2>
+            {error && (
+              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label className="block text-sm font-medium mb-2">Name</label>

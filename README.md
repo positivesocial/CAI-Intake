@@ -13,7 +13,14 @@
   <a href="#quick-start">Quick Start</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#api">API</a> •
-  <a href="#schema">Schema</a>
+  <a href="#documentation">Documentation</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/license-Proprietary-red" alt="License">
+  <img src="https://img.shields.io/badge/Next.js-16.1-black" alt="Next.js">
+  <img src="https://img.shields.io/badge/TypeScript-5.0-blue" alt="TypeScript">
 </p>
 
 ---
@@ -74,30 +81,41 @@ CAI Intake provides **6 intelligent input modes** that all converge into a singl
 | **Voice Dictation** | Speak parts in structured format | 90%+ |
 | **File Upload** | PDFs, images, CSVs with AI extraction | 85%+ |
 | **QR Templates** | Org-branded forms with guaranteed accuracy | 99%+ |
-| **Copy/Paste** | Extract from any text source | 85%+ |
+| **Copy/Paste** | Extract from any text source with smart detection | 85%+ |
+
+### Smart Parsing
+
+- **Auto-Detection**: Automatically detects parser mode based on input format
+- **Pattern-Based**: Fast, deterministic parsing for structured data
+- **AI-Powered**: Intelligent extraction from unstructured text
+- **Multi-Stage OCR**: Text extraction → Python OCR → Vision fallback
+- **Learning System**: Improves accuracy through corrections and training
 
 ### Canonical Schema Features
 
 - **Versioned format** (`cai-cutlist/v1`) for safe evolution
-- **L/W convention** with grain direction support
+- **L/W convention** with rotation control (allow/lock)
 - **Full CNC operations**: edgebanding, grooves, holes, routing
+- **Part grouping**: Organize by cabinet, assembly, or custom groups
 - **Audit trail**: confidence scores, warnings, human verification
 - **Capability tiers**: Simple shops see basic fields, CNC shops see everything
 
 ### Enterprise Features
 
 - Multi-tenant organization support
-- Role-based capabilities
-- Versioned REST API
+- Role-based access control (Owner, Admin, Manager, Operator, Viewer)
+- Versioned REST API with rate limiting
 - Webhook notifications for async jobs
-- Export to MaxCut, CutList Plus, and more
+- Export to MaxCut, CutList Plus, CutRite, Optimik, and more
+- In-app notification system
+- Subscription & billing management
 
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js 20+
-- PostgreSQL 15+ (or use Docker)
+- PostgreSQL 15+ (or Supabase)
 - npm or yarn
 
 ### Installation
@@ -111,8 +129,8 @@ cd CAI-Intake
 npm install
 
 # Set up environment variables
-cp .env.example .env
-# Edit .env with your database URL and other settings
+cp env.example .env
+# Edit .env with your database URL and API keys
 
 # Generate Prisma client
 npm run db:generate
@@ -126,35 +144,38 @@ npm run dev
 
 Visit `http://localhost:3000` to see the application.
 
+### Environment Variables
+
+```env
+# Database
+DATABASE_URL="postgresql://..."
+SUPABASE_URL="https://..."
+SUPABASE_ANON_KEY="..."
+SUPABASE_SERVICE_ROLE_KEY="..."
+
+# AI Providers
+OPENAI_API_KEY="sk-..."
+ANTHROPIC_API_KEY="sk-ant-..."
+
+# Python OCR Service (optional)
+PYTHON_OCR_URL="http://localhost:8000"
+
+# Email (optional)
+RESEND_API_KEY="re_..."
+EMAIL_FROM="CAI Intake <noreply@cai-intake.io>"
+```
+
 ### Test Accounts
 
-The application includes demo accounts for testing different user roles:
+The application includes demo accounts for testing:
 
 | Role | Email | Password | Access Level |
 |------|-------|----------|--------------|
-| **Super Admin** | `super@cai-intake.io` | `SuperAdmin123!` | Platform-wide admin access |
-| **Org Admin** | `admin@acmecabinets.com` | `OrgAdmin123!` | Organization admin (Acme Cabinets) |
-| **Operator** | `operator@acmecabinets.com` | `Operator123!` | Basic operator access |
+| **Super Admin** | `super@cai-intake.io` | `SuperAdmin123!` | Platform-wide admin |
+| **Org Admin** | `admin@acmecabinets.com` | `OrgAdmin123!` | Organization admin |
+| **Operator** | `operator@acmecabinets.com` | `Operator123!` | Basic operator |
 
-You can also use the **Quick Demo Login** buttons on the login page to instantly sign in as any role without entering credentials.
-
-> **Note:** These are demo accounts for local development. They work without Supabase configuration.
-
-### Docker Setup (Optional)
-
-```bash
-# Start PostgreSQL
-docker run -d \
-  --name cai-postgres \
-  -e POSTGRES_USER=cai \
-  -e POSTGRES_PASSWORD=cai \
-  -e POSTGRES_DB=cai_intake \
-  -p 5432:5432 \
-  postgres:15
-
-# Update .env
-DATABASE_URL="postgresql://cai:cai@localhost:5432/cai_intake"
-```
+Use **Quick Demo Login** buttons on the login page for instant access.
 
 ## Architecture
 
@@ -162,12 +183,15 @@ DATABASE_URL="postgresql://cai:cai@localhost:5432/cai_intake"
 
 | Layer | Technology |
 |-------|------------|
-| Framework | Next.js 15 (App Router) |
-| Language | TypeScript |
+| Framework | Next.js 16 (App Router, Turbopack) |
+| Language | TypeScript 5 |
 | Styling | Tailwind CSS + shadcn/ui |
-| Database | PostgreSQL + Prisma |
+| Database | PostgreSQL + Supabase |
+| ORM | Prisma |
 | Validation | Zod |
-| State | Zustand |
+| State | Zustand (persisted) |
+| AI | OpenAI GPT-4, Anthropic Claude |
+| OCR | Python (Tesseract) + Vision fallback |
 
 ### Project Structure
 
@@ -177,18 +201,26 @@ src/
 │   ├── (auth)/             # Authentication routes
 │   ├── (dashboard)/        # Protected dashboard
 │   │   ├── cutlists/       # Cutlist management
-│   │   ├── intake/         # Intake inbox UI
+│   │   ├── intake/         # Intake workflow
+│   │   ├── help/           # Help center
 │   │   └── settings/       # Organization settings
+│   ├── (marketing)/        # Public pages
+│   ├── (platform)/         # Super admin pages
 │   └── api/v1/             # Versioned API
 ├── components/
 │   ├── ui/                 # shadcn components
 │   ├── intake/             # Intake-specific components
-│   └── parts/              # Parts table components
+│   ├── parts/              # Parts table components
+│   └── training/           # Learning system UI
 ├── lib/
 │   ├── schema/             # Canonical Zod schemas
 │   ├── parsers/            # Input parsing engines
-│   ├── validators/         # Validation logic
-│   └── exporters/          # Export format generators
+│   ├── parser/             # Format detection
+│   ├── ai/                 # AI provider clients
+│   ├── learning/           # Learning system
+│   ├── exports/            # Export format generators
+│   ├── notifications/      # Notification system
+│   └── subscriptions/      # Billing integration
 └── types/                  # TypeScript types
 ```
 
@@ -205,10 +237,11 @@ flowchart LR
         F[Paste] --> R
     end
     
-    R[Router] --> P[Parser]
+    R[Format Detector] --> P[Parser]
     P --> N[Normalizer]
     N --> V[Validator]
     V --> I[Intake Inbox]
+    I --> L[Learning System]
     I --> DB[(Database)]
     DB --> API[API v1]
     API --> OPT[CAI 2D]
@@ -220,7 +253,13 @@ flowchart LR
 ### Base URL
 
 ```
-https://api.cai-intake.com/v1
+https://api.cai-intake.io/v1
+```
+
+### Authentication
+
+```bash
+curl -H "Authorization: Bearer $API_KEY" ...
 ```
 
 ### Endpoints
@@ -229,29 +268,21 @@ https://api.cai-intake.com/v1
 |----------|--------|-------------|
 | `/cutlists` | POST | Create a cutlist |
 | `/cutlists/{id}` | GET | Get a cutlist |
-| `/files` | POST | Upload a file |
-| `/parse-jobs` | POST | Create a parse job |
-| `/parse-jobs/{id}` | GET | Get parse job result |
+| `/cutlists/{id}` | PATCH | Update a cutlist |
+| `/parse-file` | POST | Parse a file with AI/OCR |
+| `/parse-text` | POST | Parse text input |
 | `/exports` | POST | Create an export |
-| `/optimize-jobs` | POST | Submit for optimization |
 | `/subscription` | GET | Get subscription details |
 | `/billing/checkout` | POST | Create checkout session |
-| `/billing/portal` | POST | Access billing portal |
 
-### Example: Create Parse Job
+### Example: Parse Text
 
 ```bash
-curl -X POST https://api.cai-intake.com/v1/parse-jobs \
+curl -X POST https://api.cai-intake.io/v1/parse-text \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "org_id": "ORG-123",
-    "target_schema": "cai-cutlist/v1",
-    "source": {
-      "kind": "text",
-      "text": "Side panel 720x560 qty 2 white board",
-      "origin": "manual_field"
-    },
+    "text": "Side panel 720x560 qty 2 white board edge 2L",
     "options": {
       "units": "mm",
       "default_thickness_mm": 18
@@ -259,54 +290,19 @@ curl -X POST https://api.cai-intake.com/v1/parse-jobs \
   }'
 ```
 
-## Schema
+## Documentation
 
-### Canonical CutPart
-
-The heart of CAI Intake is the `CutPart` schema:
-
-```typescript
-interface CutPart {
-  // Identity
-  part_id: string;
-  label?: string;
-  family?: "panel" | "door" | "drawer_box" | "face_frame" | "filler" | "misc";
-  qty: number;
-
-  // Dimensions (finished sizes in mm)
-  size: { L: number; W: number };
-  thickness_mm: number;
-
-  // Material & orientation
-  material_id: string;
-  grain: "none" | "along_L";
-  allow_rotation?: boolean;
-
-  // Operations (optional)
-  ops?: {
-    edging?: EdgeEdgingOps;
-    grooves?: GrooveOp[];
-    holes?: HoleOp[];
-    routing?: RoutingOp[];
-  };
-
-  // Audit trail
-  audit?: {
-    source_method: IngestionMethod;
-    confidence?: number;
-    human_verified?: boolean;
-  };
-}
-```
-
-See [src/lib/schema/](src/lib/schema/) for complete schema definitions.
+- **User Guide**: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
+- **API Reference**: [docs/API.md](docs/API.md)
+- **Deployment Guide**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- **Learning System**: [docs/LEARNING_SYSTEM.md](docs/LEARNING_SYSTEM.md)
 
 ## Development
 
 ### Commands
 
 ```bash
-npm run dev          # Start development server
+npm run dev          # Start development server (Turbopack)
 npm run build        # Build for production
 npm run lint         # Run ESLint
 npm run db:generate  # Generate Prisma client
@@ -334,22 +330,23 @@ main (production)
 - [x] Phase 1: Foundation (Schema + Manual Entry)
 - [x] Phase 2: Excel/CSV Import with Mapping Wizard
 - [x] Phase 3: Voice Dictation Mode
-- [x] Phase 4: OCR + AI Parsing
+- [x] Phase 4: OCR + AI Parsing (multi-stage fallback)
 - [x] Phase 5: QR Template System
 - [x] Phase 6: Export Formats (MaxCut, CutList Plus, CutRite, Optimik)
 - [x] Phase 7: Subscription & Billing System
 - [x] Phase 8: Super Admin Platform
-- [ ] Phase 9: CAI 2D Optimizer Integration
-- [ ] Phase 10: Mobile App
+- [x] Phase 9: Learning System (few-shot, corrections, patterns)
+- [x] Phase 10: Notification System
+- [ ] Phase 11: CAI 2D Optimizer Integration
+- [ ] Phase 12: Mobile App
 
 ## Export Formats
-
-CAI Intake supports multiple export formats for compatibility with popular cutting optimization software:
 
 | Format | Extension | Description |
 |--------|-----------|-------------|
 | **JSON** | `.json` | Native CAI format with full metadata |
 | **CSV** | `.csv` | Universal spreadsheet format |
+| **PDF** | `.pdf` | Printable parts list |
 | **MaxCut** | `.mcp` | MaxCut optimization software |
 | **CutList Plus** | `.csv` | CutList Plus Pro format |
 | **CutRite** | `.xml` | CutRite/Holzma format |
@@ -374,7 +371,7 @@ CAI Intake supports multiple export formats for compatibility with popular cutti
 
 ## License
 
-Proprietary - All Rights Reserved
+Proprietary - All Rights Reserved. See [LICENSE](LICENSE) for details.
 
 ---
 

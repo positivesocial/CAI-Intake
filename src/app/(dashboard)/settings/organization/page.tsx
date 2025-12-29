@@ -30,38 +30,61 @@ import {
 import { useAuthStore } from "@/lib/auth/store";
 import { cn } from "@/lib/utils";
 
-// Mock organization settings
+// Default organization settings
 const DEFAULT_ORG_SETTINGS = {
   // General
   timezone: "America/New_York",
-  dateFormat: "YYYY-MM-DD",
-  defaultUnits: "mm",
+  date_format: "YYYY-MM-DD",
+  default_units: "mm" as const,
 
   // Cutlist defaults
-  defaultThicknessMm: 18,
-  defaultGrain: "none",
-  autoOptimize: false,
+  default_thickness_mm: 18,
+  default_grain: "none" as const,
+  auto_optimize: false,
 
   // Capabilities
-  enableEdging: true,
-  enableGrooves: false,
-  enableCncHoles: false,
-  enableCncRouting: false,
+  enable_edging: true,
+  enable_grooves: false,
+  enable_cnc_holes: false,
+  enable_cnc_routing: false,
 
   // Branding
-  primaryColor: "#0D9488",
+  primary_color: "#0D9488",
 
   // Integrations
-  webhookUrl: "",
-  apiKey: "cai_live_xxxxxxxxxxxxxxxxx",
+  webhook_url: "",
 };
 
 export default function OrganizationSettingsPage() {
   const { user, isOrgAdmin } = useAuthStore();
   const [isSaving, setIsSaving] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [success, setSuccess] = React.useState<string | null>(null);
   const [settings, setSettings] = React.useState(DEFAULT_ORG_SETTINGS);
   const [orgName, setOrgName] = React.useState(user?.organization?.name || "");
   const [orgSlug, setOrgSlug] = React.useState(user?.organization?.slug || "");
+
+  // Fetch settings on mount
+  React.useEffect(() => {
+    async function fetchSettings() {
+      try {
+        const response = await fetch("/api/v1/organizations/settings");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.settings) {
+            setSettings(prev => ({ ...prev, ...data.settings }));
+            setOrgName(data.settings.name || user?.organization?.name || "");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch settings:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchSettings();
+  }, [user?.organization?.name]);
 
   // Check permissions
   if (!isOrgAdmin()) {
@@ -72,7 +95,7 @@ export default function OrganizationSettingsPage() {
             <Building2 className="h-16 w-16 mx-auto text-[var(--muted-foreground)] mb-4" />
             <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
             <p className="text-[var(--muted-foreground)] mb-6">
-              You don't have permission to access organization settings.
+              You don&apos;t have permission to access organization settings.
             </p>
             <Link href="/settings">
               <Button variant="primary">Back to Settings</Button>
@@ -85,8 +108,32 @@ export default function OrganizationSettingsPage() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsSaving(false);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      const response = await fetch("/api/v1/organizations/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: orgName,
+          ...settings,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to save settings");
+      }
+
+      setSuccess("Settings saved successfully!");
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save settings");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const updateSetting = (key: string, value: unknown) => {

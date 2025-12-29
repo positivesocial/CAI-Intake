@@ -91,50 +91,17 @@ interface DailyUsage {
 }
 
 // ============================================================
-// MOCK DATA (would be replaced by API calls in production)
+// API TYPES
 // ============================================================
 
-const MOCK_USAGE_STATS: UsageStats = {
-  totalRequests: 45623,
-  totalTokens: 15847293,
-  totalCost: 427.85,
-  avgDuration: 2340,
-  successRate: 98.7,
-  errorRate: 1.3,
-};
-
-const MOCK_PROVIDER_STATS: ProviderStats[] = [
-  { provider: "OpenAI", requests: 28450, tokens: 12500000, cost: 312.50, successRate: 99.1 },
-  { provider: "Anthropic", requests: 12380, tokens: 2847293, cost: 85.42, successRate: 98.2 },
-  { provider: "Python OCR", requests: 4793, tokens: 500000, cost: 29.93, successRate: 97.8 },
-];
-
-const MOCK_ORG_STATS: OrganizationStats[] = [
-  { id: "org-1", name: "Acme Cabinets", requests: 12456, cost: 156.78, activeUsers: 8, lastActive: "2 min ago" },
-  { id: "org-2", name: "Premier Woodworks", requests: 8934, cost: 112.45, activeUsers: 5, lastActive: "15 min ago" },
-  { id: "org-3", name: "Modern Kitchen Co", requests: 7823, cost: 98.32, activeUsers: 6, lastActive: "1 hour ago" },
-  { id: "org-4", name: "Elite Cabinetry", requests: 6890, cost: 87.21, activeUsers: 4, lastActive: "3 hours ago" },
-  { id: "org-5", name: "Craftsman Millwork", requests: 5210, cost: 65.43, activeUsers: 3, lastActive: "1 day ago" },
-];
-
-const MOCK_ERRORS: ErrorSummary[] = [
-  { type: "rate_limit_exceeded", count: 23, lastOccurred: "5 min ago", severity: "warning" },
-  { type: "api_timeout", count: 8, lastOccurred: "2 hours ago", severity: "error" },
-  { type: "parse_failure", count: 45, lastOccurred: "30 min ago", severity: "warning" },
-  { type: "ocr_service_unavailable", count: 3, lastOccurred: "6 hours ago", severity: "critical" },
-];
-
-const MOCK_DAILY_USAGE: DailyUsage[] = Array.from({ length: 14 }, (_, i) => {
-  const date = new Date();
-  date.setDate(date.getDate() - (13 - i));
-  return {
-    date: date.toISOString().split("T")[0],
-    requests: Math.floor(2000 + Math.random() * 3000),
-    tokens: Math.floor(800000 + Math.random() * 700000),
-    cost: Math.floor(20 + Math.random() * 40),
-    errors: Math.floor(Math.random() * 50),
-  };
-});
+interface AnalyticsData {
+  stats: UsageStats;
+  providers: ProviderStats[];
+  organizations: OrganizationStats[];
+  errors: ErrorSummary[];
+  dailyUsage: DailyUsage[];
+  totals: { organizations: number; users: number };
+}
 
 // ============================================================
 // HELPER FUNCTIONS
@@ -225,8 +192,8 @@ function MetricCard({
   );
 }
 
-function ProviderUsageCard({ stats }: { stats: ProviderStats }) {
-  const percentage = (stats.cost / MOCK_USAGE_STATS.totalCost) * 100;
+function ProviderUsageCard({ stats, totalCost }: { stats: ProviderStats; totalCost: number }) {
+  const percentage = totalCost > 0 ? (stats.cost / totalCost) * 100 : 0;
 
   return (
     <div className="flex items-center gap-4 p-4 border rounded-lg">
@@ -280,23 +247,46 @@ function MiniBarChart({ data }: { data: DailyUsage[] }) {
 // MAIN COMPONENT
 // ============================================================
 
+const DEFAULT_DATA: AnalyticsData = {
+  stats: { totalRequests: 0, totalTokens: 0, totalCost: 0, avgDuration: 0, successRate: 0, errorRate: 0 },
+  providers: [],
+  organizations: [],
+  errors: [],
+  dailyUsage: [],
+  totals: { organizations: 0, users: 0 },
+};
+
 export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = React.useState("14d");
   const [isLoading, setIsLoading] = React.useState(true);
   const [lastRefresh, setLastRefresh] = React.useState(new Date());
+  const [data, setData] = React.useState<AnalyticsData>(DEFAULT_DATA);
+  const [error, setError] = React.useState<string | null>(null);
 
-  // Simulate loading
+  const fetchData = React.useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/v1/platform/analytics?range=${timeRange}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch analytics");
+      }
+      const result = await response.json();
+      setData(result);
+      setLastRefresh(new Date());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch analytics");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [timeRange]);
+
   React.useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    fetchData();
+  }, [fetchData]);
 
   const handleRefresh = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setLastRefresh(new Date());
-    }, 1000);
+    fetchData();
   };
 
   if (isLoading) {
@@ -353,11 +343,18 @@ export default function AnalyticsPage() {
         Last updated: {lastRefresh.toLocaleTimeString()}
       </div>
 
+      {/* Error Display */}
+      {error && (
+        <div className="p-4 bg-red-100 border border-red-300 rounded-lg text-red-800">
+          {error}
+        </div>
+      )}
+
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Total Requests"
-          value={formatNumber(MOCK_USAGE_STATS.totalRequests)}
+          value={formatNumber(data.stats.totalRequests)}
           icon={Zap}
           change={12.5}
           changeLabel="vs last period"
@@ -365,7 +362,7 @@ export default function AnalyticsPage() {
         />
         <MetricCard
           title="Total Cost"
-          value={formatCurrency(MOCK_USAGE_STATS.totalCost)}
+          value={formatCurrency(data.stats.totalCost)}
           icon={DollarSign}
           change={8.3}
           changeLabel="vs last period"
@@ -373,7 +370,7 @@ export default function AnalyticsPage() {
         />
         <MetricCard
           title="Success Rate"
-          value={`${MOCK_USAGE_STATS.successRate}%`}
+          value={`${data.stats.successRate}%`}
           icon={CheckCircle2}
           change={0.5}
           changeLabel="vs last period"
@@ -381,7 +378,7 @@ export default function AnalyticsPage() {
         />
         <MetricCard
           title="Avg Response Time"
-          value={formatDuration(MOCK_USAGE_STATS.avgDuration)}
+          value={formatDuration(data.stats.avgDuration)}
           icon={TrendingUp}
           change={-5.2}
           changeLabel="vs last period"
@@ -401,11 +398,17 @@ export default function AnalyticsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <MiniBarChart data={MOCK_DAILY_USAGE} />
-          <div className="flex items-center justify-between mt-2 text-xs text-[var(--muted-foreground)]">
-            <span>{MOCK_DAILY_USAGE[0].date}</span>
-            <span>{MOCK_DAILY_USAGE[MOCK_DAILY_USAGE.length - 1].date}</span>
-          </div>
+          {data.dailyUsage.length > 0 ? (
+            <>
+              <MiniBarChart data={data.dailyUsage} />
+              <div className="flex items-center justify-between mt-2 text-xs text-[var(--muted-foreground)]">
+                <span>{data.dailyUsage[0]?.date}</span>
+                <span>{data.dailyUsage[data.dailyUsage.length - 1]?.date}</span>
+              </div>
+            </>
+          ) : (
+            <div className="text-center text-[var(--muted-foreground)] py-8">No data available</div>
+          )}
         </CardContent>
       </Card>
 
@@ -423,9 +426,13 @@ export default function AnalyticsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {MOCK_PROVIDER_STATS.map((provider) => (
-              <ProviderUsageCard key={provider.provider} stats={provider} />
-            ))}
+            {data.providers.length > 0 ? (
+              data.providers.map((provider) => (
+                <ProviderUsageCard key={provider.provider} stats={provider} totalCost={data.stats.totalCost} />
+              ))
+            ) : (
+              <div className="text-center text-[var(--muted-foreground)] py-4">No provider data available</div>
+            )}
           </CardContent>
         </Card>
 
@@ -442,35 +449,39 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {MOCK_ORG_STATS.map((org, i) => (
-                <div
-                  key={org.id}
-                  className="flex items-center gap-4 p-3 border rounded-lg hover:bg-[var(--muted)]/50 transition-colors"
-                >
-                  <div className="w-8 h-8 rounded-full bg-[var(--cai-teal)]/10 flex items-center justify-center text-sm font-medium text-[var(--cai-teal)]">
-                    {i + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{org.name}</div>
-                    <div className="flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        {org.activeUsers} users
-                      </span>
-                      <span>•</span>
-                      <span>{org.lastActive}</span>
+              {data.organizations.length > 0 ? (
+                data.organizations.map((org, i) => (
+                  <div
+                    key={org.id}
+                    className="flex items-center gap-4 p-3 border rounded-lg hover:bg-[var(--muted)]/50 transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-[var(--cai-teal)]/10 flex items-center justify-center text-sm font-medium text-[var(--cai-teal)]">
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{org.name}</div>
+                      <div className="flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
+                        <span className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {org.activeUsers} users
+                        </span>
+                        <span>•</span>
+                        <span>{org.lastActive}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-mono font-medium">
+                        {formatCurrency(org.cost)}
+                      </div>
+                      <div className="text-xs text-[var(--muted-foreground)]">
+                        {formatNumber(org.requests)} requests
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-mono font-medium">
-                      {formatCurrency(org.cost)}
-                    </div>
-                    <div className="text-xs text-[var(--muted-foreground)]">
-                      {formatNumber(org.requests)} requests
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <div className="text-center text-[var(--muted-foreground)] py-4">No organizations yet</div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -489,38 +500,40 @@ export default function AnalyticsPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {MOCK_ERRORS.map((error) => (
+            {data.errors.length > 0 ? data.errors.map((err) => (
               <div
-                key={error.type}
+                key={err.type}
                 className={cn(
                   "p-4 rounded-lg border",
-                  error.severity === "critical" && "border-red-300 bg-red-50",
-                  error.severity === "error" && "border-orange-300 bg-orange-50",
-                  error.severity === "warning" && "border-amber-300 bg-amber-50"
+                  err.severity === "critical" && "border-red-300 bg-red-50",
+                  err.severity === "error" && "border-orange-300 bg-orange-50",
+                  err.severity === "warning" && "border-amber-300 bg-amber-50"
                 )}
               >
                 <div className="flex items-center justify-between mb-2">
                   <Badge
                     variant={
-                      error.severity === "critical"
+                      err.severity === "critical"
                         ? "error"
-                        : error.severity === "error"
+                        : err.severity === "error"
                         ? "warning"
                         : "outline"
                     }
                   >
-                    {error.severity}
+                    {err.severity}
                   </Badge>
-                  <span className="text-2xl font-bold">{error.count}</span>
+                  <span className="text-2xl font-bold">{err.count}</span>
                 </div>
                 <div className="text-sm font-medium truncate">
-                  {error.type.replace(/_/g, " ")}
+                  {err.type.replace(/_/g, " ")}
                 </div>
                 <div className="text-xs text-[var(--muted-foreground)] mt-1">
-                  Last: {error.lastOccurred}
+                  Last: {err.lastOccurred}
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="col-span-4 text-center text-[var(--muted-foreground)] py-4">No errors recorded</div>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -74,66 +74,34 @@ interface Organization {
 }
 
 // =============================================================================
-// MOCK DATA (replace with API calls)
+// API FETCH
 // =============================================================================
 
-const MOCK_ORGANIZATIONS: Organization[] = [
-  {
-    id: "org_1",
-    name: "Acme Cabinets",
-    email: "admin@acmecabinets.com",
-    plan: "professional",
-    status: "active",
-    users: 12,
-    cutlists: 284,
-    createdAt: "2024-03-15",
-    lastActive: "2 hours ago",
-  },
-  {
-    id: "org_2",
-    name: "Premier Woodworks",
-    email: "info@premierwoodworks.com",
-    plan: "enterprise",
-    status: "active",
-    users: 45,
-    cutlists: 1023,
-    createdAt: "2024-01-20",
-    lastActive: "Just now",
-  },
-  {
-    id: "org_3",
-    name: "Smith & Sons Joinery",
-    email: "contact@smithjoinery.com",
-    plan: "starter",
-    status: "active",
-    users: 3,
-    cutlists: 56,
-    createdAt: "2024-06-01",
-    lastActive: "1 day ago",
-  },
-  {
-    id: "org_4",
-    name: "Modern Kitchen Co",
-    email: "hello@modernkitchen.co",
-    plan: "professional",
-    status: "inactive",
-    users: 8,
-    cutlists: 142,
-    createdAt: "2024-02-10",
-    lastActive: "2 weeks ago",
-  },
-  {
-    id: "org_5",
-    name: "Budget Builders",
-    email: "team@budgetbuilders.io",
-    plan: "free",
-    status: "active",
-    users: 2,
-    cutlists: 23,
-    createdAt: "2024-08-01",
-    lastActive: "5 hours ago",
-  },
-];
+async function fetchOrganizations(search = ""): Promise<{ organizations: Organization[]; total: number }> {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  
+  const response = await fetch(`/api/v1/platform/organizations?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch organizations");
+  }
+  const data = await response.json();
+  // Map API response to expected format
+  return {
+    organizations: data.organizations.map((org: Record<string, unknown>) => ({
+      id: org.id,
+      name: org.name,
+      email: `admin@${org.slug || 'unknown'}.com`,
+      plan: org.plan || "free",
+      status: org.status || "active",
+      users: org.members || 0,
+      cutlists: org.cutlists || 0,
+      createdAt: org.createdAt,
+      lastActive: "Recently",
+    })),
+    total: data.total,
+  };
+}
 
 // =============================================================================
 // COMPONENTS
@@ -198,6 +166,8 @@ export default function PlatformOrganizationsPage() {
     setMounted(true);
   }, []);
 
+  const [error, setError] = React.useState<string | null>(null);
+
   // Load data after mounted
   React.useEffect(() => {
     if (mounted) {
@@ -205,13 +175,19 @@ export default function PlatformOrganizationsPage() {
         router.push("/platform/login");
         return;
       }
-      // Simulate API call
-      setTimeout(() => {
-        setOrganizations(MOCK_ORGANIZATIONS);
-        setLoading(false);
-      }, 500);
+      
+      // Fetch from API
+      fetchOrganizations(searchQuery)
+        .then((data) => {
+          setOrganizations(data.organizations);
+          setLoading(false);
+        })
+        .catch((err) => {
+          setError(err.message);
+          setLoading(false);
+        });
     }
-  }, [mounted, isSuperAdmin, router]);
+  }, [mounted, isSuperAdmin, router, searchQuery]);
 
   const handleLogout = async () => {
     await logout();

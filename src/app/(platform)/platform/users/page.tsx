@@ -73,71 +73,20 @@ interface User {
 }
 
 // =============================================================================
-// MOCK DATA (replace with API calls)
+// API FETCH
 // =============================================================================
 
-const MOCK_USERS: User[] = [
-  {
-    id: "user_1",
-    name: "John Smith",
-    email: "john@acmecabinets.com",
-    role: "org_admin",
-    organization: "Acme Cabinets",
-    status: "active",
-    lastLogin: "2 hours ago",
-    createdAt: "2024-03-15",
-  },
-  {
-    id: "user_2",
-    name: "Sarah Johnson",
-    email: "sarah@premierwoodworks.com",
-    role: "org_admin",
-    organization: "Premier Woodworks",
-    status: "active",
-    lastLogin: "Just now",
-    createdAt: "2024-01-20",
-  },
-  {
-    id: "user_3",
-    name: "Mike Williams",
-    email: "mike@smithjoinery.com",
-    role: "member",
-    organization: "Smith & Sons Joinery",
-    status: "active",
-    lastLogin: "1 day ago",
-    createdAt: "2024-06-01",
-  },
-  {
-    id: "user_4",
-    name: "Emily Chen",
-    email: "emily@modernkitchen.co",
-    role: "member",
-    organization: "Modern Kitchen Co",
-    status: "inactive",
-    lastLogin: "2 weeks ago",
-    createdAt: "2024-02-10",
-  },
-  {
-    id: "user_5",
-    name: "Platform Admin",
-    email: "admin@cai-intake.io",
-    role: "super_admin",
-    organization: null,
-    status: "active",
-    lastLogin: "5 minutes ago",
-    createdAt: "2024-01-01",
-  },
-  {
-    id: "user_6",
-    name: "Alex Rivera",
-    email: "alex@acmecabinets.com",
-    role: "member",
-    organization: "Acme Cabinets",
-    status: "pending",
-    lastLogin: "Never",
-    createdAt: "2024-12-20",
-  },
-];
+async function fetchUsers(search = "", status = "all"): Promise<{ users: User[]; total: number }> {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  if (status !== "all") params.set("status", status);
+  
+  const response = await fetch(`/api/v1/platform/users?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch users");
+  }
+  return response.json();
+}
 
 // =============================================================================
 // COMPONENTS
@@ -203,6 +152,8 @@ export default function PlatformUsersPage() {
     setMounted(true);
   }, []);
 
+  const [error, setError] = React.useState<string | null>(null);
+
   // Load data after mounted
   React.useEffect(() => {
     if (mounted) {
@@ -210,13 +161,19 @@ export default function PlatformUsersPage() {
         router.push("/platform/login");
         return;
       }
-      // Simulate API call
-      setTimeout(() => {
-        setUsers(MOCK_USERS);
-        setLoading(false);
-      }, 500);
+      
+      // Fetch from API
+      fetchUsers(searchQuery, statusFilter)
+        .then((data) => {
+          setUsers(data.users);
+          setLoading(false);
+        })
+        .catch((err) => {
+          setError(err.message);
+          setLoading(false);
+        });
     }
-  }, [mounted, isSuperAdmin, router]);
+  }, [mounted, isSuperAdmin, router, searchQuery, statusFilter]);
 
   const handleLogout = async () => {
     await logout();
