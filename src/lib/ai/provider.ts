@@ -212,39 +212,162 @@ export function getCurrentProviderType(): AIProviderType {
 
 /**
  * Parse AI response JSON safely
+ * Handles markdown code blocks, truncated responses, and partial JSON
  */
 export function parseAIResponseJSON<T>(response: string): T | null {
-  try {
-    // Try to extract JSON from markdown code blocks
-    const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[1].trim());
+  let cleanResponse = response.trim();
+  
+  // Step 1: Strip markdown code fences (complete or truncated)
+  // Handle: ```json ... ``` (complete)
+  const completeMatch = cleanResponse.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (completeMatch) {
+    cleanResponse = completeMatch[1].trim();
+  } else {
+    // Handle truncated: ```json ... (no closing ```)
+    const openingFenceMatch = cleanResponse.match(/^```(?:json)?\s*([\s\S]*)/);
+    if (openingFenceMatch) {
+      cleanResponse = openingFenceMatch[1].trim();
     }
-    
-    // Try direct JSON parse
-    return JSON.parse(response);
-  } catch {
-    // Try to find JSON array or object
-    const arrayMatch = response.match(/\[[\s\S]*\]/);
-    if (arrayMatch) {
-      try {
-        return JSON.parse(arrayMatch[0]);
-      } catch {
-        return null;
-      }
-    }
-    
-    const objectMatch = response.match(/\{[\s\S]*\}/);
-    if (objectMatch) {
-      try {
-        return JSON.parse(objectMatch[0]);
-      } catch {
-        return null;
-      }
-    }
-    
-    return null;
   }
+  
+  // Step 2: Try direct JSON parse
+  try {
+    return JSON.parse(cleanResponse);
+  } catch {
+    // Continue to fallback strategies
+  }
+  
+  // Step 3: Try to find and parse JSON array
+  const arrayMatch = cleanResponse.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    try {
+      return JSON.parse(arrayMatch[0]);
+    } catch {
+      // Try to repair truncated array
+      const repaired = repairTruncatedJSON(arrayMatch[0]);
+      if (repaired) {
+        try {
+          return JSON.parse(repaired);
+        } catch {
+          // Continue
+        }
+      }
+    }
+  }
+  
+  // Step 4: Try to find and parse JSON object
+  const objectMatch = cleanResponse.match(/\{[\s\S]*\}/);
+  if (objectMatch) {
+    try {
+      return JSON.parse(objectMatch[0]);
+    } catch {
+      // Try to repair truncated object
+      const repaired = repairTruncatedJSON(objectMatch[0]);
+      if (repaired) {
+        try {
+          return JSON.parse(repaired);
+        } catch {
+          // Continue
+        }
+      }
+    }
+  }
+  
+  // Step 5: Extract individual complete objects from truncated array
+  const parts = extractCompleteObjects(cleanResponse);
+  if (parts.length > 0) {
+    return parts as T;
+  }
+  
+  return null;
+}
+
+/**
+ * Attempt to repair truncated JSON by closing open brackets
+ */
+function repairTruncatedJSON(json: string): string | null {
+  let repaired = json.trim();
+  
+  // Count open brackets
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+  let escape = false;
+  
+  for (const char of repaired) {
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === '\\') {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === '{') openBraces++;
+      if (char === '}') openBraces--;
+      if (char === '[') openBrackets++;
+      if (char === ']') openBrackets--;
+    }
+  }
+  
+  // If we're in a string, close it
+  if (inString) {
+    repaired += '"';
+  }
+  
+  // Close any incomplete key-value pair
+  // Check if we end with a colon or comma
+  const lastColon = repaired.lastIndexOf(':');
+  const lastComma = repaired.lastIndexOf(',');
+  const lastClose = Math.max(repaired.lastIndexOf('}'), repaired.lastIndexOf(']'));
+  
+  if (lastColon > lastClose && lastColon > lastComma) {
+    // Ended mid-value, add null and close
+    repaired += 'null';
+  }
+  
+  // Close open braces and brackets
+  while (openBraces > 0) {
+    repaired += '}';
+    openBraces--;
+  }
+  while (openBrackets > 0) {
+    repaired += ']';
+    openBrackets--;
+  }
+  
+  return repaired;
+}
+
+/**
+ * Extract complete JSON objects from a potentially truncated array
+ */
+function extractCompleteObjects(text: string): unknown[] {
+  const objects: unknown[] = [];
+  
+  // Find all complete objects
+  const objectRegex = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
+  let match;
+  
+  while ((match = objectRegex.exec(text)) !== null) {
+    try {
+      const obj = JSON.parse(match[0]);
+      // Validate it looks like a part (has length and width)
+      if (obj && typeof obj === 'object' && 
+          (('length' in obj && 'width' in obj) || ('row' in obj))) {
+        objects.push(obj);
+      }
+    } catch {
+      // Skip invalid objects
+    }
+  }
+  
+  return objects;
 }
 
 /**

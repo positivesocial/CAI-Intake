@@ -691,36 +691,21 @@ Dimension sanity checks:
 
 ## OUTPUT FORMAT
 
-Return JSON array with this EXACT structure:
-\`\`\`json
-[
-  {
-    "row": 1,
-    "label": "Part description or empty",
-    "length": 780,
-    "width": 560,
-    "thickness": 18,
-    "quantity": 2,
-    "material": "W",
-    "edgeBanding": {
-      "detected": true,
-      "L1": true,
-      "L2": false,
-      "W1": false,
-      "W2": false,
-      "edges": ["L1"],
-      "description": "1 long edge"
-    },
-    "grooving": {
-      "detected": true,
-      "GL": true,
-      "GW": false,
-      "description": "groove on length"
-    },
-    "confidence": 0.95
-  }
-]
-\`\`\`
+**CRITICAL: Return ONLY raw JSON - NO markdown code blocks, NO backticks, NO explanations.**
+
+Return a JSON array starting with [ and ending with ]. Example structure:
+[{"row": 1, "label": "", "length": 780, "width": 560, "thickness": 18, "quantity": 2, "material": "W", "edgeBanding": {"detected": true, "L1": true, "L2": false, "W1": false, "W2": false, "edges": ["L1"], "description": "1 long edge"}, "grooving": {"detected": true, "GL": true, "GW": false, "description": "groove on length"}, "confidence": 0.95}]
+
+Each object MUST have:
+- row: row/item number
+- length: dimension in mm (must be >= width)
+- width: dimension in mm
+- thickness: default 18 if not specified
+- quantity: default 1 if unclear
+- material: material code (W, Ply, B, etc.)
+- edgeBanding: {detected, L1, L2, W1, W2, edges[], description}
+- grooving: {detected, GL, GW, description}
+- confidence: 0.0-1.0
 
 ## EDGE BANDING OBJECT FORMAT
 
@@ -776,7 +761,7 @@ Before returning your response, verify:
 - 0.40-0.59: Significant guessing required
 - Below 0.40: Very uncertain, include anyway with warnings
 
-Return ONLY valid JSON array. Extract EVERY item from EVERY column and section. No markdown, no explanations.`;
+**RESPONSE FORMAT: Start directly with [ and end with ] - NO markdown code blocks (no \`\`\`), NO explanations, NO text before or after the JSON array. Just raw JSON.**`;
 
 // ============================================================
 // TEMPLATE-SPECIFIC PROMPTS
