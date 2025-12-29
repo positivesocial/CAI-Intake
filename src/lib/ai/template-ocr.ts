@@ -12,6 +12,7 @@
  */
 
 import jsQR from "jsqr";
+import sharp from "sharp";
 import { parseTemplateId, type ParsedTemplateId } from "@/lib/templates/org-template-generator";
 
 // ============================================================
@@ -198,26 +199,29 @@ export async function getOrgTemplateConfig(
 
 /**
  * Detect QR code in an image and parse template ID
+ * Uses sharp for Node.js compatible image processing
  */
 export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetectionResult> {
   try {
-    // Create image from buffer
-    const blob = new Blob([imageData]);
-    const imageBitmap = await createImageBitmap(blob);
+    // Use sharp to decode image and get raw RGBA pixel data
+    const image = sharp(Buffer.from(imageData));
+    const metadata = await image.metadata();
     
-    // Create canvas to get image data
-    const canvas = new OffscreenCanvas(imageBitmap.width, imageBitmap.height);
-    const ctx = canvas.getContext("2d");
-    
-    if (!ctx) {
-      return { found: false, error: "Could not create canvas context" };
+    if (!metadata.width || !metadata.height) {
+      return { found: false, error: "Could not read image dimensions" };
     }
     
-    ctx.drawImage(imageBitmap, 0, 0);
-    const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    // Get raw RGBA pixel data
+    const { data, info } = await image
+      .ensureAlpha() // Ensure RGBA format
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    
+    // Convert to Uint8ClampedArray for jsQR
+    const pixelData = new Uint8ClampedArray(data);
     
     // Scan for QR code
-    const code = jsQR(imageDataObj.data, imageDataObj.width, imageDataObj.height);
+    const code = jsQR(pixelData, info.width, info.height);
     
     if (!code) {
       return { found: false };
@@ -598,3 +602,5 @@ export {
   parseTemplateId,
   type ParsedTemplateId,
 };
+
+
