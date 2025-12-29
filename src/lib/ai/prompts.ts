@@ -663,6 +663,16 @@ You are an expert OCR system specialized in reading handwritten and printed cutl
 
 ## CRITICAL INSTRUCTION: EXTRACT EVERY SINGLE ITEM
 
+### PRINTED TEMPLATES (NUMBERED ROWS)
+If this is a printed template form with numbered rows (1, 2, 3... up to 25 or more):
+1. The row numbers appear in the leftmost column (#, NO, or first column)
+2. **EXTRACT EVERY ROW that has ANY data written in it**
+3. Count the highest row number that has data - that's how many parts to extract
+4. Rows with strikethroughs/corrections: Extract the VISIBLE/CORRECTED values
+5. If row 25 has data, you MUST have 25 parts in your output (assuming rows 1-25 are filled)
+6. Empty rows (completely blank) can be skipped
+7. Check EVERY column for EVERY row - don't miss edge codes, material, or notes
+
 ### MULTI-COLUMN LAYOUTS (VERY IMPORTANT!)
 Handwritten cutlists often have MULTIPLE COLUMNS of data on a single page:
 - LEFT column might have items 1-34
@@ -788,6 +798,14 @@ Each object MUST have:
 - drilling: {detected, holes[], patterns[], description}
 - cncOperations: {detected, routing[], pockets[], custom[], description}
 - confidence: 0.0-1.0
+
+## FINAL VERIFICATION (CRITICAL!)
+Before returning your response:
+1. Count the number of parts in your JSON array
+2. Verify this matches the highest row number that has data
+3. If template shows rows 1-25 filled, your array MUST have ~25 items
+4. If you extracted fewer parts than row numbers, GO BACK and re-scan for missed rows
+5. Each row with dimensions = 1 part in output (unless qty > 1)
 
 ## EDGE BANDING OBJECT FORMAT
 
