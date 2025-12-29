@@ -1739,10 +1739,20 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
       cncDescription += "Routing/profiling. ";
     }
 
-    // Merge with AI-detected CNC
+    // Merge with AI-detected CNC (new structure: routing/pockets/custom are string[])
     if (aiPart.cncOperations?.detected) {
-      if (aiPart.cncOperations.holes) cncHoles = Math.max(cncHoles, aiPart.cncOperations.holes);
-      if (aiPart.cncOperations.routing) cncRouting = true;
+      // routing is now string[] (array of routing operations)
+      if (Array.isArray(aiPart.cncOperations.routing) && aiPart.cncOperations.routing.length > 0) {
+        cncRouting = true;
+        cncHoles = Math.max(cncHoles, aiPart.cncOperations.routing.length);
+      }
+      // pockets/custom also indicate CNC operations
+      if (Array.isArray(aiPart.cncOperations.pockets) && aiPart.cncOperations.pockets.length > 0) {
+        cncRouting = true;
+      }
+      if (Array.isArray(aiPart.cncOperations.custom) && aiPart.cncOperations.custom.length > 0) {
+        cncRouting = true;
+      }
       if (aiPart.cncOperations.description && !cncDescription.includes(aiPart.cncOperations.description)) {
         cncDescription += aiPart.cncOperations.description + ". ";
       }
