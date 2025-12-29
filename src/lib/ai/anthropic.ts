@@ -768,16 +768,26 @@ export class AnthropicProvider implements AIProvider {
       const textContent = response.content.find(c => c.type === "text");
       const rawResponse = textContent?.type === "text" ? textContent.text : "";
       
+      logger.debug("🖼️ [Anthropic] Image analysis raw response", {
+        rawResponsePreview: rawResponse.substring(0, 1000),
+        responseLength: rawResponse.length,
+      });
+      
       const parsed = parseAIResponseJSON<{ parts: AIPartResponse[] } | AIPartResponse[]>(rawResponse);
       const parts = Array.isArray(parsed) ? parsed : parsed?.parts;
       
       if (!parts || !Array.isArray(parts)) {
+        logger.warn("🖼️ [Anthropic] Image analysis returned no parseable parts", {
+          rawResponsePreview: rawResponse.substring(0, 500),
+          parsedType: typeof parsed,
+          hasParts: !!(parsed as { parts?: unknown })?.parts,
+        });
         return {
           success: false,
           parts: [],
           totalConfidence: 0,
           rawResponse,
-          errors: ["Failed to parse AI response from image analysis"],
+          errors: ["Failed to parse AI response from image analysis. The image may not contain a recognizable cutlist."],
           processingTime: Date.now() - startTime,
         };
       }
