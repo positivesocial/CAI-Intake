@@ -226,40 +226,48 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
     const cornerHeight = Math.min(Math.ceil(metadata.height * 0.25), 1200); // 25% of height, max 1200px
     
     try {
-      // First try with contrast enhancement for better QR detection
-      const cornerImage = sharp(Buffer.from(imageData))
-        .extract({ left: 0, top: 0, width: cornerWidth, height: cornerHeight })
-        .greyscale()  // Convert to greyscale for better QR contrast
-        .normalise()  // Enhance contrast
-        .ensureAlpha();
-      
-      const { data: cornerData, info: cornerInfo } = await cornerImage
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-      
-      const cornerPixels = new Uint8ClampedArray(cornerData);
-      const cornerCode = jsQR(cornerPixels, cornerInfo.width, cornerInfo.height);
-      
-      if (cornerCode) {
-        console.log(`[TemplateOCR] QR found in corner region (${cornerWidth}x${cornerHeight}) with greyscale`);
-        return processQRCode(cornerCode.data.trim());
-      }
-      
-      // Try without greyscale/normalise (some QR readers work better with color)
+      // Strategy 1a: Try corner with color (RGBA) - most reliable
+      // jsQR requires RGBA format (4 channels)
       const cornerImageColor = sharp(Buffer.from(imageData))
         .extract({ left: 0, top: 0, width: cornerWidth, height: cornerHeight })
-        .ensureAlpha();
+        .ensureAlpha()  // Ensure RGBA (4 channels)
+        .raw();
       
       const { data: cornerDataColor, info: cornerInfoColor } = await cornerImageColor
-        .raw()
         .toBuffer({ resolveWithObject: true });
       
-      const cornerPixelsColor = new Uint8ClampedArray(cornerDataColor);
-      const cornerCodeColor = jsQR(cornerPixelsColor, cornerInfoColor.width, cornerInfoColor.height);
+      // Verify we have 4 channels (RGBA)
+      if (cornerInfoColor.channels === 4) {
+        const cornerPixelsColor = new Uint8ClampedArray(cornerDataColor);
+        const cornerCodeColor = jsQR(cornerPixelsColor, cornerInfoColor.width, cornerInfoColor.height);
+        
+        if (cornerCodeColor) {
+          console.log(`[TemplateOCR] QR found in corner region (${cornerWidth}x${cornerHeight}) RGBA`);
+          return processQRCode(cornerCodeColor.data.trim());
+        }
+      }
       
-      if (cornerCodeColor) {
-        console.log(`[TemplateOCR] QR found in corner region (${cornerWidth}x${cornerHeight}) with color`);
-        return processQRCode(cornerCodeColor.data.trim());
+      // Strategy 1b: Try corner with contrast enhancement
+      // Convert greyscale back to RGBA for jsQR compatibility
+      const cornerImageEnhanced = sharp(Buffer.from(imageData))
+        .extract({ left: 0, top: 0, width: cornerWidth, height: cornerHeight })
+        .greyscale()    // Better contrast for QR
+        .normalise()    // Enhance contrast
+        .toColorspace("srgb")  // Convert back to RGB
+        .ensureAlpha()  // Add alpha channel for RGBA
+        .raw();
+      
+      const { data: cornerDataEnhanced, info: cornerInfoEnhanced } = await cornerImageEnhanced
+        .toBuffer({ resolveWithObject: true });
+      
+      if (cornerInfoEnhanced.channels === 4) {
+        const cornerPixelsEnhanced = new Uint8ClampedArray(cornerDataEnhanced);
+        const cornerCodeEnhanced = jsQR(cornerPixelsEnhanced, cornerInfoEnhanced.width, cornerInfoEnhanced.height);
+        
+        if (cornerCodeEnhanced) {
+          console.log(`[TemplateOCR] QR found in corner region (${cornerWidth}x${cornerHeight}) enhanced`);
+          return processQRCode(cornerCodeEnhanced.data.trim());
+        }
       }
       
       console.log(`[TemplateOCR] QR not found in corner (${cornerWidth}x${cornerHeight}), trying full image`);
@@ -268,7 +276,6 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
     }
     
     // Strategy 2: Scan a resized version of the full image
-    // Use larger size for better QR detection
     const maxDimension = 2500;
     let scanImage = sharp(Buffer.from(imageData));
     
@@ -279,35 +286,41 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
       });
     }
     
-    // Try with greyscale first (better contrast)
-    const { data: greyData, info: greyInfo } = await scanImage
+    // Try with color first (RGBA)
+    const { data, info } = await scanImage
+      .clone()
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    
+    if (info.channels === 4) {
+      const pixelData = new Uint8ClampedArray(data);
+      const code = jsQR(pixelData, info.width, info.height);
+      
+      if (code) {
+        console.log(`[TemplateOCR] QR found in full image (RGBA, ${info.width}x${info.height})`);
+        return processQRCode(code.data.trim());
+      }
+    }
+    
+    // Try with enhanced contrast
+    const { data: enhancedData, info: enhancedInfo } = await scanImage
       .clone()
       .greyscale()
       .normalise()
+      .toColorspace("srgb")
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
     
-    const greyPixels = new Uint8ClampedArray(greyData);
-    const greyCode = jsQR(greyPixels, greyInfo.width, greyInfo.height);
-    
-    if (greyCode) {
-      console.log(`[TemplateOCR] QR found in full image (greyscale, ${greyInfo.width}x${greyInfo.height})`);
-      return processQRCode(greyCode.data.trim());
-    }
-    
-    // Try with color as fallback
-    const { data, info } = await scanImage
-      .ensureAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    
-    const pixelData = new Uint8ClampedArray(data);
-    const code = jsQR(pixelData, info.width, info.height);
-    
-    if (code) {
-      console.log(`[TemplateOCR] QR found in full image (color, ${info.width}x${info.height})`);
-      return processQRCode(code.data.trim());
+    if (enhancedInfo.channels === 4) {
+      const enhancedPixels = new Uint8ClampedArray(enhancedData);
+      const enhancedCode = jsQR(enhancedPixels, enhancedInfo.width, enhancedInfo.height);
+      
+      if (enhancedCode) {
+        console.log(`[TemplateOCR] QR found in full image (enhanced, ${enhancedInfo.width}x${enhancedInfo.height})`);
+        return processQRCode(enhancedCode.data.trim());
+      }
     }
     
     console.log(`[TemplateOCR] No QR code found in image after all strategies`);
