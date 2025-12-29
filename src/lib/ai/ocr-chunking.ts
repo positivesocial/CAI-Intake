@@ -210,11 +210,6 @@ export function mergeChunkResults(chunks: ChunkResult[]): MergedResult {
     }
   }
   
-  // Renumber parts sequentially
-  for (let i = 0; i < allParts.length; i++) {
-    allParts[i].row = i + 1;
-  }
-  
   logger.info("✅ [Merge] Chunk results merged", {
     chunksProcessed: chunks.length,
     totalParts: allParts.length,
