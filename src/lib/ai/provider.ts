@@ -185,13 +185,13 @@ export async function setAIProvider(type: AIProviderType): Promise<AIProvider> {
     const { AnthropicProvider } = await import("./anthropic");
     currentProvider = new AnthropicProvider();
   } else if (type === "resilient") {
-    // ResilientProvider uses Anthropic as primary and OpenAI as fallback
-    const { ResilientProvider } = await import("./resilient-provider");
-    currentProvider = new ResilientProvider();
+    // ResilientAIProvider uses Anthropic as primary and OpenAI as fallback
+    const { ResilientAIProvider } = await import("./resilient-provider");
+    currentProvider = new ResilientAIProvider();
   } else {
     // Default to resilient
-    const { ResilientProvider } = await import("./resilient-provider");
-    currentProvider = new ResilientProvider();
+    const { ResilientAIProvider } = await import("./resilient-provider");
+    currentProvider = new ResilientAIProvider();
   }
   
   return currentProvider;
