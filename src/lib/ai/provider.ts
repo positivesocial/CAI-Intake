@@ -398,3 +398,194 @@ export function getConfidenceThreshold(level: ParseOptions["confidence"]): numbe
   }
 }
 
+// ============================================================
+// COMPACT FORMAT EXPANSION
+// ============================================================
+
+/**
+ * Compact part format from high-density extraction
+ * Uses abbreviated field names to reduce token count
+ */
+interface CompactPart {
+  r?: number;      // row
+  l: number;       // length
+  w: number;       // width
+  q?: number;      // quantity
+  m?: string;      // material
+  e?: string;      // edge banding code ("2L2W", "2L", "1L1W", etc.)
+  g?: string;      // groove code ("GL", "GW", "GL+GW", etc.)
+  n?: string;      // notes
+  t?: number;      // thickness (optional)
+}
+
+/**
+ * Expand edge banding code to full object
+ * "2L2W" → { L1: true, L2: true, W1: true, W2: true, edges: ["L1","L2","W1","W2"] }
+ */
+function expandEdgeBandingCode(code: string | undefined): {
+  detected: boolean;
+  L1: boolean;
+  L2: boolean;
+  W1: boolean;
+  W2: boolean;
+  edges: string[];
+  description: string;
+} {
+  if (!code || code === "") {
+    return { detected: false, L1: false, L2: false, W1: false, W2: false, edges: [], description: "" };
+  }
+  
+  const upperCode = code.toUpperCase();
+  const edges: string[] = [];
+  let L1 = false, L2 = false, W1 = false, W2 = false;
+  
+  // Parse edge codes
+  if (upperCode.includes("2L2W") || upperCode.includes("4E") || upperCode === "ALL") {
+    L1 = L2 = W1 = W2 = true;
+    edges.push("L1", "L2", "W1", "W2");
+  } else {
+    // Check for long edges
+    if (upperCode.includes("2L")) {
+      L1 = L2 = true;
+      edges.push("L1", "L2");
+    } else if (upperCode.includes("1L")) {
+      L1 = true;
+      edges.push("L1");
+    }
+    
+    // Check for short edges
+    if (upperCode.includes("2W")) {
+      W1 = W2 = true;
+      edges.push("W1", "W2");
+    } else if (upperCode.includes("1W")) {
+      W1 = true;
+      edges.push("W1");
+    }
+  }
+  
+  const description = edges.length === 0 ? "" : 
+    edges.length === 4 ? "all edges" :
+    edges.length === 2 && L1 && L2 ? "2 long edges" :
+    edges.length === 2 && W1 && W2 ? "2 short edges" :
+    `${edges.length} edge${edges.length > 1 ? "s" : ""}`;
+  
+  return { detected: edges.length > 0, L1, L2, W1, W2, edges, description };
+}
+
+/**
+ * Expand groove code to full object
+ * "GL" → { detected: true, GL: true, GW: false }
+ */
+function expandGrooveCode(code: string | undefined): {
+  detected: boolean;
+  GL: boolean;
+  GW: boolean;
+  description: string;
+} {
+  if (!code || code === "") {
+    return { detected: false, GL: false, GW: false, description: "" };
+  }
+  
+  const upperCode = code.toUpperCase();
+  const GL = upperCode.includes("GL") || upperCode.includes("L");
+  const GW = upperCode.includes("GW") || upperCode.includes("W");
+  
+  const description = GL && GW ? "grooves on length and width" :
+    GL ? "groove on length" :
+    GW ? "groove on width" : "";
+  
+  return { detected: GL || GW, GL, GW, description };
+}
+
+/**
+ * Expand material code to full material name hint
+ */
+function expandMaterialCode(code: string | undefined): string {
+  if (!code) return "";
+  
+  // Return as-is if it's already descriptive
+  if (code.length > 3) return code;
+  
+  // Expand common abbreviations
+  const upperCode = code.toUpperCase();
+  const expansions: Record<string, string> = {
+    "WC": "White Carcase",
+    "WD": "White Door",
+    "WP": "White Plywood",
+    "W": "White",
+    "B": "Black",
+    "BK": "Black",
+    "PLY": "Plywood",
+    "P": "Plywood",
+    "M": "Melamine",
+    "MDF": "MDF",
+  };
+  
+  return expansions[upperCode] || code;
+}
+
+/**
+ * Check if the response is in compact format
+ */
+export function isCompactFormat(parts: unknown[]): boolean {
+  if (!Array.isArray(parts) || parts.length === 0) return false;
+  
+  const first = parts[0] as Record<string, unknown>;
+  // Compact format uses 'l' and 'w' instead of 'length' and 'width'
+  return 'l' in first && 'w' in first && !('length' in first);
+}
+
+/**
+ * Expand compact format parts to full ParsedPartResult format
+ */
+export function expandCompactParts(compactParts: CompactPart[]): ParsedPartResult[] {
+  return compactParts.map((cp, index) => {
+    const edgeBanding = expandEdgeBandingCode(cp.e);
+    const grooving = expandGrooveCode(cp.g);
+    const material = expandMaterialCode(cp.m);
+    
+    // Parse notes for CNC/drilling hints
+    const notes = cp.n || "";
+    const notesLower = notes.toLowerCase();
+    const hasCNC = notesLower.includes("cnc") || notesLower.includes("r3") || notesLower.includes("radius");
+    const hasDrilling = notesLower.includes("drill") || notesLower.includes("hole") || notesLower.includes("h1") || notesLower.includes("h2");
+    
+    return {
+      id: `part_${Date.now()}_${index}`,
+      row: cp.r || (index + 1),
+      label: material || `Part ${cp.r || index + 1}`,
+      length: cp.l,
+      width: cp.w,
+      thickness: cp.t || 18,
+      quantity: cp.q || 1,
+      material: cp.m || "",
+      grain: "none",
+      allow_rotation: false,
+      edgeBanding: {
+        ...edgeBanding,
+        edgebandMaterial: undefined,
+      },
+      grooving: {
+        ...grooving,
+        profileHint: undefined,
+      },
+      drilling: {
+        detected: hasDrilling,
+        holes: hasDrilling ? [notes] : [],
+        patterns: [],
+        description: hasDrilling ? notes : "",
+      },
+      cncOperations: {
+        detected: hasCNC,
+        routing: hasCNC ? [notes] : [],
+        pockets: [],
+        custom: [],
+        description: hasCNC ? notes : "",
+      },
+      notes: notes,
+      confidence: 0.9, // High default confidence for successfully extracted parts
+      warnings: [],
+    };
+  });
+}
+

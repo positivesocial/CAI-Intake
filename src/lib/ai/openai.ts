@@ -757,11 +757,13 @@ export class OpenAIProvider implements AIProvider {
       
       // Use deterministic prompt if provided (for CAI template parsing)
       // This bypasses the generic prompt builder and uses org-specific shortcodes
+      // Default to COMPACT format for images to allow extracting 500+ parts
       const prompt = options.deterministicPrompt 
         ? options.deterministicPrompt
         : buildParsePrompt({
             extractMetadata: options.extractMetadata,
             isImage: true,
+            useCompactFormat: true, // Use compact format for high-density extraction
             templateId: options.templateId,
             templateConfig: options.templateConfig ? {
               fieldLayout: options.templateConfig.fieldLayout,
@@ -832,44 +834,32 @@ export class OpenAIProvider implements AIProvider {
               {
                 role: "user",
                 content: [
-                  { type: "text", text: `I am a cabinet manufacturer and this is a photograph of my production order / cutting list from my workshop.
+                  { type: "text", text: `This is a photo/scan of a cutlist from a cabinet/furniture manufacturing workshop.
 
-This document contains ONLY standard manufacturing data:
-- Part dimensions in millimeters (Length × Width × Thickness)
-- Quantities (how many pieces to cut)
-- Material names (like "WHITE PB", "WALNUT", "MDF", "HUORD WALNUT")
-- Edge banding codes (like "2L2W" = all 4 edges, "2L" = 2 long edges, "1L" = 1 long edge)
-- Operations like drilling, grooving, or CNC routing
+CRITICAL INSTRUCTIONS:
 
-THIS IS A STRUCTURED TABLE FORMAT. The document has COLUMNS like:
-# | Part Name | L(mm) | W(mm) | Thk | Qty | Material | Edge (code) | Groove | Drill | CNC | Notes
+1. SCAN THE ENTIRE PAGE FIRST:
+   - Count ALL columns of data (left, middle, right)
+   - Identify ALL section headers (CARCASES, DOORS, PLYWOODS, etc.)
+   - Note the TOTAL count of items across ALL columns and sections
 
-CRITICAL EXTRACTION RULES - READ ROW BY ROW:
-1. Start at ROW 1 (the first filled row after headers)
-2. Read EACH CELL in that row from left to right
-3. Move to the NEXT ROW and repeat
-4. Do NOT skip any rows - even if they look similar
-5. Each row is a UNIQUE part with its own dimensions
+2. MULTI-COLUMN LAYOUTS ARE COMMON:
+   - Column 1: Items 1-30
+   - Column 2: Items 31-60
+   - Column 3: Different material/section
+   YOU MUST EXTRACT FROM ALL COLUMNS!
 
-ROW-BY-ROW EXTRACTION:
-- Row 1: Read Label, L, W, Qty, Material, Edge code for ROW 1
-- Row 2: Read Label, L, W, Qty, Material, Edge code for ROW 2
-- Row 3: Read Label, L, W, Qty, Material, Edge code for ROW 3
-- Continue for ALL rows...
+3. USE COMPACT OUTPUT FORMAT:
+   Each part = ONE LINE: {"r":1,"l":2400,"w":580,"q":38,"m":"WC","e":"2L","g":"GL","n":""}
+   - r=row, l=length, w=width, q=qty, m=material, e=edge code, g=groove code, n=notes
+   - Edge codes: "2L2W"=all, "2L"=long edges, "1L1W"=one each, ""=none
+   - Groove codes: "GL"=length, "GW"=width, ""=none
 
-IMPORTANT: Labels might include section names like "Downstairs", "Down face", "Bedroom I Doors", "Bedroom 2 Doors", etc.
-IMPORTANT: Do NOT combine or summarize rows - each numbered row is a separate part!
-
-EDGE BANDING INTERPRETATION:
-- "2L2W" = ALL 4 edges banded (L1=true, L2=true, W1=true, W2=true)
-- "2L" = both length edges (L1=true, L2=true, W1=false, W2=false)  
-- "1L" = one length edge only (L1=true, L2=false, W1=false, W2=false)
-- "2W" = both width edges (L1=false, L2=false, W1=true, W2=true)
-- "1W" = one width edge (L1=false, L2=false, W1=true, W2=false)
+4. EXTRACT EVERY SINGLE ITEM - if you see 100+ items, output 100+ items
 
 ${prompt}
 
-Respond with valid JSON array containing ALL extracted parts. Every row number in the document should have a corresponding object in your output.` },
+OUTPUT: Start with [ and end with ] - NO markdown, NO explanation. Just the JSON array with ALL parts from ALL sections.` },
                   { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
                 ],
               },

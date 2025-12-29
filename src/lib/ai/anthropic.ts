@@ -730,11 +730,13 @@ export class AnthropicProvider implements AIProvider {
       
       // Use deterministic prompt if provided (for CAI template parsing)
       // This bypasses the generic prompt builder and uses org-specific shortcodes
+      // Default to COMPACT format for images to allow extracting 500+ parts
       const prompt = options.deterministicPrompt 
         ? options.deterministicPrompt
         : buildParsePrompt({
             extractMetadata: options.extractMetadata,
             isImage: true,
+            useCompactFormat: true, // Use compact format for high-density extraction
             templateId: options.templateId,
             templateConfig: options.templateConfig ? {
               fieldLayout: options.templateConfig.fieldLayout,
@@ -803,17 +805,30 @@ export class AnthropicProvider implements AIProvider {
                     type: "text",
                     text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. 
 
-CRITICAL: This page may contain MULTIPLE COLUMNS and MULTIPLE SECTIONS. You MUST:
-1. Scan ALL columns (left, middle, right) - handwritten lists often have 2-3 columns
-2. Extract from ALL sections (e.g., "WHITE CARCASES", "WHITE DOORS", "WHITE PLYWOODS")
-3. Count EVERY numbered item across the ENTIRE page
-4. If you see 80+ items, you must extract ALL 80+ items
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
 
-Please extract ALL parts from this manufacturing document.
+1. SCAN THE ENTIRE PAGE FIRST:
+   - Count ALL columns of data (left, middle, right)
+   - Identify ALL section headers (CARCASES, DOORS, PLYWOODS, etc.)
+   - Note the TOTAL count of items across ALL columns and sections
+
+2. MULTI-COLUMN LAYOUTS ARE COMMON:
+   - Column 1: Items 1-30
+   - Column 2: Items 31-60
+   - Column 3: Different material/section
+   YOU MUST EXTRACT FROM ALL COLUMNS!
+
+3. USE COMPACT OUTPUT FORMAT:
+   Each part = ONE LINE: {"r":1,"l":2400,"w":580,"q":38,"m":"WC","e":"2L","g":"GL","n":""}
+   - r=row, l=length, w=width, q=qty, m=material, e=edge code, g=groove code, n=notes
+   - Edge codes: "2L2W"=all, "2L"=long edges, "1L1W"=one each, ""=none
+   - Groove codes: "GL"=length, "GW"=width, ""=none
+
+4. EXTRACT EVERY SINGLE ITEM - if you see 100+ items, output 100+ items
 
 ${prompt}
 
-Respond with valid JSON only containing the extracted parts array. Include EVERY item from EVERY column and section.`,
+OUTPUT: Start with [ and end with ] - NO markdown, NO explanation. Just the JSON array with ALL parts from ALL sections.`,
                   },
                 ],
               },

@@ -174,6 +174,32 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
     };
   }
   
+  // Step 1.5: Check for COMPACT format and expand if needed
+  // Compact format uses abbreviated keys: r, l, w, q, m, e, g, n
+  if (Array.isArray(parsed) && parsed.length > 0) {
+    const first = parsed[0] as Record<string, unknown>;
+    const isCompactFormat = 'l' in first && 'w' in first && !('length' in first);
+    
+    if (isCompactFormat) {
+      logger.info("📦 [Validation] Detected COMPACT format response, expanding to full format", {
+        partsCount: parsed.length,
+      });
+      
+      // Expand compact format to full format
+      const { expandCompactParts } = require("./provider");
+      const expandedParts = expandCompactParts(parsed);
+      
+      warnings.push(`Expanded ${parsed.length} parts from compact format`);
+      
+      return {
+        success: true,
+        parts: expandedParts as z.infer<typeof AIPartSchema>[],
+        errors: [],
+        warnings,
+      };
+    }
+  }
+  
   // Step 2: Validate against schema
   const result = AIResponseSchema.safeParse(parsed);
   

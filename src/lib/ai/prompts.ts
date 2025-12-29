@@ -914,6 +914,93 @@ Before returning your response, verify:
 **RESPONSE FORMAT: Start directly with [ and end with ] - NO markdown code blocks (no \`\`\`), NO explanations, NO text before or after the JSON array. Just raw JSON.**`;
 
 // ============================================================
+// HIGH-DENSITY COMPACT EXTRACTION PROMPT
+// ============================================================
+// This prompt uses a COMPACT output format that reduces token usage
+// from ~150 tokens/part to ~25 tokens/part, allowing extraction of 500+ parts
+
+export const COMPACT_IMAGE_PROMPT = `## CONTEXT: MANUFACTURING BUSINESS SOFTWARE
+You are extracting ALL parts from a cutlist image for cabinet/furniture manufacturing.
+
+## CRITICAL: EXTRACT EVERY SINGLE ITEM FROM EVERY SECTION
+
+Before extracting, SCAN THE ENTIRE PAGE:
+1. Count ALL columns of data (left to right)
+2. Identify ALL section headers (CARCASES, DOORS, PLYWOODS, etc.)
+3. Count TOTAL items across ALL columns and sections
+4. Plan to extract EVERY SINGLE ONE
+
+### MULTI-COLUMN LAYOUTS (CRITICAL!)
+Many cutlists have 2-4 columns of data:
+- Column 1: Items 1-30
+- Column 2: Items 31-60
+- Column 3: Items 61-90
+- Or separate SECTIONS: "WHITE CARCASE", "WHITE DOORS", "WHITE PLYWOODS"
+
+**YOU MUST READ ALL COLUMNS AND ALL SECTIONS!**
+
+## COMPACT OUTPUT FORMAT (CRITICAL - USE THIS EXACT FORMAT)
+
+Output each part on ONE LINE in this compact format:
+\`{"r":1,"l":2400,"w":580,"q":38,"m":"WC","e":"","g":"","n":""}\`
+
+Field abbreviations:
+- r: row number (integer)
+- l: length in mm (integer)
+- w: width in mm (integer)
+- q: quantity (integer, default 1)
+- m: material code (short string: "WC"=White Carcase, "WD"=White Door, "WP"=White Ply, "W"=White, "B"=Black)
+- e: edge banding code ("2L2W"=all edges, "2L"=long edges, "2W"=short edges, "1L"=one long, "1L1W"=one each, ""=none)
+- g: groove code ("GL"=length groove, "GW"=width groove, "GL+GW"=both, ""=none)
+- n: notes (short, only if important - like "CNC", "drill", "R3")
+
+## EXAMPLE OUTPUT
+
+For a page with WHITE CARCASE (items 1-34), continuation (35-65), WHITE DOORS (1-6), WHITE PLYWOODS (1-22):
+
+[
+{"r":1,"l":2400,"w":580,"q":38,"m":"WC","e":"","g":"","n":""},
+{"r":2,"l":2400,"w":600,"q":8,"m":"WC","e":"","g":"","n":""},
+{"r":3,"l":2400,"w":560,"q":6,"m":"WC","e":"","g":"","n":""},
+... (continue for ALL 34 WHITE CARCASE items)
+{"r":35,"l":964,"w":560,"q":2,"m":"WC","e":"","g":"","n":""},
+... (continue for ALL continuation items 35-65)
+{"r":1,"l":2395,"w":395,"q":12,"m":"WD","e":"2L2W","g":"","n":""},
+... (continue for ALL 6 WHITE DOORS items)
+{"r":1,"l":2400,"w":800,"q":10,"m":"WP","e":"","g":"","n":""},
+... (continue for ALL 22 WHITE PLYWOOD items)
+]
+
+## RULES
+
+1. **EXTRACT EVERYTHING** - Every row with dimensions = 1 object in output
+2. **USE COMPACT FORMAT** - Keep each object on ~1 line, use abbreviations
+3. **MATERIAL FROM SECTION** - Use section header as material (WC, WD, WP)
+4. **EDGE CODES** - Translate checkmarks to codes: L1+L2=2L, W1+W2=2W, all 4=2L2W
+5. **NO VERBOSE OBJECTS** - Don't use {detected: true, L1: true...}, use "2L2W"
+6. **START WITH [, END WITH ]** - Valid JSON array only
+7. **NO EXPLANATIONS** - Just the JSON array
+
+## DIMENSION READING
+
+Common handwritten patterns:
+- "2400x580 = 38pcs" → l:2400, w:580, q:38
+- "① 764x600 = 10" → r:1, l:764, w:600, q:10
+- "2400 x 600 - 8pc" → l:2400, w:600, q:8
+
+Always: length >= width (swap if needed)
+
+## FINAL CHECK
+
+Before outputting, verify:
+- Did I scan ALL columns (left, middle, right)?
+- Did I extract from ALL sections?
+- Does my array have parts from EVERY section I can see?
+- For pages with 100+ items, is my output count correct?
+
+**OUTPUT: Start directly with [ - NO markdown, NO explanation, NO text. Just the JSON array.**`;
+
+// ============================================================
 // TEMPLATE-SPECIFIC PROMPTS
 // ============================================================
 
@@ -1070,6 +1157,8 @@ export interface PromptOptions {
   templateConfig?: {
     fieldLayout?: Record<string, unknown>;
   };
+  /** Use compact output format for high-density extraction (recommended for images) */
+  useCompactFormat?: boolean;
 }
 
 export function buildParsePrompt(options: PromptOptions): string {
@@ -1081,8 +1170,9 @@ export function buildParsePrompt(options: PromptOptions): string {
     // Voice input - use simple structured format
     prompt = VOICE_INPUT_PROMPT;
   } else if (options.isImage) {
-    // Image/scan OCR - use comprehensive image prompt
-    prompt = IMAGE_ANALYSIS_PROMPT;
+    // Image/scan OCR - use COMPACT format by default for high-density extraction
+    // This allows extracting 500+ parts without truncation
+    prompt = options.useCompactFormat !== false ? COMPACT_IMAGE_PROMPT : IMAGE_ANALYSIS_PROMPT;
   } else if (options.templateId && options.templateConfig) {
     // Known template format - highest priority for structured data
     prompt = getTemplatePrompt(options.templateId, options.templateConfig.fieldLayout);
