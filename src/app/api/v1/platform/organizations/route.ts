@@ -6,8 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUser } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/server";
+import { getUser, createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
@@ -18,7 +17,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const serviceClient = createServiceClient();
+    const serviceClient = await createClient();
     
     // Check if super admin
     const { data: profile } = await serviceClient
@@ -111,7 +110,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const serviceClient = createServiceClient();
+    const serviceClient = await createClient();
     
     // Check if super admin
     const { data: profile } = await serviceClient

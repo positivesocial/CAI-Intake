@@ -6,8 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUser } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/server";
+import { getUser, createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
@@ -19,7 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if super admin (in real implementation, check user role)
-    const serviceClient = createServiceClient();
+    const serviceClient = await createClient();
     const { data: profile } = await serviceClient
       .from("profiles")
       .select("is_super_admin")

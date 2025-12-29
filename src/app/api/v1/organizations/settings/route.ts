@@ -6,8 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUser } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/server";
+import { getUser, createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
 
@@ -46,7 +45,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const serviceClient = createServiceClient();
+    const serviceClient = await createClient();
     
     // Get user's organization
     const { data: profile } = await serviceClient
@@ -128,7 +127,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const serviceClient = createServiceClient();
+    const serviceClient = await createClient();
     
     // Get user's organization and verify admin role
     const { data: profile } = await serviceClient
