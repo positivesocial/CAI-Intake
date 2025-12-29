@@ -594,8 +594,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save the file to storage and create uploaded_files record
-    logger.debug("📥 [ParseFile] Saving file to storage", {
+    // Save the file to storage and resolve operations IN PARALLEL for better performance
+    logger.debug("📥 [ParseFile] Starting parallel storage + operations resolution", {
       requestId,
       stage: "storage",
     });
@@ -614,85 +614,100 @@ export async function POST(request: NextRequest) {
         .single();
       
       if (userData?.organization_id) {
-        // Resolve operations against org's database
-        if (aiResult.parts && aiResult.parts.length > 0) {
-          try {
-            const resolveStart = Date.now();
-            aiResult.parts = await resolveOperationsForParts(
-              aiResult.parts,
-              userData.organization_id
-            );
-            logger.info("📥 [ParseFile] Operations resolved against org database", {
-              requestId,
-              organizationId: userData.organization_id,
-              partsResolved: aiResult.parts.length,
-              resolveTimeMs: Date.now() - resolveStart,
-            });
-          } catch (resolveError) {
-            logger.warn("📥 [ParseFile] Operation resolution failed (non-fatal)", {
-              requestId,
-              error: resolveError instanceof Error ? resolveError.message : "Unknown error",
-            });
-          }
-        }
-        
-        // Generate unique file name
+        // Prepare file data for upload (read buffer once)
+        const fileBuffer = await file.arrayBuffer();
         const timestamp = Date.now();
         const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const storagePath = `${userData.organization_id}/${timestamp}_${sanitizedName}`;
         
-        logger.debug("📥 [ParseFile] Uploading to storage", {
-          requestId,
-          storagePath,
-          bucket: "cutlist-files",
-        });
-        
-        // Upload file to storage
-        const fileBuffer = await file.arrayBuffer();
-        const { error: storageError } = await serviceClient.storage
-          .from("cutlist-files")
-          .upload(storagePath, Buffer.from(fileBuffer), {
-            contentType: file.type || "application/octet-stream",
-            upsert: false,
-          });
-        
-        if (!storageError) {
-          // Create uploaded_files record (without cutlist_id - will be linked later)
-          const fileId = crypto.randomUUID();
-          const { error: dbError } = await serviceClient
-            .from("uploaded_files")
-            .insert({
-              id: fileId,
-              organization_id: userData.organization_id,
-              file_name: sanitizedName,
-              original_name: file.name,
-              mime_type: file.type || "application/octet-stream",
-              size_bytes: file.size,
-              storage_path: storagePath,
-              kind: "source",
-              created_at: new Date().toISOString(),
-            });
+        // Run operations resolution and storage upload IN PARALLEL
+        const [resolveResult, storageResult] = await Promise.allSettled([
+          // Task 1: Resolve operations against org's database
+          (async () => {
+            if (aiResult.parts && aiResult.parts.length > 0) {
+              const resolveStart = Date.now();
+              const resolvedParts = await resolveOperationsForParts(
+                aiResult.parts,
+                userData.organization_id
+              );
+              logger.info("📥 [ParseFile] Operations resolved against org database", {
+                requestId,
+                organizationId: userData.organization_id,
+                partsResolved: resolvedParts.length,
+                resolveTimeMs: Date.now() - resolveStart,
+              });
+              return resolvedParts;
+            }
+            return aiResult.parts;
+          })(),
           
-          if (!dbError) {
-            uploadedFileId = fileId;
-            logger.info("📥 [ParseFile] File saved to storage", { 
+          // Task 2: Upload file to storage
+          (async () => {
+            logger.debug("📥 [ParseFile] Uploading to storage", {
               requestId,
-              fileId, 
-              storagePath, 
-              sizeBytes: file.size,
-              storageTimeMs: Date.now() - storageStartTime,
+              storagePath,
+              bucket: "cutlist-files",
             });
-          } else {
-            logger.warn("📥 [ParseFile] Failed to create uploaded_files record", {
-              requestId,
-              error: dbError.message,
-              code: dbError.code,
-            });
-          }
+            
+            const { error: storageError } = await serviceClient.storage
+              .from("cutlist-files")
+              .upload(storagePath, Buffer.from(fileBuffer), {
+                contentType: file.type || "application/octet-stream",
+                upsert: false,
+              });
+            
+            if (storageError) {
+              throw storageError;
+            }
+            
+            // Create uploaded_files record
+            const fileId = crypto.randomUUID();
+            const { error: dbError } = await serviceClient
+              .from("uploaded_files")
+              .insert({
+                id: fileId,
+                organization_id: userData.organization_id,
+                file_name: sanitizedName,
+                original_name: file.name,
+                mime_type: file.type || "application/octet-stream",
+                size_bytes: file.size,
+                storage_path: storagePath,
+                kind: "source",
+                created_at: new Date().toISOString(),
+              });
+            
+            if (dbError) {
+              throw dbError;
+            }
+            
+            return { fileId, storagePath };
+          })(),
+        ]);
+        
+        // Handle resolve result
+        if (resolveResult.status === "fulfilled" && resolveResult.value) {
+          aiResult.parts = resolveResult.value;
+        } else if (resolveResult.status === "rejected") {
+          logger.warn("📥 [ParseFile] Operation resolution failed (non-fatal)", {
+            requestId,
+            error: resolveResult.reason instanceof Error ? resolveResult.reason.message : "Unknown error",
+          });
+        }
+        
+        // Handle storage result
+        if (storageResult.status === "fulfilled") {
+          uploadedFileId = storageResult.value.fileId;
+          logger.info("📥 [ParseFile] File saved to storage", { 
+            requestId,
+            fileId: storageResult.value.fileId, 
+            storagePath: storageResult.value.storagePath, 
+            sizeBytes: file.size,
+            storageTimeMs: Date.now() - storageStartTime,
+          });
         } else {
           logger.warn("📥 [ParseFile] Storage upload failed", {
             requestId,
-            error: storageError.message,
+            error: storageResult.reason?.message || "Unknown error",
           });
         }
       } else {
@@ -1536,53 +1551,79 @@ async function convertPdfToImagesAndParse(
       imageCount: ocrResult.images.length,
     });
     
-    const allParts: Array<{ part_id: string; label?: string; size: { L: number; W: number }; qty: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string; audit: { source_method: string; confidence: number; human_verified: boolean } }> = [];
+    type PartWithAudit = { part_id: string; label?: string; size: { L: number; W: number }; qty: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string; audit: { source_method: string; confidence: number; human_verified: boolean; source_page?: number } };
+    
+    // Process pages in parallel with concurrency limit (2 at a time to avoid rate limits)
+    const CONCURRENCY_LIMIT = 2;
+    const pageResults: Array<{ pageNum: number; parts: PartWithAudit[]; confidence: number; error?: string }> = [];
+    
+    // Process in batches
+    for (let i = 0; i < ocrResult.images.length; i += CONCURRENCY_LIMIT) {
+      const batch = ocrResult.images.slice(i, i + CONCURRENCY_LIMIT);
+      const batchStartIdx = i;
+      
+      const batchPromises = batch.map(async (imageBase64, idx) => {
+        const pageNum = batchStartIdx + idx + 1;
+        try {
+          // Parse the image using AI vision
+          const parseResult = await provider.parseImage(
+            imageBase64,
+            "image/png",
+            parseOptions
+          );
+          
+          if (parseResult.parts && parseResult.parts.length > 0) {
+            const partsWithAudit: PartWithAudit[] = parseResult.parts.map((p: { part_id?: string; label?: string; size?: { L: number; W: number }; qty?: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string }) => ({
+              ...p,
+              part_id: p.part_id || `P-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+              size: p.size || { L: 0, W: 0 },
+              qty: p.qty || 1,
+              audit: {
+                source_method: "pdf_vision",
+                confidence: parseResult.confidence ?? 0.7,
+                human_verified: false,
+                source_page: pageNum,
+              },
+            }));
+            
+            logger.info("📥 [ParseFile] ✅ Page parsed successfully", {
+              requestId,
+              pageNum,
+              partsFound: parseResult.parts.length,
+            });
+            
+            return { pageNum, parts: partsWithAudit, confidence: parseResult.confidence ?? 0.7 };
+          }
+          
+          return { pageNum, parts: [], confidence: 0 };
+        } catch (pageError) {
+          logger.warn("📥 [ParseFile] ⚠️ Failed to process page", {
+            requestId,
+            pageNum,
+            error: pageError instanceof Error ? pageError.message : String(pageError),
+          });
+          return { pageNum, parts: [], confidence: 0, error: `Page ${pageNum}: ${pageError instanceof Error ? pageError.message : "Failed to process"}` };
+        }
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      pageResults.push(...batchResults);
+    }
+    
+    // Aggregate results
+    const allParts: PartWithAudit[] = [];
     const errors: string[] = [];
     let totalConfidence = 0;
     let successfulPages = 0;
     
-    // Process each page image with AI vision
-    for (let pageIdx = 0; pageIdx < ocrResult.images.length; pageIdx++) {
-      const pageNum = pageIdx + 1;
-      try {
-        const imageBase64 = ocrResult.images[pageIdx];
-        
-        // Parse the image using AI vision
-        const parseResult = await provider.parseImage(
-          imageBase64,
-          "image/png",
-          parseOptions
-        );
-        
-        if (parseResult.parts && parseResult.parts.length > 0) {
-          const partsWithAudit = parseResult.parts.map((p: { part_id?: string; label?: string; size?: { L: number; W: number }; qty?: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string }) => ({
-            ...p,
-            part_id: p.part_id || `P-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-            audit: {
-              source_method: "pdf_vision",
-              confidence: parseResult.confidence ?? 0.7,
-              human_verified: false,
-              source_page: pageNum,
-            },
-          }));
-          
-          allParts.push(...partsWithAudit);
-          totalConfidence += parseResult.confidence ?? 0.7;
-          successfulPages++;
-          
-          logger.info("📥 [ParseFile] ✅ Page parsed successfully", {
-            requestId,
-            pageNum,
-            partsFound: parseResult.parts.length,
-          });
-        }
-      } catch (pageError) {
-        logger.warn("📥 [ParseFile] ⚠️ Failed to process page", {
-          requestId,
-          pageNum,
-          error: pageError instanceof Error ? pageError.message : String(pageError),
-        });
-        errors.push(`Page ${pageNum}: ${pageError instanceof Error ? pageError.message : "Failed to process"}`);
+    for (const result of pageResults) {
+      if (result.parts.length > 0) {
+        allParts.push(...result.parts);
+        totalConfidence += result.confidence;
+        successfulPages++;
+      }
+      if (result.error) {
+        errors.push(result.error);
       }
     }
     
