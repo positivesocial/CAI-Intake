@@ -536,9 +536,10 @@ export function isCompactFormat(parts: unknown[]): boolean {
 }
 
 /**
- * Expand compact format parts to full ParsedPartResult format
+ * Expand compact format parts to AIPartSchema format (with length/width at top level)
+ * This format is compatible with the validation schema and Anthropic/OpenAI providers
  */
-export function expandCompactParts(compactParts: CompactPart[]): ParsedPartResult[] {
+export function expandCompactParts(compactParts: CompactPart[]): AIPartResponse[] {
   return compactParts.map((cp, index) => {
     const edgeBanding = expandEdgeBandingCode(cp.e);
     const grooving = expandGrooveCode(cp.g);
@@ -550,73 +551,63 @@ export function expandCompactParts(compactParts: CompactPart[]): ParsedPartResul
     const hasCNC = notesLower.includes("cnc") || notesLower.includes("r3") || notesLower.includes("radius");
     const hasDrilling = notesLower.includes("drill") || notesLower.includes("hole") || notesLower.includes("h1") || notesLower.includes("h2");
     
-    const partId = `part_${Date.now()}_${index}`;
-    
-    // Build the CutPart object
-    const part: CutPart = {
-      part_id: partId,
-      qty: cp.q || 1,
-      size: { L: cp.l, W: cp.w },
-      thickness_mm: cp.t || 18,
-      material_id: cp.m || "", // Will be resolved later by material matching
-      label: materialLabel || `Part ${cp.r || index + 1}`,
-      allow_rotation: false,
-      group_id: undefined,
-      ops: {
-        edging: edgeBanding.detected ? {
-          edges: {
-            ...(edgeBanding.L1 ? { L1: { apply: true } } : {}),
-            ...(edgeBanding.L2 ? { L2: { apply: true } } : {}),
-            ...(edgeBanding.W1 ? { W1: { apply: true } } : {}),
-            ...(edgeBanding.W2 ? { W2: { apply: true } } : {}),
-          },
-        } : undefined,
-        grooves: grooving.detected ? [{
-          side: (grooving.GL ? "L1" : "W1") as "L1" | "L2" | "W1" | "W2",
-          offset_mm: 0,
-          depth_mm: 10,
-        }] : undefined,
-        holes: hasDrilling ? [{
-          notes: notes,
-        }] : undefined,
-        custom_cnc_ops: hasCNC ? [{
-          op_type: "custom",
-          payload: { description: notes },
-          notes: notes,
-        }] : undefined,
-      },
-      notes: notes ? { operator: notes } : undefined,
-      audit: {
-        source_method: "file_upload",
-        confidence: 0.9,
-        warnings: [],
-      },
-    };
-    
-    // Build the ParsedPartResult wrapper
+    // Return AIPartResponse format with length/width at top level
+    // This is what the validation and AI providers expect
     return {
-      part,
+      row: cp.r || index + 1,
+      length: cp.l,
+      width: cp.w,
+      thickness: cp.t || 18,
+      quantity: cp.q || 1,
+      material: cp.m || "",
+      label: materialLabel || `Part ${cp.r || index + 1}`,
       confidence: 0.9,
-      extractedMetadata: {
-        grooving: {
-          detected: grooving.detected,
-          description: grooving.description,
-        },
-        edgeBanding: {
-          detected: edgeBanding.detected,
-          edges: edgeBanding.edges,
-          description: edgeBanding.description,
-        },
-        cncOperations: {
-          detected: hasCNC || hasDrilling,
-          holes: hasDrilling ? 1 : 0,
-          routing: hasCNC,
-          description: notes,
-        },
+      allowRotation: false,
+      notes: notes || undefined,
+      
+      // Edge banding in AIPartResponse format
+      edgeBanding: edgeBanding.detected ? {
+        detected: true,
+        L1: edgeBanding.L1,
+        L2: edgeBanding.L2,
+        W1: edgeBanding.W1,
+        W2: edgeBanding.W2,
+        edges: edgeBanding.edges,
+        description: edgeBanding.description,
+      } : undefined,
+      
+      // Grooving in AIPartResponse format
+      grooving: grooving.detected ? {
+        detected: true,
+        GL: grooving.GL,
+        GW: grooving.GW,
+        description: grooving.description,
+      } : undefined,
+      
+      // Drilling in AIPartResponse format
+      drilling: hasDrilling ? {
+        detected: true,
+        holes: 1,
+        description: notes,
+      } : undefined,
+      
+      // CNC operations in AIPartResponse format
+      cncOperations: hasCNC ? {
+        detected: true,
+        routing: true,
+        description: notes,
+      } : undefined,
+      
+      // Field confidence for quality scoring
+      fieldConfidence: {
+        length: 1.0,
+        width: 1.0,
+        quantity: 1.0,
+        material: cp.m ? 0.95 : 0.5,
+        edgeBanding: edgeBanding.detected ? 0.9 : 1.0,
+        grooving: grooving.detected ? 0.9 : 1.0,
       },
-      warnings: [],
-      originalText: `Row ${cp.r || index + 1}: ${cp.l}x${cp.w} qty:${cp.q || 1}`,
-    };
+    } as AIPartResponse;
   });
 }
 
