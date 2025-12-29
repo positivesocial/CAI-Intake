@@ -599,11 +599,3 @@ export function detectPartsSheet(sheets: SheetInfo[]): number {
   
   return bestIndex;
 }
-
-
-  return bestIndex;
-}
-
-
-}
-
