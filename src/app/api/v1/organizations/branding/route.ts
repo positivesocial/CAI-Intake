@@ -141,16 +141,11 @@ export async function GET(request: NextRequest) {
     });
 
     if (orgError) {
-      logger.error("Failed to get org branding", orgError, {
-        code: orgError.code,
-        details: orgError.details,
-        hint: orgError.hint,
-        organizationId,
-      });
-      
-      // If branding column doesn't exist, return default
-      if (orgError.code === "PGRST204" || orgError.message?.includes("column") || orgError.message?.includes("branding")) {
-        logger.info("Branding column not found, returning defaults");
+      // If branding column doesn't exist (PostgreSQL error 42703 or message mentions column)
+      // Return defaults without logging as error - this is expected during migration
+      if (orgError.code === "42703" || orgError.code === "PGRST204" || 
+          orgError.message?.includes("column") || orgError.message?.includes("branding")) {
+        logger.debug("Branding column not found, returning defaults", { organizationId });
         return NextResponse.json({
           success: true,
           branding: {},
@@ -159,12 +154,20 @@ export async function GET(request: NextRequest) {
       
       // If organization not found
       if (orgError.code === "PGRST116") {
-        logger.warn("Organization not found", { organizationId });
+        logger.debug("Organization not found for branding", { organizationId });
         return NextResponse.json({
           success: true,
           branding: {},
         });
       }
+      
+      // Only log as error for unexpected issues
+      logger.error("Failed to get org branding", orgError, {
+        code: orgError.code,
+        details: orgError.details,
+        hint: orgError.hint,
+        organizationId,
+      });
       
       return NextResponse.json(
         { success: false, error: "Failed to get branding" },
