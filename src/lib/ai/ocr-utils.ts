@@ -270,8 +270,8 @@ export function detectTruncation(
     }
     
     // Check 5: Look for incomplete last part
-    const lastPart = parts[parts.length - 1];
-    if (lastPart && (!lastPart.length || !lastPart.width)) {
+    const lastPart = parts[parts.length - 1] as Record<string, unknown> | undefined;
+    if (lastPart && typeof lastPart === 'object' && (!lastPart.length || !lastPart.width)) {
       return {
         isTruncated: true,
         reason: "Last part appears incomplete (missing dimensions)",
