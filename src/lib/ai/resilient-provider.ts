@@ -188,14 +188,14 @@ export class ResilientAIProvider implements AIProvider {
         );
         
         // Check for quality issues that might warrant fallback
-        if (result.success) {
+        if (result.success && result.parts.length > 0) {
           // Check for truncation or low part count
           const truncation = result.rawResponse 
             ? detectTruncation(result.rawResponse)
             : { isTruncated: false };
           
-          // If we have a good result, return it
-          if (!truncation.isTruncated && result.parts.length > 0) {
+          // If we have a good result without truncation, return it
+          if (!truncation.isTruncated) {
             logger.info("✅ [Resilient] Primary provider succeeded", {
               requestId,
               partsFound: result.parts.length,
@@ -208,53 +208,95 @@ export class ResilientAIProvider implements AIProvider {
           
           // If truncated but fallback not available, still return primary result
           if (!this.fallback.isConfigured()) {
-            if (truncation.isTruncated) {
-              logger.warn("⚠️ [Resilient] Primary result may be truncated, no fallback available", {
-                requestId,
-                partsFound: result.parts.length,
-                truncationReason: truncation.reason,
-              });
-            }
+            logger.warn("⚠️ [Resilient] Primary result may be truncated, no fallback available", {
+              requestId,
+              partsFound: result.parts.length,
+              truncationReason: truncation.reason,
+            });
             audit.finalize();
             return result;
           }
           
           // If truncated and fallback available, try fallback
-          if (truncation.isTruncated) {
-            logger.info("🔄 [Resilient] Trying fallback due to truncation", {
+          logger.info("🔄 [Resilient] Trying fallback due to truncation", {
+            requestId,
+            primaryParts: result.parts.length,
+            truncationReason: truncation.reason,
+          });
+          
+          audit.setUsedFallback(true);
+          audit.setProvider("openai", "gpt-4o");
+          
+          const fallbackResult = await this.fallback.parseImage(imageData, options);
+          
+          // Use whichever found more parts
+          if (fallbackResult.parts.length > result.parts.length) {
+            logger.info("✅ [Resilient] Fallback found more parts", {
               requestId,
               primaryParts: result.parts.length,
-              truncationReason: truncation.reason,
+              fallbackParts: fallbackResult.parts.length,
             });
-            
-            audit.setUsedFallback(true);
-            audit.setProvider("openai", "gpt-4o");
-            
-            const fallbackResult = await this.fallback.parseImage(imageData, options);
-            
-            // Use whichever found more parts
-            if (fallbackResult.parts.length > result.parts.length) {
-              logger.info("✅ [Resilient] Fallback found more parts", {
-                requestId,
-                primaryParts: result.parts.length,
-                fallbackParts: fallbackResult.parts.length,
-              });
-              audit.setOutput({ success: true, partsExtracted: fallbackResult.parts.length });
-              audit.finalize();
-              return fallbackResult;
-            }
-            
-            audit.setOutput({ success: true, partsExtracted: result.parts.length });
+            audit.setOutput({ success: true, partsExtracted: fallbackResult.parts.length });
             audit.finalize();
-            return result;
+            return fallbackResult;
           }
+          
+          audit.setOutput({ success: true, partsExtracted: result.parts.length });
+          audit.finalize();
+          return result;
         }
         
-        // If primary failed but no fallback, return the result
+        // Primary failed or returned no parts - check for AI refusal
+        const isRefusal = result.errors?.some(e => 
+          e.includes("sorry") || 
+          e.includes("can't assist") || 
+          e.includes("cannot assist") ||
+          e.includes("content policy")
+        ) || (result.rawResponse && (
+          result.rawResponse.includes("sorry") ||
+          result.rawResponse.includes("can't assist")
+        ));
+        
+        if (isRefusal) {
+          logger.warn("⚠️ [Resilient] Primary provider refused (content filter), trying fallback", {
+            requestId,
+            errors: result.errors,
+          });
+        } else if (result.parts.length === 0) {
+          logger.warn("⚠️ [Resilient] Primary provider returned no parts, trying fallback", {
+            requestId,
+            errors: result.errors,
+          });
+        }
+        
+        // If no fallback available, return the failed result
         if (!this.fallback.isConfigured()) {
           audit.finalize();
           return result;
         }
+        
+        // Try fallback
+        audit.setUsedFallback(true);
+        audit.setProvider("openai", "gpt-4o");
+        
+        logger.info("🔄 [Resilient] Falling back to OpenAI", { requestId });
+        
+        const fallbackResult = await this.fallback.parseImage(imageData, options);
+        
+        if (fallbackResult.parts.length > 0) {
+          logger.info("✅ [Resilient] Fallback succeeded where primary failed", {
+            requestId,
+            fallbackParts: fallbackResult.parts.length,
+          });
+          audit.setOutput({ success: true, partsExtracted: fallbackResult.parts.length });
+          audit.finalize();
+          return fallbackResult;
+        }
+        
+        // Both failed
+        logger.error("❌ [Resilient] Both primary and fallback failed", { requestId });
+        audit.finalize();
+        return result;
         
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Unknown error";

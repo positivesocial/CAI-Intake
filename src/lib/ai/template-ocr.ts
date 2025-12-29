@@ -200,6 +200,9 @@ export async function getOrgTemplateConfig(
 /**
  * Detect QR code in an image and parse template ID
  * Uses sharp for Node.js compatible image processing
+ * 
+ * Strategy: First try scanning the top-left corner (where QR typically is),
+ * then fall back to full image scan if not found.
  */
 export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetectionResult> {
   try {
@@ -211,8 +214,44 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
       return { found: false, error: "Could not read image dimensions" };
     }
     
+    // Strategy 1: Try scanning just the top-left corner (where QR typically appears)
+    // QR codes are usually in the first 15-20% of the image
+    const cornerWidth = Math.min(Math.ceil(metadata.width * 0.25), 800);
+    const cornerHeight = Math.min(Math.ceil(metadata.height * 0.20), 600);
+    
+    try {
+      const cornerImage = sharp(Buffer.from(imageData))
+        .extract({ left: 0, top: 0, width: cornerWidth, height: cornerHeight })
+        .ensureAlpha();
+      
+      const { data: cornerData, info: cornerInfo } = await cornerImage
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      
+      const cornerPixels = new Uint8ClampedArray(cornerData);
+      const cornerCode = jsQR(cornerPixels, cornerInfo.width, cornerInfo.height);
+      
+      if (cornerCode) {
+        console.log(`[TemplateOCR] QR found in corner region (${cornerWidth}x${cornerHeight})`);
+        return processQRCode(cornerCode.data.trim());
+      }
+    } catch (cornerError) {
+      console.warn("[TemplateOCR] Corner scan failed, trying full image:", cornerError);
+    }
+    
+    // Strategy 2: Scan a resized version of the full image (faster for large images)
+    const maxDimension = 2000;
+    let scanImage = image;
+    
+    if (metadata.width > maxDimension || metadata.height > maxDimension) {
+      scanImage = sharp(Buffer.from(imageData)).resize(maxDimension, maxDimension, {
+        fit: "inside",
+        withoutEnlargement: true,
+      });
+    }
+    
     // Get raw RGBA pixel data
-    const { data, info } = await image
+    const { data, info } = await scanImage
       .ensureAlpha() // Ensure RGBA format
       .raw()
       .toBuffer({ resolveWithObject: true });
@@ -227,45 +266,50 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
       return { found: false };
     }
     
-    const qrData = code.data.trim();
-    
-    // Parse the template ID - supports multiple formats
-    const parsed = parseTemplateId(qrData);
-    
-    // Check if it's any CAI template format
-    if (!parsed.isCAI) {
-      return {
-        found: true,
-        rawData: qrData,
-        error: "QR code found but not a CAI template",
-      };
-    }
-    
-    // For v1 format (CAI-{org_id}-v{version}), try to load org config
-    let orgConfig: OrgTemplateConfig | null = null;
-    
-    if (parsed.format === "v1" && parsed.orgId && parsed.version) {
-      orgConfig = await getOrgTemplateConfig(parsed.orgId, parsed.version);
-    }
-    
-    // For legacy format (CAI-{version}-{serial}), still recognize as CAI template
-    // but proceed with standard AI OCR since we don't have org-specific config
-    if (parsed.format === "legacy") {
-      console.log(`[TemplateOCR] Detected legacy CAI template: ${qrData} (version ${parsed.version}, serial ${parsed.serial})`);
-    }
-    
-    return {
-      found: true,
-      templateId: qrData,
-      parsed,
-      orgConfig: orgConfig || undefined,
-      rawData: qrData,
-    };
+    return processQRCode(code.data.trim());
     
   } catch (error) {
     console.warn("QR code detection failed:", error);
     return { found: false, error: String(error) };
   }
+}
+
+/**
+ * Process a detected QR code and return the detection result
+ */
+async function processQRCode(qrData: string): Promise<QRDetectionResult> {
+  // Parse the template ID - supports multiple formats
+  const parsed = parseTemplateId(qrData);
+  
+  // Check if it's any CAI template format
+  if (!parsed.isCAI) {
+    return {
+      found: true,
+      rawData: qrData,
+      error: "QR code found but not a CAI template",
+    };
+  }
+  
+  // For v1 format (CAI-{org_id}-v{version}), try to load org config
+  let orgConfig: OrgTemplateConfig | null = null;
+  
+  if (parsed.format === "v1" && parsed.orgId && parsed.version) {
+    orgConfig = await getOrgTemplateConfig(parsed.orgId, parsed.version);
+  }
+  
+  // For legacy format (CAI-{version}-{serial}), still recognize as CAI template
+  // but proceed with standard AI OCR since we don't have org-specific config
+  if (parsed.format === "legacy") {
+    console.log(`[TemplateOCR] Detected legacy CAI template: ${qrData} (version ${parsed.version}, serial ${parsed.serial})`);
+  }
+  
+  return {
+    found: true,
+    templateId: qrData,
+    parsed,
+    orgConfig: orgConfig || undefined,
+    rawData: qrData,
+  };
 }
 
 /**
