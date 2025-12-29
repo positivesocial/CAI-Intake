@@ -321,73 +321,98 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // Optimize large images before sending to AI
+      // Optimize images using adaptive analysis
       let imageBuffer: Buffer;
       let mimeType = "image/jpeg"; // Default to JPEG for optimization
       const optimizeStart = Date.now();
       
       try {
-        const sharpInstance = sharp(Buffer.from(originalBuffer));
-        const metadata = await sharpInstance.metadata();
+        const { analyzeImage, optimizeImage } = await import("@/lib/ai/ocr-optimizer");
+        const inputBuffer = Buffer.from(originalBuffer);
         
-        logger.debug("📥 [ParseFile] Image metadata", {
+        // Analyze image content for optimal settings
+        const analysis = await analyzeImage(inputBuffer);
+        
+        logger.info("📥 [ParseFile] Image analysis complete", {
           requestId,
-          width: metadata.width,
-          height: metadata.height,
-          format: metadata.format,
-          channels: metadata.channels,
-          hasAlpha: metadata.hasAlpha,
+          contentType: analysis.contentType,
+          complexity: analysis.complexity.toFixed(2),
+          textDensity: analysis.textDensity,
+          hasTable: analysis.hasTable,
+          recommendations: analysis.recommendations,
         });
         
-        const needsResize = 
-          (metadata.width && metadata.width > MAX_IMAGE_DIMENSION) ||
-          (metadata.height && metadata.height > MAX_IMAGE_DIMENSION) ||
-          originalSizeKB > TARGET_IMAGE_KB;
+        // Optimize based on analysis
+        const optimized = await optimizeImage(inputBuffer, analysis);
+        imageBuffer = optimized.buffer;
+        mimeType = optimized.mimeType;
         
-        if (needsResize) {
-          logger.info("📥 [ParseFile] Optimizing large image", {
+        if (optimized.optimizedSizeKB < optimized.originalSizeKB) {
+          const reduction = ((1 - optimized.optimizedSizeKB / optimized.originalSizeKB) * 100);
+          logger.info("📥 [ParseFile] Image optimized with adaptive settings", {
             requestId,
-            stage: "image_optimize",
-            originalWidth: metadata.width,
-            originalHeight: metadata.height,
-            originalSizeKB: originalSizeKB.toFixed(1),
-            reason: originalSizeKB > TARGET_IMAGE_KB ? "size" : "dimensions",
-          });
-          
-          // Calculate quality based on original size
-          // Higher quality needed for handwritten text readability and QR code detection
-          // Note: After resize to 2048px max dimension, quality determines final file size
-          let quality = 92;
-          if (originalSizeKB > 15000) quality = 85; // >15MB: 85% quality
-          else if (originalSizeKB > 8000) quality = 88; // >8MB: 88% quality  
-          // For smaller images, keep 92% quality
-          
-          imageBuffer = await sharpInstance
-            .resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, {
-              fit: "inside",
-              withoutEnlargement: true,
-            })
-            .jpeg({ quality, mozjpeg: true })
-            .toBuffer();
-          
-          mimeType = "image/jpeg";
-          
-          const newSizeKB = imageBuffer.byteLength / 1024;
-          const reduction = ((1 - newSizeKB / originalSizeKB) * 100);
-          
-          logger.info("📥 [ParseFile] Image optimized successfully", {
-            requestId,
-            originalSizeKB: originalSizeKB.toFixed(1),
-            newSizeKB: newSizeKB.toFixed(1),
+            originalSizeKB: optimized.originalSizeKB.toFixed(1),
+            optimizedSizeKB: optimized.optimizedSizeKB.toFixed(1),
             reduction: `${reduction.toFixed(0)}%`,
-            quality,
+            contentType: analysis.contentType,
             optimizeTimeMs: Date.now() - optimizeStart,
           });
         } else {
-          // Image is already small enough, use original
+          logger.debug("📥 [ParseFile] Image already optimized", {
+            requestId,
+            sizeKB: optimized.originalSizeKB.toFixed(1),
+            mimeType,
+          });
+        }
+        
+      } catch (optimizeError) {
+        // Fallback to simple sharp optimization
+        logger.warn("📥 [ParseFile] Adaptive optimization failed, using fallback", {
+          requestId,
+          error: optimizeError instanceof Error ? optimizeError.message : "Unknown error",
+        });
+        
+        try {
+          const sharpInstance = sharp(Buffer.from(originalBuffer));
+          const metadata = await sharpInstance.metadata();
+          
+          const needsResize = 
+            (metadata.width && metadata.width > MAX_IMAGE_DIMENSION) ||
+            (metadata.height && metadata.height > MAX_IMAGE_DIMENSION) ||
+            originalSizeKB > TARGET_IMAGE_KB;
+          
+          if (needsResize) {
+            let quality = 90;
+            if (originalSizeKB > 15000) quality = 85;
+            else if (originalSizeKB > 8000) quality = 88;
+            
+            imageBuffer = await sharpInstance
+              .resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, {
+                fit: "inside",
+                withoutEnlargement: true,
+              })
+              .jpeg({ quality, mozjpeg: true })
+              .toBuffer();
+            mimeType = "image/jpeg";
+          } else {
+            imageBuffer = Buffer.from(originalBuffer);
+            const ext = file.name.split(".").pop()?.toLowerCase();
+            const mimeMap: Record<string, string> = {
+              "jpg": "image/jpeg",
+              "jpeg": "image/jpeg",
+              "png": "image/png",
+              "gif": "image/gif",
+              "webp": "image/webp",
+            };
+            mimeType = file.type || mimeMap[ext || ""] || "image/jpeg";
+          }
+        } catch (sharpError) {
+          logger.warn("📥 [ParseFile] All optimization failed, using original", {
+            requestId,
+            error: sharpError instanceof Error ? sharpError.message : "Unknown error",
+          });
           imageBuffer = Buffer.from(originalBuffer);
           
-          // Detect proper MIME type
           const ext = file.name.split(".").pop()?.toLowerCase();
           const mimeMap: Record<string, string> = {
             "jpg": "image/jpeg",
@@ -397,30 +422,7 @@ export async function POST(request: NextRequest) {
             "webp": "image/webp",
           };
           mimeType = file.type || mimeMap[ext || ""] || "image/jpeg";
-          
-          logger.debug("📥 [ParseFile] Image within limits, using original", {
-            requestId,
-            sizeKB: originalSizeKB.toFixed(1),
-            mimeType,
-          });
         }
-      } catch (sharpError) {
-        logger.warn("📥 [ParseFile] Image optimization failed, using original", {
-          requestId,
-          error: sharpError instanceof Error ? sharpError.message : "Unknown error",
-        });
-        imageBuffer = Buffer.from(originalBuffer);
-        
-        // Fallback MIME type detection
-        const ext = file.name.split(".").pop()?.toLowerCase();
-        const mimeMap: Record<string, string> = {
-          "jpg": "image/jpeg",
-          "jpeg": "image/jpeg",
-          "png": "image/png",
-          "gif": "image/gif",
-          "webp": "image/webp",
-        };
-        mimeType = file.type || mimeMap[ext || ""] || "image/jpeg";
       }
       
       const base64 = imageBuffer.toString("base64");

@@ -4,6 +4,11 @@
  * Provides automatic failover from Claude (primary) to GPT (fallback).
  * Supports resumable processing - if primary fails mid-batch, fallback
  * continues from where it left off.
+ * 
+ * OPTIMIZATIONS:
+ * - Image result caching with content-hash lookup
+ * - Adaptive image compression based on content analysis
+ * - Performance metrics collection
  */
 
 import { OpenAIProvider } from "./openai";
@@ -23,6 +28,43 @@ import { generateReviewFlags, needsReview } from "./ocr-validation";
 import { createAuditBuilder } from "./ocr-audit";
 import { logger } from "@/lib/logger";
 import { generateId } from "@/lib/utils";
+// These are server-only imports - lazy loaded to avoid client-side issues
+// import { getCachedResult, cacheResult, getCacheStats } from "./ocr-cache";
+// import { recordMetrics, getPerformanceMetrics } from "./ocr-optimizer";
+
+// Type-only imports for metrics
+type MetricsParams = {
+  processingTimeMs: number;
+  partsFound: number;
+  provider: "primary" | "fallback" | "cache";
+  success: boolean;
+};
+
+// Lazy loaders for server-only modules
+async function getCachedResult(imageData: ArrayBuffer | string) {
+  if (typeof window !== "undefined") return null;
+  const { getCachedResult: get } = await import("./ocr-cache");
+  return get(imageData);
+}
+
+async function cacheResult(
+  imageData: ArrayBuffer | string,
+  parts: ParsedPartResult[],
+  totalConfidence: number,
+  provider: "anthropic" | "openai",
+  model: string,
+  processingTimeMs: number
+) {
+  if (typeof window !== "undefined") return false;
+  const { cacheResult: cache } = await import("./ocr-cache");
+  return cache(imageData, parts, totalConfidence, provider, model, processingTimeMs);
+}
+
+async function recordMetrics(metrics: MetricsParams) {
+  if (typeof window !== "undefined") return;
+  const { recordMetrics: record } = await import("./ocr-optimizer");
+  return record(metrics);
+}
 
 // ============================================================
 // CONFIGURATION
@@ -178,6 +220,48 @@ export class ResilientAIProvider implements AIProvider {
     
     logger.info("🔄 [Resilient] Starting image parse with fallback chain", { requestId });
     
+    // ============================================================
+    // CHECK CACHE FIRST (server-side only)
+    // ============================================================
+    try {
+      const cached = await getCachedResult(imageData);
+      if (cached) {
+        const cacheTimeMs = Date.now() - startTime;
+        
+        logger.info("✅ [Resilient] Cache HIT - returning cached result", {
+          requestId,
+          partsFound: cached.parts.length,
+          cachedProvider: cached.provider,
+          originalTimeMs: cached.originalProcessingTimeMs,
+          cacheTimeMs,
+          timeSaved: cached.originalProcessingTimeMs - cacheTimeMs,
+        });
+        
+        // Record metrics
+        await recordMetrics({
+          processingTimeMs: cacheTimeMs,
+          partsFound: cached.parts.length,
+          provider: "cache",
+          success: true,
+        });
+        
+        audit.setOutput({ success: true, partsExtracted: cached.parts.length });
+        audit.finalize();
+        
+        return {
+          success: true,
+          parts: cached.parts,
+          totalConfidence: cached.totalConfidence,
+          rawResponse: "[CACHED]",
+          errors: [],
+          processingTime: cacheTimeMs,
+        };
+      }
+    } catch (cacheError) {
+      // Cache check failed - continue without cache
+      logger.debug("⚠️ [Resilient] Cache check failed, continuing", { requestId });
+    }
+    
     if (this.primary.isConfigured()) {
       try {
         audit.setProvider("anthropic", "claude-sonnet-4-5-20250929");
@@ -194,13 +278,34 @@ export class ResilientAIProvider implements AIProvider {
             ? detectTruncation(result.rawResponse)
             : { isTruncated: false };
           
-          // If we have a good result without truncation, return it
+          // If we have a good result without truncation, cache and return it
           if (!truncation.isTruncated) {
+            const processingTimeMs = Date.now() - startTime;
+            
             logger.info("✅ [Resilient] Primary provider succeeded", {
               requestId,
               partsFound: result.parts.length,
-              processingTimeMs: Date.now() - startTime,
+              processingTimeMs,
             });
+            
+            // Cache the successful result (async, don't wait)
+            cacheResult(
+              imageData,
+              result.parts,
+              result.totalConfidence,
+              "anthropic",
+              "claude-sonnet-4-5-20250929",
+              processingTimeMs
+            ).catch(() => {}); // Ignore cache errors
+            
+            // Record metrics (async, don't wait)
+            recordMetrics({
+              processingTimeMs,
+              partsFound: result.parts.length,
+              provider: "primary",
+              success: true,
+            }).catch(() => {});
+            
             audit.setOutput({ success: true, partsExtracted: result.parts.length });
             audit.finalize();
             return result;
@@ -315,12 +420,33 @@ export class ResilientAIProvider implements AIProvider {
       
       try {
         const result = await this.fallback.parseImage(imageData, options);
+        const processingTimeMs = Date.now() - startTime;
         
         logger.info("✅ [Resilient] Fallback provider completed", {
           requestId,
           partsFound: result.parts.length,
-          processingTimeMs: Date.now() - startTime,
+          processingTimeMs,
         });
+        
+        // Cache successful fallback results too (async, don't wait)
+        if (result.success && result.parts.length > 0) {
+          cacheResult(
+            imageData,
+            result.parts,
+            result.totalConfidence,
+            "openai",
+            process.env.OPENAI_MODEL || "gpt-5-mini",
+            processingTimeMs
+          ).catch(() => {});
+        }
+        
+        // Record metrics (async, don't wait)
+        recordMetrics({
+          processingTimeMs,
+          partsFound: result.parts.length,
+          provider: "fallback",
+          success: result.success,
+        }).catch(() => {});
         
         audit.setOutput({ success: result.success, partsExtracted: result.parts.length });
         audit.finalize();
