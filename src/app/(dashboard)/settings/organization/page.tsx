@@ -283,8 +283,8 @@ export default function OrganizationSettingsPage() {
                   Date Format
                 </label>
                 <Select
-                  value={settings.dateFormat}
-                  onValueChange={(v) => updateSetting("dateFormat", v)}
+                  value={settings.date_format}
+                  onValueChange={(v) => updateSetting("date_format", v)}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -302,8 +302,8 @@ export default function OrganizationSettingsPage() {
                   Default Units
                 </label>
                 <Select
-                  value={settings.defaultUnits}
-                  onValueChange={(v) => updateSetting("defaultUnits", v)}
+                  value={settings.default_units}
+                  onValueChange={(v) => updateSetting("default_units", v)}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -332,9 +332,9 @@ export default function OrganizationSettingsPage() {
                 </label>
                 <Input
                   type="number"
-                  value={settings.defaultThicknessMm}
+                  value={settings.default_thickness_mm}
                   onChange={(e) =>
-                    updateSetting("defaultThicknessMm", Number(e.target.value))
+                    updateSetting("default_thickness_mm", Number(e.target.value))
                   }
                 />
               </div>
@@ -344,8 +344,8 @@ export default function OrganizationSettingsPage() {
                   Default Grain Direction
                 </label>
                 <Select
-                  value={settings.defaultGrain}
-                  onValueChange={(v) => updateSetting("defaultGrain", v)}
+                  value={settings.default_grain}
+                  onValueChange={(v) => updateSetting("default_grain", v)}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -368,9 +368,9 @@ export default function OrganizationSettingsPage() {
                   <input
                     type="checkbox"
                     className="sr-only peer"
-                    checked={settings.autoOptimize}
+                    checked={settings.auto_optimize}
                     onChange={(e) =>
-                      updateSetting("autoOptimize", e.target.checked)
+                      updateSetting("auto_optimize", e.target.checked)
                     }
                   />
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[var(--cai-teal)]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--cai-teal)]"></div>
@@ -390,22 +390,22 @@ export default function OrganizationSettingsPage() {
             <CardContent className="space-y-4">
               {[
                 {
-                  id: "enableEdging",
+                  id: "enable_edging",
                   label: "Edge Banding",
                   description: "Track edge banding requirements",
                 },
                 {
-                  id: "enableGrooves",
+                  id: "enable_grooves",
                   label: "Grooves & Dados",
                   description: "Define groove operations",
                 },
                 {
-                  id: "enableCncHoles",
+                  id: "enable_cnc_holes",
                   label: "CNC Hole Patterns",
                   description: "Specify hole locations and patterns",
                 },
                 {
-                  id: "enableCncRouting",
+                  id: "enable_cnc_routing",
                   label: "CNC Routing",
                   description: "Define routing profiles and paths",
                 },
@@ -450,13 +450,13 @@ export default function OrganizationSettingsPage() {
                 <div className="flex items-center gap-3">
                   <input
                     type="color"
-                    value={settings.primaryColor}
-                    onChange={(e) => updateSetting("primaryColor", e.target.value)}
+                    value={settings.primary_color}
+                    onChange={(e) => updateSetting("primary_color", e.target.value)}
                     className="w-12 h-12 rounded-lg cursor-pointer border-0"
                   />
                   <Input
-                    value={settings.primaryColor}
-                    onChange={(e) => updateSetting("primaryColor", e.target.value)}
+                    value={settings.primary_color}
+                    onChange={(e) => updateSetting("primary_color", e.target.value)}
                     placeholder="#0D9488"
                     className="flex-1"
                   />
@@ -482,8 +482,8 @@ export default function OrganizationSettingsPage() {
                   Webhook URL
                 </label>
                 <Input
-                  value={settings.webhookUrl}
-                  onChange={(e) => updateSetting("webhookUrl", e.target.value)}
+                  value={settings.webhook_url}
+                  onChange={(e) => updateSetting("webhook_url", e.target.value)}
                   placeholder="https://your-server.com/webhook"
                 />
                 <p className="text-xs text-[var(--muted-foreground)] mt-1">
