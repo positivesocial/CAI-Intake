@@ -273,20 +273,48 @@ export class ResilientAIProvider implements AIProvider {
         
         // Check for quality issues that might warrant fallback
         if (result.success && result.parts.length > 0) {
-          // Check for truncation or low part count
+          const processingTimeMs = Date.now() - startTime;
+          
+          // Check for truncation
           const truncation = result.rawResponse 
             ? detectTruncation(result.rawResponse)
             : { isTruncated: false };
           
-          // If we have a good result without truncation, cache and return it
-          if (!truncation.isTruncated) {
-            const processingTimeMs = Date.now() - startTime;
-            
-            logger.info("✅ [Resilient] Primary provider succeeded", {
-              requestId,
-              partsFound: result.parts.length,
-              processingTimeMs,
-            });
+          // SMART FALLBACK LOGIC:
+          // Only trigger fallback if:
+          // 1. We found very few parts (< 5) OR
+          // 2. We're truncated AND confidence is low (< 0.7) OR
+          // 3. We're truncated AND found very few parts relative to image complexity
+          // 
+          // DO NOT trigger fallback if we have good results (many parts + high confidence)
+          const confidence = result.totalConfidence;
+          const partsFound = result.parts.length;
+          
+          // Good result threshold: >= 10 parts with >= 0.8 confidence
+          const isGoodResult = partsFound >= 10 && confidence >= 0.8;
+          // Poor result threshold: < 5 parts or < 0.5 confidence
+          const isPoorResult = partsFound < 5 || confidence < 0.5;
+          
+          // Only consider fallback if truncated AND result is not good enough
+          const shouldTryFallback = truncation.isTruncated && !isGoodResult && isPoorResult;
+          
+          if (!shouldTryFallback) {
+            // Accept the result - either not truncated OR good enough to use
+            if (truncation.isTruncated) {
+              logger.info("✅ [Resilient] Primary result truncated but quality is good, accepting", {
+                requestId,
+                partsFound,
+                confidence: confidence.toFixed(2),
+                processingTimeMs,
+                truncationReason: truncation.reason,
+              });
+            } else {
+              logger.info("✅ [Resilient] Primary provider succeeded", {
+                requestId,
+                partsFound,
+                processingTimeMs,
+              });
+            }
             
             // Cache the successful result (async, don't wait)
             cacheResult(
@@ -311,7 +339,7 @@ export class ResilientAIProvider implements AIProvider {
             return result;
           }
           
-          // If truncated but fallback not available, still return primary result
+          // If fallback not available, still return primary result
           if (!this.fallback.isConfigured()) {
             logger.warn("⚠️ [Resilient] Primary result may be truncated, no fallback available", {
               requestId,
@@ -322,10 +350,11 @@ export class ResilientAIProvider implements AIProvider {
             return result;
           }
           
-          // If truncated and fallback available, try fallback
-          logger.info("🔄 [Resilient] Trying fallback due to truncation", {
+          // Try fallback only for poor truncated results
+          logger.info("🔄 [Resilient] Trying fallback due to poor truncated result", {
             requestId,
             primaryParts: result.parts.length,
+            primaryConfidence: confidence.toFixed(2),
             truncationReason: truncation.reason,
           });
           
