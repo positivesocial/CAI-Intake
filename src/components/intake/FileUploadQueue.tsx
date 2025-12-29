@@ -31,7 +31,7 @@ import { parseTextBatch } from "@/lib/parsers/text-parser";
 import { cn } from "@/lib/utils";
 import { getResilientProvider, type ResilientProgress } from "@/lib/ai/resilient-provider";
 import type { AIParseResult } from "@/lib/ai/provider";
-import { detectTemplateQR, type QRDetectionResult } from "@/lib/ai/template-ocr";
+import { detectTemplateQR, type QRDetectionResult } from "@/lib/ai/template-qr-client";
 import { uploadFile, BUCKETS } from "@/lib/supabase/storage";
 import { getLearningContext, type LearningContext } from "@/lib/learning";
 

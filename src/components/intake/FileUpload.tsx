@@ -39,7 +39,7 @@ import { useIntakeStore, type ParsedPartWithStatus } from "@/lib/store";
 import { parseTextBatch } from "@/lib/parsers/text-parser";
 import { cn } from "@/lib/utils";
 import { type ParsedPartResult } from "@/lib/ai";
-import { detectTemplateQR, type QRDetectionResult } from "@/lib/ai/template-ocr";
+import { detectTemplateQR, type QRDetectionResult } from "@/lib/ai/template-qr-client";
 import { toast } from "sonner";
 import { fileUploadLogger, createFileContext } from "@/lib/logging/file-upload-logger";
 import { ExcelImportDialog } from "./ExcelImportDialog";
