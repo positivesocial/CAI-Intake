@@ -145,7 +145,7 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
       // If we recovered parts, return them as a partial success
       return {
         success: true,
-        parts: partialData as AIPartSchema[],
+        parts: partialData as z.infer<typeof AIPartSchema>[],
         errors: [],
         warnings,
       };
