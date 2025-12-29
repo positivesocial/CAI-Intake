@@ -230,8 +230,8 @@ export function mergeChunkResults(chunks: ChunkResult[]): MergedResult {
  */
 function createPartKey(part: CutPart): string {
   // Use dimensions, quantity, and material as the key
-  // This catches duplicates even if label/row differs
-  return `${part.length}x${part.width}x${part.thickness || 18}_q${part.quantity || 1}_${part.material || ""}`.toLowerCase();
+  // This catches duplicates even if label differs
+  return `${part.size.L}x${part.size.W}x${part.thickness_mm}_q${part.qty}_${part.material_id || ""}`.toLowerCase();
 }
 
 // ============================================================
