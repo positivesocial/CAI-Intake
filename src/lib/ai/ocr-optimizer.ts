@@ -183,10 +183,11 @@ export async function optimizeImage(
       (metadata.width && metadata.width > settings.maxDimension) ||
       (metadata.height && metadata.height > settings.maxDimension);
     
-    let optimized: sharp.Sharp = image;
+    // Build the transform chain
+    let transform = image;
     
     if (needsResize) {
-      optimized = optimized.resize(settings.maxDimension, settings.maxDimension, {
+      transform = transform.resize(settings.maxDimension, settings.maxDimension, {
         fit: "inside",
         withoutEnlargement: true,
       });
@@ -197,10 +198,10 @@ export async function optimizeImage(
     let mimeType: string;
     
     if (settings.format === "png") {
-      buffer = await optimized.png({ quality: settings.quality, compressionLevel: 6 }).toBuffer();
+      buffer = await transform.png({ quality: settings.quality, compressionLevel: 6 }).toBuffer();
       mimeType = "image/png";
     } else {
-      buffer = await optimized.jpeg({ quality: settings.quality, mozjpeg: true }).toBuffer();
+      buffer = await transform.jpeg({ quality: settings.quality, mozjpeg: true }).toBuffer();
       mimeType = "image/jpeg";
     }
     
