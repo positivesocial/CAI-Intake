@@ -61,12 +61,31 @@ export function EdgebandSelector({
 
   const sides = ["L1", "L2", "W1", "W2"];
   const appliedSides = sides.filter(s => value.sides[s]);
-  const shortcode = value.edgeband_id 
-    ? formatEdgebandShortcode(
+  
+  // Generate shortcode - show sides even without specific material
+  let shortcode = "";
+  if (appliedSides.length > 0) {
+    if (value.edgeband_id) {
+      shortcode = formatEdgebandShortcode(
         edgebandMaterials.find(e => e.edgeband_id === value.edgeband_id)?.name?.substring(0, 4) || "EB",
         value.sides
-      )
-    : "";
+      );
+    } else {
+      // Show count of applied edges when no specific material is set
+      const edgeCount = appliedSides.length;
+      if (edgeCount === 4) {
+        shortcode = "4E"; // All edges
+      } else {
+        // Show which specific edges: e.g., "2L2W" or "1L" or "2W"
+        const lCount = (value.sides.L1 ? 1 : 0) + (value.sides.L2 ? 1 : 0);
+        const wCount = (value.sides.W1 ? 1 : 0) + (value.sides.W2 ? 1 : 0);
+        const parts = [];
+        if (lCount > 0) parts.push(`${lCount}L`);
+        if (wCount > 0) parts.push(`${wCount}W`);
+        shortcode = parts.join("") || `${edgeCount}E`;
+      }
+    }
+  }
 
   const toggleSide = (side: string) => {
     onChange({
@@ -84,7 +103,7 @@ export function EdgebandSelector({
             size="sm"
             className={cn(
               "h-7 px-2 text-xs font-mono justify-between gap-1",
-              appliedSides.length > 0 ? "text-blue-600" : "text-muted-foreground",
+              appliedSides.length > 0 ? "text-blue-600 bg-blue-50 hover:bg-blue-100" : "text-muted-foreground",
               className
             )}
           >
@@ -875,12 +894,30 @@ export function ShortcodeDisplay({
     return <span className="text-muted-foreground text-xs">—</span>;
   }
 
-  const ebShortcode = edgebanding?.edgeband_id
-    ? formatEdgebandShortcode(
+  // Generate edge shortcode even without specific material
+  let ebShortcode: string | null = null;
+  if (edgebanding && Object.values(edgebanding.sides).some(Boolean)) {
+    if (edgebanding.edgeband_id) {
+      ebShortcode = formatEdgebandShortcode(
         edgebandMaterials.find((e) => e.edgeband_id === edgebanding.edgeband_id)?.name?.substring(0, 4) || "EB",
         edgebanding.sides
-      )
-    : null;
+      );
+    } else {
+      // Show applied edges without material
+      const appliedSides = Object.entries(edgebanding.sides).filter(([, v]) => v);
+      const edgeCount = appliedSides.length;
+      if (edgeCount === 4) {
+        ebShortcode = "4E";
+      } else {
+        const lCount = (edgebanding.sides.L1 ? 1 : 0) + (edgebanding.sides.L2 ? 1 : 0);
+        const wCount = (edgebanding.sides.W1 ? 1 : 0) + (edgebanding.sides.W2 ? 1 : 0);
+        const parts = [];
+        if (lCount > 0) parts.push(`${lCount}L`);
+        if (wCount > 0) parts.push(`${wCount}W`);
+        ebShortcode = parts.join("") || `${edgeCount}E`;
+      }
+    }
+  }
 
   const grShortcodes = grooves?.map((g) =>
     formatGrooveShortcode(g.type_code, g.depth_mm, g.width_mm, g.side)
