@@ -229,19 +229,30 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
     
     const qrData = code.data.trim();
     
-    // Parse the template ID: CAI-{org_id}-v{version}
+    // Parse the template ID - supports multiple formats
     const parsed = parseTemplateId(qrData);
     
-    if (!parsed.isCAI || !parsed.orgId || !parsed.version) {
+    // Check if it's any CAI template format
+    if (!parsed.isCAI) {
       return {
         found: true,
         rawData: qrData,
-        error: "QR code found but not a valid CAI template ID",
+        error: "QR code found but not a CAI template",
       };
     }
     
-    // Look up org config
-    const orgConfig = await getOrgTemplateConfig(parsed.orgId, parsed.version);
+    // For v1 format (CAI-{org_id}-v{version}), try to load org config
+    let orgConfig: OrgTemplateConfig | null = null;
+    
+    if (parsed.format === "v1" && parsed.orgId && parsed.version) {
+      orgConfig = await getOrgTemplateConfig(parsed.orgId, parsed.version);
+    }
+    
+    // For legacy format (CAI-{version}-{serial}), still recognize as CAI template
+    // but proceed with standard AI OCR since we don't have org-specific config
+    if (parsed.format === "legacy") {
+      console.log(`[TemplateOCR] Detected legacy CAI template: ${qrData} (version ${parsed.version}, serial ${parsed.serial})`);
+    }
     
     return {
       found: true,

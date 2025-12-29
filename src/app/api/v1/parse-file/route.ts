@@ -49,8 +49,8 @@ function generateRequestId(): string {
 
 // Size limits
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
-const MAX_IMAGE_DIMENSION = 1024; // Max width or height in pixels (reduced from 2048 for faster AI processing)
-const TARGET_IMAGE_KB = 300; // Target size after optimization (reduced from 500KB for faster AI processing)
+const MAX_IMAGE_DIMENSION = 1536; // Max width or height - balance between quality and speed
+const TARGET_IMAGE_KB = 500; // Target size after optimization - needs to be readable for handwritten text
 
 export async function POST(request: NextRequest) {
   const requestId = generateRequestId();
@@ -217,22 +217,25 @@ export async function POST(request: NextRequest) {
           
           qrDetectionResult = await detectTemplateQR(originalBuffer);
           
-          if (qrDetectionResult.found && qrDetectionResult.templateId) {
+          if (qrDetectionResult.found && qrDetectionResult.templateId && qrDetectionResult.parsed?.isCAI) {
             detectedTemplateId = qrDetectionResult.templateId;
+            const parsedTemplate = qrDetectionResult.parsed;
             
             logger.info("📥 [ParseFile] 🎯 CAI Template detected via QR!", {
               requestId,
               templateId: detectedTemplateId,
-              orgId: qrDetectionResult.parsed?.orgId,
-              version: qrDetectionResult.parsed?.version,
+              format: parsedTemplate.format, // v1, legacy, or unknown
+              orgId: parsedTemplate.orgId,
+              version: parsedTemplate.version,
+              serial: parsedTemplate.serial,
               qrDetectionMs: Date.now() - qrStartTime,
             });
             
-            // Load org config if we have the parsed info
-            if (qrDetectionResult.parsed?.orgId && qrDetectionResult.parsed?.version) {
+            // For v1 format, load org config with shortcodes
+            if (parsedTemplate.format === "v1" && parsedTemplate.orgId && parsedTemplate.version) {
               const orgConfig = await getOrgTemplateConfig(
-                qrDetectionResult.parsed.orgId,
-                qrDetectionResult.parsed.version
+                parsedTemplate.orgId,
+                parsedTemplate.version
               );
               
               if (orgConfig) {
@@ -248,14 +251,30 @@ export async function POST(request: NextRequest) {
                   cncCodes: orgConfig.shortcodes.cnc?.length || 0,
                 });
               }
+            } else if (parsedTemplate.format === "legacy") {
+              // Legacy format (CAI-{version}-{serial}) - recognized but no org config
+              // Will proceed with standard AI OCR but knows it's a CAI template
+              logger.info("📥 [ParseFile] 📋 Legacy CAI template detected - using standard AI OCR", {
+                requestId,
+                templateId: detectedTemplateId,
+                version: parsedTemplate.version,
+                serial: parsedTemplate.serial,
+              });
             }
             
             // Update parse options with detected template
             parseOptions.templateId = detectedTemplateId;
             parseOptions.templateConfig = detectedTemplateConfig;
             parseOptions.deterministicPrompt = deterministicPrompt;
+          } else if (qrDetectionResult.found && !qrDetectionResult.parsed?.isCAI) {
+            // QR found but not a CAI template - proceed with normal OCR
+            logger.info("📥 [ParseFile] Non-CAI QR found, proceeding with standard OCR", {
+              requestId,
+              rawQrData: qrDetectionResult.rawData?.slice(0, 50), // First 50 chars for debugging
+              qrDetectionMs: Date.now() - qrStartTime,
+            });
           } else {
-            logger.info("📥 [ParseFile] No CAI template QR found (generic document)", {
+            logger.info("📥 [ParseFile] No QR code found (generic document)", {
               requestId,
               qrFound: qrDetectionResult.found,
               qrError: qrDetectionResult.error,
@@ -330,11 +349,12 @@ export async function POST(request: NextRequest) {
           });
           
           // Calculate quality based on original size
-          // Larger files get more aggressive compression
+          // Higher quality needed for handwritten text readability
           let quality = 85;
-          if (originalSizeKB > 5000) quality = 60; // >5MB: 60% quality
-          else if (originalSizeKB > 2000) quality = 70; // >2MB: 70% quality
-          else if (originalSizeKB > 1000) quality = 80; // >1MB: 80% quality
+          if (originalSizeKB > 10000) quality = 70; // >10MB: 70% quality
+          else if (originalSizeKB > 5000) quality = 75; // >5MB: 75% quality  
+          else if (originalSizeKB > 2000) quality = 80; // >2MB: 80% quality
+          // For smaller images, keep 85% quality
           
           imageBuffer = await sharpInstance
             .resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, {

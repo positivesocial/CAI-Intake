@@ -1981,37 +1981,72 @@ export function calculateTemplateVersion(
 
 /**
  * Parse a template ID into its components
- * Format: CAI-{org_id}-v{version}
- * Example: CAI-org_abc123-v1.0
+ * Supports multiple formats:
+ * - Format 1 (preferred): CAI-{org_id}-v{version} (e.g., CAI-org_abc123-v1.0)
+ * - Format 2 (legacy): CAI-{version}-{serial} (e.g., CAI-1.0-24279729)
  */
 export interface ParsedTemplateId {
   isCAI: boolean;           // Whether it's a CAI Intake template
-  orgId: string | null;     // Organization ID
+  orgId: string | null;     // Organization ID (null for legacy format)
   version: string | null;   // Template version (e.g., "1.0")
+  serial: string | null;    // Serial number (for legacy format)
   raw: string;              // Original ID string
+  format: "v1" | "legacy" | "unknown"; // Detected format
 }
 
 export function parseTemplateId(templateId: string): ParsedTemplateId {
   const raw = templateId.trim();
   
-  // Pattern: CAI-{org_id}-v{VERSION}
-  // org_id can contain letters, numbers, underscores, hyphens
-  const match = raw.match(/^CAI-(.+)-v(\d+\.\d+)$/);
-  
-  if (!match) {
+  // Check if it starts with CAI-
+  if (!raw.startsWith("CAI-")) {
     return {
-      isCAI: raw.startsWith("CAI-"),
+      isCAI: false,
       orgId: null,
       version: null,
+      serial: null,
       raw,
+      format: "unknown",
     };
   }
   
+  // Try Format 1 (preferred): CAI-{org_id}-v{VERSION}
+  // org_id can contain letters, numbers, underscores, hyphens
+  const v1Match = raw.match(/^CAI-(.+)-v(\d+\.\d+)$/);
+  
+  if (v1Match) {
+    return {
+      isCAI: true,
+      orgId: v1Match[1],
+      version: v1Match[2],
+      serial: null,
+      raw,
+      format: "v1",
+    };
+  }
+  
+  // Try Format 2 (legacy): CAI-{VERSION}-{SERIAL}
+  // Version is like "1.0", serial is numeric
+  const legacyMatch = raw.match(/^CAI-(\d+\.\d+)-(\d+)$/);
+  
+  if (legacyMatch) {
+    return {
+      isCAI: true,
+      orgId: null, // Legacy format doesn't include org ID in QR
+      version: legacyMatch[1],
+      serial: legacyMatch[2],
+      raw,
+      format: "legacy",
+    };
+  }
+  
+  // It starts with CAI- but doesn't match known formats
   return {
     isCAI: true,
-    orgId: match[1],
-    version: match[2],
+    orgId: null,
+    version: null,
+    serial: null,
     raw,
+    format: "unknown",
   };
 }
 
