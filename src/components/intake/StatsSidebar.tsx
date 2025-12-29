@@ -13,8 +13,9 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIntakeStore } from "@/lib/store";
-import { calculateStatistics, formatArea, formatLength, type CutlistStatistics } from "@/lib/stats";
+import { calculateStatistics, formatArea, formatLength, formatEfficiency, type CutlistStatistics } from "@/lib/stats";
 import { cn } from "@/lib/utils";
 
 interface StatsSidebarProps {
@@ -83,40 +84,96 @@ export function StatsSidebar({ className }: StatsSidebarProps) {
               </div>
             </section>
 
-            {/* Materials */}
+            {/* Materials with Sheet Estimates */}
             <section>
               <h3 className="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider mb-3">
                 Materials ({stats.materials.length})
               </h3>
               <div className="space-y-2">
                 {stats.materials.map((mat) => (
-                  <div
-                    key={mat.materialId}
-                    className="bg-[var(--muted)] rounded-lg p-3"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium truncate">{mat.name}</span>
-                      <Badge variant="outline" className="text-xs shrink-0">
-                        {mat.thickness}mm
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-[var(--muted-foreground)]">
-                      <div>
-                        <span className="block text-[var(--foreground)] font-medium">
-                          {mat.totalPieces} pcs
-                        </span>
-                        <span>{mat.uniqueParts} unique</span>
+                  <TooltipProvider key={mat.materialId}>
+                    <div className="bg-[var(--muted)] rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium truncate">{mat.name}</span>
+                        <Badge variant="outline" className="text-xs shrink-0">
+                          {mat.thickness}mm
+                        </Badge>
                       </div>
-                      <div>
-                        <span className="block text-[var(--foreground)] font-medium">
-                          {mat.totalAreaSqm.toFixed(2)} m²
-                        </span>
-                        {mat.theoreticalSheets > 0 && (
-                          <span>≥{mat.theoreticalSheets} sheets</span>
-                        )}
+                      
+                      {/* Parts & Area */}
+                      <div className="grid grid-cols-2 gap-2 text-xs text-[var(--muted-foreground)] mb-2">
+                        <div>
+                          <span className="block text-[var(--foreground)] font-medium">
+                            {mat.totalPieces} pcs
+                          </span>
+                          <span>{mat.uniqueParts} unique</span>
+                        </div>
+                        <div>
+                          <span className="block text-[var(--foreground)] font-medium">
+                            {mat.totalAreaSqm.toFixed(2)} m²
+                          </span>
+                        </div>
                       </div>
+
+                      {/* Sheet Estimate */}
+                      {mat.sheetEstimate && mat.sheetEstimate.estimatedSheets > 0 && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="mt-2 pt-2 border-t border-[var(--border)] cursor-help">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-[var(--muted-foreground)]">Est. Sheets:</span>
+                                  <span className="text-sm font-bold text-[var(--cai-teal)]">
+                                    {mat.sheetEstimate.estimatedSheets}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-[var(--muted-foreground)]">Efficiency:</span>
+                                  <span className={cn(
+                                    "text-sm font-semibold",
+                                    mat.sheetEstimate.estimatedEfficiency >= 0.80 ? "text-green-600 dark:text-green-400" :
+                                    mat.sheetEstimate.estimatedEfficiency >= 0.65 ? "text-yellow-600 dark:text-yellow-400" :
+                                    "text-red-600 dark:text-red-400"
+                                  )}>
+                                    {formatEfficiency(mat.sheetEstimate.estimatedEfficiency)}
+                                  </span>
+                                </div>
+                              </div>
+                              {/* Progress bar for efficiency */}
+                              <div className="mt-1.5 h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+                                <div
+                                  className={cn(
+                                    "h-full rounded-full transition-all",
+                                    mat.sheetEstimate.estimatedEfficiency >= 0.80 ? "bg-green-500" :
+                                    mat.sheetEstimate.estimatedEfficiency >= 0.65 ? "bg-yellow-500" :
+                                    "bg-red-500"
+                                  )}
+                                  style={{ width: `${Math.min(mat.sheetEstimate.estimatedEfficiency * 100, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-[250px]">
+                            <div className="text-xs space-y-1">
+                              <p className="font-semibold">Sheet Estimate Details</p>
+                              <p>Sheet size: {mat.sheetEstimate.sheetSize.L} × {mat.sheetEstimate.sheetSize.W}mm</p>
+                              <p>Kerf allowance: {mat.sheetEstimate.kerfWidth}mm</p>
+                              <p>Avg parts/sheet: {mat.sheetEstimate.avgPartsPerSheet.toFixed(1)}</p>
+                              <p>Est. waste: {(mat.sheetEstimate.wasteArea / 1000000).toFixed(2)} m²</p>
+                              {mat.sheetEstimate.oversizedParts > 0 && (
+                                <p className="text-amber-500">
+                                  ⚠ {mat.sheetEstimate.oversizedParts} oversized part(s)
+                                </p>
+                              )}
+                              <p className="text-[var(--muted-foreground)] italic pt-1">
+                                *Approximation using 4mm kerf
+                              </p>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </div>
-                  </div>
+                  </TooltipProvider>
                 ))}
               </div>
             </section>

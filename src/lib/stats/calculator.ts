@@ -29,6 +29,32 @@ export interface MaterialStatistics {
   sheetSize?: { L: number; W: number };
   /** Sheet area in mm² */
   sheetArea?: number;
+  /** Sheet estimation with kerf consideration */
+  sheetEstimate?: SheetEstimate;
+}
+
+/**
+ * Sheet estimation result with kerf-adjusted calculations
+ */
+export interface SheetEstimate {
+  /** Estimated number of sheets required */
+  estimatedSheets: number;
+  /** Estimated material efficiency (0-1) */
+  estimatedEfficiency: number;
+  /** Kerf-adjusted total area (mm²) - parts area + kerf allowances */
+  kerfAdjustedArea: number;
+  /** Total sheet area used (mm²) */
+  totalSheetArea: number;
+  /** Estimated waste area (mm²) */
+  wasteArea: number;
+  /** Kerf width used in calculation (mm) */
+  kerfWidth: number;
+  /** Parts that fit per sheet (average) */
+  avgPartsPerSheet: number;
+  /** Sheet dimensions used */
+  sheetSize: { L: number; W: number };
+  /** Warning if parts exceed sheet size */
+  oversizedParts: number;
 }
 
 export interface EdgeBandingStatistics {
@@ -343,12 +369,26 @@ export function calculateStatistics(
     }
   }
   
-  // Finalize material statistics
+  // Group parts by material for sheet estimation
+  const partsByMaterial = new Map<string, CutPart[]>();
+  for (const part of parts) {
+    if (!partsByMaterial.has(part.material_id)) {
+      partsByMaterial.set(part.material_id, []);
+    }
+    partsByMaterial.get(part.material_id)!.push(part);
+  }
+
+  // Finalize material statistics with sheet estimates
   for (const matStat of materialStats.values()) {
     matStat.totalAreaSqm = matStat.totalArea / 1_000_000;
     if (matStat.sheetArea) {
       matStat.theoreticalSheets = Math.ceil(matStat.totalArea / matStat.sheetArea);
     }
+    
+    // Calculate sheet estimate with kerf consideration
+    const materialParts = partsByMaterial.get(matStat.materialId) || [];
+    const sheetSize = matStat.sheetSize || DEFAULT_SHEET_SIZE;
+    matStat.sheetEstimate = calculateSheetEstimate(materialParts, sheetSize, DEFAULT_KERF_WIDTH);
   }
   
   // Finalize edgeband statistics
@@ -460,5 +500,310 @@ export function getStatsSummary(stats: CutlistStatistics): string {
  */
 export function isStatsEmpty(stats: CutlistStatistics): boolean {
   return stats.totals.uniqueParts === 0;
+}
+
+// ============================================================
+// SHEET ESTIMATION
+// ============================================================
+
+/** Default kerf width in mm (saw blade thickness + margin) */
+const DEFAULT_KERF_WIDTH = 4;
+
+/** Default sheet size if not specified (mm) - standard 2440x1220 */
+const DEFAULT_SHEET_SIZE = { L: 2440, W: 1220 };
+
+/** Margin from sheet edges (mm) */
+const EDGE_MARGIN = 10;
+
+/**
+ * Part with kerf-adjusted dimensions for packing
+ */
+interface PackingPart {
+  id: string;
+  L: number;  // Length with kerf
+  W: number;  // Width with kerf
+  originalL: number;
+  originalW: number;
+  area: number;
+  canRotate: boolean;
+}
+
+/**
+ * Calculate sheet estimates for a set of parts with kerf consideration.
+ * Uses a First Fit Decreasing (FFD) bin packing approximation.
+ * 
+ * @param parts - Parts to estimate sheets for
+ * @param sheetSize - Sheet dimensions (default: 2440x1220mm)
+ * @param kerfWidth - Kerf width in mm (default: 4mm)
+ * @returns Sheet estimation results
+ */
+export function calculateSheetEstimate(
+  parts: CutPart[],
+  sheetSize: { L: number; W: number } = DEFAULT_SHEET_SIZE,
+  kerfWidth: number = DEFAULT_KERF_WIDTH
+): SheetEstimate {
+  if (parts.length === 0) {
+    return {
+      estimatedSheets: 0,
+      estimatedEfficiency: 0,
+      kerfAdjustedArea: 0,
+      totalSheetArea: 0,
+      wasteArea: 0,
+      kerfWidth,
+      avgPartsPerSheet: 0,
+      sheetSize,
+      oversizedParts: 0,
+    };
+  }
+
+  // Usable sheet area (accounting for edge margins)
+  const usableL = sheetSize.L - (2 * EDGE_MARGIN);
+  const usableW = sheetSize.W - (2 * EDGE_MARGIN);
+  const fullSheetArea = sheetSize.L * sheetSize.W;
+
+  // Expand parts by quantity and add kerf allowance
+  const packingParts: PackingPart[] = [];
+  let oversizedParts = 0;
+  let totalOriginalArea = 0;
+
+  for (const part of parts) {
+    for (let i = 0; i < part.qty; i++) {
+      // Add kerf to each dimension (kerf is needed on each cut)
+      const adjustedL = part.size.L + kerfWidth;
+      const adjustedW = part.size.W + kerfWidth;
+      
+      totalOriginalArea += part.size.L * part.size.W;
+      
+      // Check if part fits on sheet (even with rotation if allowed)
+      const canRotate = part.allow_rotation !== false;
+      const fitsNormal = adjustedL <= usableL && adjustedW <= usableW;
+      const fitsRotated = canRotate && adjustedW <= usableL && adjustedL <= usableW;
+      
+      if (!fitsNormal && !fitsRotated) {
+        oversizedParts++;
+        continue; // Skip oversized parts from packing
+      }
+      
+      packingParts.push({
+        id: `${part.part_id}-${i}`,
+        L: adjustedL,
+        W: adjustedW,
+        originalL: part.size.L,
+        originalW: part.size.W,
+        area: adjustedL * adjustedW,
+        canRotate,
+      });
+    }
+  }
+
+  // Sort parts by area (largest first) for FFD bin packing
+  packingParts.sort((a, b) => b.area - a.area);
+
+  // First Fit Decreasing bin packing approximation
+  const sheets: { usedArea: number; remainingSpace: ShelfSpace[] }[] = [];
+  
+  interface ShelfSpace {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }
+
+  // Simple shelf-based packing algorithm
+  for (const part of packingParts) {
+    let placed = false;
+    
+    // Try to fit in existing sheets
+    for (const sheet of sheets) {
+      // Try each remaining space
+      for (let i = 0; i < sheet.remainingSpace.length; i++) {
+        const space = sheet.remainingSpace[i];
+        
+        // Try normal orientation
+        if (part.L <= space.w && part.W <= space.h) {
+          // Place part, split remaining space
+          sheet.usedArea += part.area;
+          
+          // Create new spaces from the remaining area
+          const newSpaces: ShelfSpace[] = [];
+          
+          // Right remainder
+          if (space.w - part.L > kerfWidth) {
+            newSpaces.push({
+              x: space.x + part.L,
+              y: space.y,
+              w: space.w - part.L,
+              h: space.h,
+            });
+          }
+          
+          // Top remainder
+          if (space.h - part.W > kerfWidth) {
+            newSpaces.push({
+              x: space.x,
+              y: space.y + part.W,
+              w: part.L,
+              h: space.h - part.W,
+            });
+          }
+          
+          // Remove used space, add new spaces
+          sheet.remainingSpace.splice(i, 1, ...newSpaces);
+          placed = true;
+          break;
+        }
+        
+        // Try rotated orientation (if allowed)
+        if (part.canRotate && part.W <= space.w && part.L <= space.h) {
+          sheet.usedArea += part.area;
+          
+          const newSpaces: ShelfSpace[] = [];
+          
+          if (space.w - part.W > kerfWidth) {
+            newSpaces.push({
+              x: space.x + part.W,
+              y: space.y,
+              w: space.w - part.W,
+              h: space.h,
+            });
+          }
+          
+          if (space.h - part.L > kerfWidth) {
+            newSpaces.push({
+              x: space.x,
+              y: space.y + part.L,
+              w: part.W,
+              h: space.h - part.L,
+            });
+          }
+          
+          sheet.remainingSpace.splice(i, 1, ...newSpaces);
+          placed = true;
+          break;
+        }
+      }
+      
+      if (placed) break;
+    }
+    
+    // Need a new sheet
+    if (!placed) {
+      const newSheet = {
+        usedArea: part.area,
+        remainingSpace: [] as ShelfSpace[],
+      };
+      
+      // Initial placement at origin, create remaining spaces
+      const newSpaces: ShelfSpace[] = [];
+      
+      // Try normal orientation first
+      let placedL = part.L;
+      let placedW = part.W;
+      
+      // If doesn't fit normally but can rotate, try rotated
+      if (placedL > usableL || placedW > usableW) {
+        if (part.canRotate) {
+          placedL = part.W;
+          placedW = part.L;
+        }
+      }
+      
+      if (usableL - placedL > kerfWidth) {
+        newSpaces.push({
+          x: placedL,
+          y: 0,
+          w: usableL - placedL,
+          h: usableW,
+        });
+      }
+      
+      if (usableW - placedW > kerfWidth) {
+        newSpaces.push({
+          x: 0,
+          y: placedW,
+          w: placedL,
+          h: usableW - placedW,
+        });
+      }
+      
+      newSheet.remainingSpace = newSpaces;
+      sheets.push(newSheet);
+    }
+  }
+
+  const estimatedSheets = Math.max(sheets.length, oversizedParts > 0 ? 1 : 0);
+  const totalSheetArea = estimatedSheets * fullSheetArea;
+  const kerfAdjustedArea = packingParts.reduce((sum, p) => sum + p.area, 0);
+  const wasteArea = totalSheetArea - totalOriginalArea;
+  
+  // Efficiency based on original part area vs total sheet area used
+  const estimatedEfficiency = totalSheetArea > 0 
+    ? totalOriginalArea / totalSheetArea 
+    : 0;
+  
+  const avgPartsPerSheet = estimatedSheets > 0 
+    ? packingParts.length / estimatedSheets 
+    : 0;
+
+  return {
+    estimatedSheets,
+    estimatedEfficiency,
+    kerfAdjustedArea,
+    totalSheetArea,
+    wasteArea,
+    kerfWidth,
+    avgPartsPerSheet,
+    sheetSize,
+    oversizedParts,
+  };
+}
+
+/**
+ * Calculate sheet estimates for parts grouped by material
+ */
+export function calculateSheetEstimatesByMaterial(
+  parts: CutPart[],
+  materials: MaterialDef[] = [],
+  kerfWidth: number = DEFAULT_KERF_WIDTH
+): Map<string, SheetEstimate> {
+  const estimates = new Map<string, SheetEstimate>();
+  
+  // Group parts by material
+  const partsByMaterial = new Map<string, CutPart[]>();
+  
+  for (const part of parts) {
+    const materialId = part.material_id;
+    if (!partsByMaterial.has(materialId)) {
+      partsByMaterial.set(materialId, []);
+    }
+    partsByMaterial.get(materialId)!.push(part);
+  }
+  
+  // Calculate estimate for each material
+  for (const [materialId, materialParts] of partsByMaterial) {
+    const materialDef = materials.find(m => m.material_id === materialId);
+    const sheetSize = materialDef?.default_sheet?.size || DEFAULT_SHEET_SIZE;
+    
+    const estimate = calculateSheetEstimate(materialParts, sheetSize, kerfWidth);
+    estimates.set(materialId, estimate);
+  }
+  
+  return estimates;
+}
+
+/**
+ * Format efficiency as percentage
+ */
+export function formatEfficiency(efficiency: number): string {
+  return `${(efficiency * 100).toFixed(1)}%`;
+}
+
+/**
+ * Get efficiency color class based on value
+ */
+export function getEfficiencyColor(efficiency: number): string {
+  if (efficiency >= 0.85) return "text-green-600 dark:text-green-400";
+  if (efficiency >= 0.70) return "text-yellow-600 dark:text-yellow-400";
+  return "text-red-600 dark:text-red-400";
 }
 

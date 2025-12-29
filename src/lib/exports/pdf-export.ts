@@ -15,6 +15,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { CutPart, MaterialDef, EdgebandDef, CutlistCapabilities } from "@/lib/schema";
+import { calculateSheetEstimate, formatEfficiency, type SheetEstimate } from "@/lib/stats";
 
 // ============================================================
 // TYPES
@@ -1126,46 +1127,118 @@ export function generateCutlistPDF(
     leftColumnEndY = yPos;
     rightColumnEndY = yPos;
 
-    // MATERIAL BREAKDOWN (left column)
-    const materialBreakdown: Record<string, { count: number; area: number }> = {};
+    // MATERIAL BREAKDOWN WITH SHEET ESTIMATES (left column)
+    interface MaterialBreakdownData {
+      count: number;
+      area: number;
+      parts: CutPart[];
+      sheetEstimate?: SheetEstimate;
+    }
+    const materialBreakdown: Record<string, MaterialBreakdownData> = {};
+    
     for (const part of cutlist.parts) {
       if (!materialBreakdown[part.material_id]) {
-        materialBreakdown[part.material_id] = { count: 0, area: 0 };
+        materialBreakdown[part.material_id] = { count: 0, area: 0, parts: [] };
       }
       materialBreakdown[part.material_id].count += part.qty;
       materialBreakdown[part.material_id].area += part.qty * part.size.L * part.size.W;
+      materialBreakdown[part.material_id].parts.push(part);
+    }
+
+    // Calculate sheet estimates for each material (4mm kerf)
+    for (const [matId, data] of Object.entries(materialBreakdown)) {
+      const material = cutlist.materials.find(m => m.material_id === matId);
+      const sheetSize = material?.default_sheet?.size || { L: 2440, W: 1220 };
+      data.sheetEstimate = calculateSheetEstimate(data.parts, sheetSize, 4);
     }
 
     if (Object.keys(materialBreakdown).length > 0) {
       doc.setTextColor(...textColor);
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("Material Breakdown", margin, leftColumnY);
+      doc.text("Material Breakdown (Est. 4mm kerf)", margin, leftColumnY);
       leftColumnY += 2;
 
       const materialTableData = Object.entries(materialBreakdown).map(([matId, data]) => {
         const material = cutlist.materials.find(m => m.material_id === matId);
+        const est = data.sheetEstimate;
         return [
           material?.name || matId,
           material?.thickness_mm ? `${material.thickness_mm}mm` : "-",
           data.count.toString(),
           `${(data.area / 1_000_000).toFixed(2)} m²`,
+          est ? est.estimatedSheets.toString() : "-",
+          est ? formatEfficiency(est.estimatedEfficiency) : "-",
         ];
       });
 
+      // Calculate totals for sheet estimates
+      let totalSheets = 0;
+      let totalUsedArea = 0;
+      let totalSheetArea = 0;
+      
+      for (const data of Object.values(materialBreakdown)) {
+        if (data.sheetEstimate) {
+          totalSheets += data.sheetEstimate.estimatedSheets;
+          totalUsedArea += data.area;
+          totalSheetArea += data.sheetEstimate.totalSheetArea;
+        }
+      }
+      
+      const overallEfficiency = totalSheetArea > 0 ? totalUsedArea / totalSheetArea : 0;
+      
+      // Add totals row
+      materialTableData.push([
+        "TOTAL",
+        "",
+        stats.totalPieces.toString(),
+        `${(stats.totalAreaMm2 / 1_000_000).toFixed(2)} m²`,
+        totalSheets.toString(),
+        formatEfficiency(overallEfficiency),
+      ]);
+
       autoTable(doc, {
-        head: [["Material", "Thickness", "Pieces", "Area"]],
+        head: [["Material", "Thick", "Pcs", "Area", "Sheets*", "Eff.*"]],
         body: materialTableData,
         startY: leftColumnY,
         margin: { left: margin, right: margin + halfWidth + 10 },
-        styles: { fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 7, cellPadding: 1.5 },
         headStyles: { fillColor: primaryColor, textColor: [255, 255, 255], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [248, 248, 248] },
         tableWidth: halfWidth,
+        columnStyles: {
+          4: { halign: 'center', fontStyle: 'bold' }, // Sheets
+          5: { halign: 'center' }, // Efficiency
+        },
+        didParseCell: (data) => {
+          // Style totals row
+          if (data.row.index === materialTableData.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [230, 245, 245];
+          }
+          // Color efficiency based on value
+          if (data.column.index === 5 && data.row.index < materialTableData.length - 1) {
+            const effStr = data.cell.text[0];
+            const effValue = parseFloat(effStr?.replace('%', '') || '0') / 100;
+            if (effValue >= 0.80) {
+              data.cell.styles.textColor = [34, 139, 34]; // Green
+            } else if (effValue >= 0.65) {
+              data.cell.styles.textColor = [184, 134, 11]; // Gold/Yellow
+            } else if (effValue > 0) {
+              data.cell.styles.textColor = [178, 34, 34]; // Red
+            }
+          }
+        },
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       leftColumnEndY = (doc as any).lastAutoTable?.finalY || leftColumnY;
+      
+      // Add footnote about sheet estimates
+      doc.setFontSize(6);
+      doc.setTextColor(100, 100, 100);
+      doc.text("* Sheet estimates assume 4mm kerf width. Actual may vary.", margin, leftColumnEndY + 3);
+      leftColumnEndY += 6;
     }
 
     // DRILLING BREAKDOWN (right column, same row as material)
