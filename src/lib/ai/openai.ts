@@ -795,7 +795,19 @@ export class OpenAIProvider implements AIProvider {
           {
             role: "user",
             content: [
-              { type: "text", text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. Please extract all parts from this manufacturing document.\n\n${prompt}\n\nRespond with valid JSON only containing the extracted parts array.` },
+              { type: "text", text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop.
+
+CRITICAL: This page may contain MULTIPLE COLUMNS and MULTIPLE SECTIONS. You MUST:
+1. Scan ALL columns (left, middle, right) - handwritten lists often have 2-3 columns
+2. Extract from ALL sections (e.g., "WHITE CARCASES", "WHITE DOORS", "WHITE PLYWOODS")
+3. Count EVERY numbered item across the ENTIRE page
+4. If you see 80+ items, you must extract ALL 80+ items
+
+Please extract ALL parts from this manufacturing document.
+
+${prompt}
+
+Respond with valid JSON only containing the extracted parts array. Include EVERY item from EVERY column and section.` },
               { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
             ],
           },
@@ -924,7 +936,17 @@ export class OpenAIProvider implements AIProvider {
           {
             role: "user",
             content: [
-              { type: "text", text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. Please extract all parts from this manufacturing document.\n\n${ocrPrompt}\n\nRespond with valid JSON only containing the extracted parts array.` },
+              { type: "text", text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop.
+
+CRITICAL: This page may contain MULTIPLE COLUMNS and MULTIPLE SECTIONS. You MUST:
+1. Scan ALL columns (left, middle, right) - handwritten lists often have 2-3 columns
+2. Extract from ALL sections (e.g., "WHITE CARCASES", "WHITE DOORS", "WHITE PLYWOODS")
+3. Count EVERY numbered item across the ENTIRE page
+4. If you see 80+ items, you must extract ALL 80+ items
+
+${ocrPrompt}
+
+Respond with valid JSON only containing the extracted parts array. Include EVERY item from EVERY column and section.` },
               { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
             ],
           },

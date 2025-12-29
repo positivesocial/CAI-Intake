@@ -26,12 +26,13 @@ const CLAUDE_MODEL = "claude-3-5-sonnet-20241022";
 
 /**
  * Maximum tokens for response generation.
- * Sonnet 3.5 supports up to 200K context, 8K output.
- * We use max output (8192) to handle large parts lists.
- * Each part is ~150-200 tokens, so 8K tokens = ~40-50 parts per request.
- * For larger documents, we use chunking strategy.
+ * Claude 3.5 Sonnet supports up to 8192 output tokens by default.
+ * However, for large cutlists (100+ parts), we need more.
+ * Each part is ~100-150 tokens in JSON, so 100 parts = ~12000+ tokens.
+ * We request 16384 to ensure large cutlists aren't truncated.
+ * If the model has a lower limit, it will use its max.
  */
-const MAX_TOKENS = 8192;
+const MAX_TOKENS = 16384;
 
 /**
  * Request timeout in milliseconds.
@@ -758,11 +759,19 @@ export class AnthropicProvider implements AIProvider {
               },
               {
                 type: "text",
-                text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. Please extract all parts from this manufacturing document.
+                text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. 
+
+CRITICAL: This page may contain MULTIPLE COLUMNS and MULTIPLE SECTIONS. You MUST:
+1. Scan ALL columns (left, middle, right) - handwritten lists often have 2-3 columns
+2. Extract from ALL sections (e.g., "WHITE CARCASES", "WHITE DOORS", "WHITE PLYWOODS")
+3. Count EVERY numbered item across the ENTIRE page
+4. If you see 80+ items, you must extract ALL 80+ items
+
+Please extract ALL parts from this manufacturing document.
 
 ${prompt}
 
-Respond with valid JSON only containing the extracted parts array.`,
+Respond with valid JSON only containing the extracted parts array. Include EVERY item from EVERY column and section.`,
               },
             ],
           },
@@ -907,11 +916,17 @@ Respond with valid JSON only containing the extracted parts array.`,
               },
               {
                 type: "text",
-                text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. Please extract all parts from this manufacturing document.
+                text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop.
+
+CRITICAL: This page may contain MULTIPLE COLUMNS and MULTIPLE SECTIONS. You MUST:
+1. Scan ALL columns (left, middle, right) - handwritten lists often have 2-3 columns
+2. Extract from ALL sections (e.g., "WHITE CARCASES", "WHITE DOORS", "WHITE PLYWOODS")
+3. Count EVERY numbered item across the ENTIRE page
+4. If you see 80+ items, you must extract ALL 80+ items
 
 ${prompt}
 
-Respond with valid JSON only containing the extracted parts array.`,
+Respond with valid JSON only containing the extracted parts array. Include EVERY item from EVERY column and section.`,
               },
             ],
           },
@@ -1201,11 +1216,17 @@ Respond with valid JSON only containing the extracted parts array.`,
               },
               {
                 type: "text",
-                text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. Please extract all parts from this manufacturing document.
+                text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop.
+
+CRITICAL: This page may contain MULTIPLE COLUMNS and MULTIPLE SECTIONS. You MUST:
+1. Scan ALL columns (left, middle, right) - handwritten lists often have 2-3 columns
+2. Extract from ALL sections (e.g., "WHITE CARCASES", "WHITE DOORS", "WHITE PLYWOODS")
+3. Count EVERY numbered item across the ENTIRE page
+4. If you see 80+ items, you must extract ALL 80+ items
 
 ${ocrPrompt}
 
-Respond with valid JSON only containing the extracted parts array.`,
+Respond with valid JSON only containing the extracted parts array. Include EVERY item from EVERY column and section.`,
               },
             ],
           },

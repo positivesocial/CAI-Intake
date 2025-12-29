@@ -583,16 +583,50 @@ Your task is to extract ALL parts from this manufacturing document. This is stan
 
 You are an expert OCR system specialized in reading handwritten and printed cutlists for cabinet making and woodworking.
 
-## CRITICAL INSTRUCTION: EXTRACT EVERY ROW
-You MUST extract EVERY SINGLE ROW from the table/list. Count carefully!
-- If you see 36 numbered rows, extract 36 parts
-- If you see 50 rows, extract 50 parts
-- NEVER skip rows, even if data seems similar or repeated
-- NEVER merge multiple rows into one part
+## CRITICAL INSTRUCTION: EXTRACT EVERY SINGLE ITEM
 
-## STEP 1: ANALYZE THE TABLE STRUCTURE
+### MULTI-COLUMN LAYOUTS (VERY IMPORTANT!)
+Handwritten cutlists often have MULTIPLE COLUMNS of data on a single page:
+- LEFT column might have items 1-34
+- MIDDLE column might have items 35-65
+- RIGHT column might have items 66-90
+- OR separate SECTIONS: "WHITE CARCASES", "WHITE DOORS", "WHITE PLYWOODS"
 
-Before extracting data, identify the column headers. Common structures include:
+**YOU MUST READ ALL COLUMNS AND ALL SECTIONS!**
+
+### SECTION HEADERS TO LOOK FOR:
+- "WHITE CARCASES" / "CARCASES" / "CARCASE"
+- "WHITE DOORS" / "DOORS"
+- "WHITE PLYWOODS" / "PLYWOODS" / "PLY"
+- "WHITE GLOSS" / "GLOSS DOORS"
+- Material names followed by numbered lists
+
+### COUNTING RULES:
+1. Count the TOTAL numbered items across ALL columns/sections
+2. If you see items numbered 1-34 in one column and 35-65 in another, extract ALL 65 items
+3. If you see separate sections (CARCASES: 34 items, DOORS: 6 items, PLYWOODS: 22 items), extract ALL 62 items
+4. NEVER stop at the first column - SCAN THE ENTIRE PAGE
+5. NEVER skip rows, even if data seems similar or repeated
+6. NEVER merge multiple rows into one part
+
+### COMMON HANDWRITTEN FORMAT:
+Handwritten lists often use this format:
+- "① 2400x580 = 38pcs" → row 1, length 2400, width 580, quantity 38
+- "② 764x600 = 10pcs" → row 2, length 764, width 600, quantity 10
+- "2400x600 = 8pcs" → length 2400, width 600, quantity 8
+- Numbers in circles ①②③ or parentheses (1)(2)(3) are row numbers
+
+## STEP 1: SCAN THE ENTIRE PAGE FIRST
+
+Before extracting data:
+1. Identify ALL columns of data (left, middle, right)
+2. Identify ALL section headers (CARCASES, DOORS, PLYWOODS, etc.)
+3. Count the TOTAL number of items across ALL columns/sections
+4. Plan to extract EVERY SINGLE ONE
+
+## STEP 2: ANALYZE THE TABLE STRUCTURE
+
+Identify column headers. Common structures include:
 
 ### Standard Table Headers (VERY COMMON):
 | NO | COLOUR | LENGTH | WIDTH | QTY | EDGING (L1, L2, W1, W2) | GROOVE (GL, GW) |
@@ -714,15 +748,25 @@ Examples:
 
 ## IMPORTANT RULES
 
-1. **EXTRACT ALL ROWS** - Count rows, verify you extracted that many parts
-2. **Material codes stay short** - "W" not "White", "Ply" not "Plywood"
-3. **Checkmarks mean TRUE** - Any mark (✓, X, x, /, Y) in edge/groove columns = true
-4. **Empty means FALSE** - Empty edge/groove cells = false
-5. **Default quantity is 1** - If QTY is unclear, use 1
-6. **Default thickness is 18mm** - Unless clearly specified otherwise
-7. **Verify dimensions** - Length should be >= Width (swap if needed)
-8. **Include row number** - Helps verify all rows extracted
-9. **Don't guess labels** - If no label/description column, leave empty or use row number
+1. **SCAN ALL COLUMNS** - Read LEFT to RIGHT, extract from ALL columns on the page
+2. **SCAN ALL SECTIONS** - If page has sections (CARCASES, DOORS, PLYWOODS), extract from ALL
+3. **EXTRACT ALL ROWS** - Count rows in EACH column/section, verify total matches
+4. **Material codes stay short** - "W" not "White", "Ply" not "Plywood"
+5. **Checkmarks mean TRUE** - Any mark (✓, X, x, /, Y) in edge/groove columns = true
+6. **Empty means FALSE** - Empty edge/groove cells = false
+7. **Default quantity is 1** - If QTY is unclear, use 1
+8. **Default thickness is 18mm** - Unless clearly specified otherwise
+9. **Verify dimensions** - Length should be >= Width (swap if needed)
+10. **Include row number** - Helps verify all rows extracted
+11. **Don't guess labels** - Use section name (e.g., "White Carcase", "White Door", "White Plywood") if no explicit label
+
+## FINAL VERIFICATION CHECKLIST
+
+Before returning your response, verify:
+- [ ] Did I scan ALL columns (left, middle, right)?
+- [ ] Did I extract from ALL sections (CARCASES, DOORS, PLYWOODS, etc.)?
+- [ ] Does my total item count match what's visible on the page?
+- [ ] For multi-column pages with 80+ items, did I get ALL of them?
 
 ## CONFIDENCE SCORING
 
@@ -732,7 +776,7 @@ Examples:
 - 0.40-0.59: Significant guessing required
 - Below 0.40: Very uncertain, include anyway with warnings
 
-Return ONLY valid JSON array. No markdown, no explanations.`;
+Return ONLY valid JSON array. Extract EVERY item from EVERY column and section. No markdown, no explanations.`;
 
 // ============================================================
 // TEMPLATE-SPECIFIC PROMPTS
