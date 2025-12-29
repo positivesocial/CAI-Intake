@@ -39,12 +39,25 @@ export const GroovingSchema = z.object({
 }).passthrough();
 
 /**
- * CNC operations schema
+ * Drilling operations schema (holes, patterns)
+ */
+export const DrillingSchema = z.object({
+  detected: z.boolean(),
+  holes: z.array(z.string()).optional().default([]),
+  patterns: z.array(z.string()).optional().default([]),
+  description: z.string().optional(),
+}).passthrough();
+
+/**
+ * CNC operations schema (routing, pockets, custom)
  */
 export const CNCOperationsSchema = z.object({
   detected: z.boolean(),
-  holes: z.number().int().min(0).optional().default(0),
-  routing: z.boolean().optional().default(false),
+  // Support both legacy (number/boolean) and new (array) formats
+  holes: z.union([z.number(), z.array(z.string())]).optional(),
+  routing: z.union([z.boolean(), z.array(z.string())]).optional(),
+  pockets: z.array(z.string()).optional().default([]),
+  custom: z.array(z.string()).optional().default([]),
   description: z.string().optional(),
 }).passthrough();
 
@@ -78,9 +91,10 @@ export const AIPartSchema = z.object({
   grain: z.string().optional(),
   allowRotation: z.boolean().optional(),
   
-  // Nested objects
+  // Nested objects - operations
   edgeBanding: EdgeBandingSchema.optional(),
   grooving: GroovingSchema.optional(),
+  drilling: DrillingSchema.optional(),
   cncOperations: CNCOperationsSchema.optional(),
   
   // Metadata
@@ -164,6 +178,16 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
   const result = AIResponseSchema.safeParse(parsed);
   
   if (!result.success) {
+    // Log why schema validation failed
+    logger.warn("⚠️ [Validation] Schema validation failed, using lenient extraction", {
+      issueCount: result.error.issues.length,
+      firstIssues: result.error.issues.slice(0, 3).map(i => ({
+        path: i.path.join("."),
+        message: i.message,
+        code: i.code,
+      })),
+    });
+    
     // Try to extract parts even with validation errors
     const parts = extractPartsLeniently(parsed);
     
@@ -364,9 +388,12 @@ function extractBalancedObjects(text: string): Record<string, unknown>[] {
 
 /**
  * Leniently extract parts from any response structure.
+ * Preserves all fields including edgeBanding, grooving, drilling, cncOperations.
  */
 function extractPartsLeniently(data: unknown): z.infer<typeof AIPartSchema>[] {
   const parts: z.infer<typeof AIPartSchema>[] = [];
+  let schemaValidatedCount = 0;
+  let manuallyExtractedCount = 0;
   
   // Get array of potential parts
   let candidates: unknown[] = [];
@@ -385,13 +412,14 @@ function extractPartsLeniently(data: unknown): z.infer<typeof AIPartSchema>[] {
     const result = AIPartSchema.safeParse(candidate);
     if (result.success) {
       parts.push(result.data);
+      schemaValidatedCount++;
     } else {
       // Try minimal validation (just length/width)
       if (typeof candidate === "object" && candidate !== null) {
         const obj = candidate as Record<string, unknown>;
         if (typeof obj.length === "number" && typeof obj.width === "number") {
-          // Create a minimal valid part
-          parts.push({
+          // Create a part preserving ALL properties from the AI response
+          const partData: z.infer<typeof AIPartSchema> = {
             length: obj.length as number,
             width: obj.width as number,
             quantity: (typeof obj.quantity === "number" ? obj.quantity : 1) as number,
@@ -400,11 +428,63 @@ function extractPartsLeniently(data: unknown): z.infer<typeof AIPartSchema>[] {
             label: typeof obj.label === "string" ? obj.label : undefined,
             row: typeof obj.row === "number" ? obj.row : undefined,
             confidence: typeof obj.confidence === "number" ? obj.confidence : 0.6,
+            grain: typeof obj.grain === "string" ? obj.grain : undefined,
+            allowRotation: typeof obj.allowRotation === "boolean" ? obj.allowRotation : undefined,
+            notes: typeof obj.notes === "string" ? obj.notes : undefined,
+          };
+          
+          // Preserve nested operation objects - CRITICAL for edgeBanding, grooving, drilling, cncOperations
+          if (obj.edgeBanding && typeof obj.edgeBanding === "object") {
+            partData.edgeBanding = obj.edgeBanding as z.infer<typeof EdgeBandingSchema>;
+          }
+          if (obj.grooving && typeof obj.grooving === "object") {
+            partData.grooving = obj.grooving as z.infer<typeof GroovingSchema>;
+          }
+          if (obj.drilling && typeof obj.drilling === "object") {
+            partData.drilling = obj.drilling as z.infer<typeof DrillingSchema>;
+          }
+          if (obj.cncOperations && typeof obj.cncOperations === "object") {
+            partData.cncOperations = obj.cncOperations as z.infer<typeof CNCOperationsSchema>;
+          }
+          if (obj.fieldConfidence && typeof obj.fieldConfidence === "object") {
+            partData.fieldConfidence = obj.fieldConfidence as z.infer<typeof FieldConfidenceSchema>;
+          }
+          if (Array.isArray(obj.warnings)) {
+            partData.warnings = obj.warnings as string[];
+          }
+          
+          parts.push(partData);
+          manuallyExtractedCount++;
+          
+          // Log what operations were preserved
+          const hasEdgeBanding = !!partData.edgeBanding?.detected;
+          const hasGrooving = !!partData.grooving?.detected;
+          const hasDrilling = !!partData.drilling?.detected;
+          const hasCNC = !!partData.cncOperations?.detected;
+          
+          logger.debug(`🔧 [Validation] Manually extracted part ${parts.length}:`, {
+            label: partData.label,
+            hasEdgeBanding,
+            edgeBandingEdges: partData.edgeBanding?.edges,
+            hasGrooving,
+            hasDrilling,
+            hasCNC,
           });
         }
       }
     }
   }
+  
+  logger.info("🔧 [Validation] Lenient extraction complete", {
+    candidateCount: candidates.length,
+    schemaValidatedCount,
+    manuallyExtractedCount,
+    totalParts: parts.length,
+    partsWithEdgeBanding: parts.filter(p => p.edgeBanding?.detected).length,
+    partsWithGrooving: parts.filter(p => p.grooving?.detected).length,
+    partsWithDrilling: parts.filter(p => p.drilling?.detected).length,
+    partsWithCNC: parts.filter(p => p.cncOperations?.detected).length,
+  });
   
   return parts;
 }
