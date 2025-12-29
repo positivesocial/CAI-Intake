@@ -956,30 +956,67 @@ Field abbreviations:
 
 ## EXAMPLE OUTPUT
 
-For a page with WHITE CARCASE (items 1-34), continuation (35-65), WHITE DOORS (1-6), WHITE PLYWOODS (1-22):
+**IMPORTANT**: Read the Edge column for EVERY row! Edge codes are common on ALL part types.
+
+For a cutlist with 25 parts:
 
 [
-{"r":1,"l":2400,"w":580,"q":38,"m":"WC","e":"","g":"","n":""},
-{"r":2,"l":2400,"w":600,"q":8,"m":"WC","e":"","g":"","n":""},
-{"r":3,"l":2400,"w":560,"q":6,"m":"WC","e":"","g":"","n":""},
-... (continue for ALL 34 WHITE CARCASE items)
-{"r":35,"l":964,"w":560,"q":2,"m":"WC","e":"","g":"","n":""},
-... (continue for ALL continuation items 35-65)
-{"r":1,"l":2395,"w":395,"q":12,"m":"WD","e":"2L2W","g":"","n":""},
-... (continue for ALL 6 WHITE DOORS items)
-{"r":1,"l":2400,"w":800,"q":10,"m":"WP","e":"","g":"","n":""},
-... (continue for ALL 22 WHITE PLYWOOD items)
+{"r":1,"l":498,"w":275,"q":6,"m":"HUORD WALNUT","e":"2L2W","g":"","n":"DOWNSTAIRS"},
+{"r":2,"l":2100,"w":275,"q":4,"m":"","e":"2L2W","g":"","n":""},
+{"r":3,"l":1173,"w":275,"q":2,"m":"","e":"2L2W","g":"","n":""},
+{"r":4,"l":229,"w":552,"q":4,"m":"","e":"2L2W","g":"","n":"Down face"},
+{"r":5,"l":550,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Down Inside"},
+{"r":6,"l":456,"w":180,"q":8,"m":"","e":"1L","g":"","n":""},
+{"r":7,"l":456,"w":514,"q":2,"m":"","e":"","g":"","n":"Bottom"},
+{"r":8,"l":498,"w":308,"q":4,"m":"","e":"2L2W","g":"","n":"Bedroom 1 Doors"},
+{"r":9,"l":2200,"w":308,"q":4,"m":"","e":"2L2W","g":"","n":""},
+{"r":10,"l":229,"w":619,"q":4,"m":"","e":"2L2W","g":"","n":"faces"},
+{"r":11,"l":523,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Inside"},
+{"r":12,"l":550,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Inside"},
+{"r":13,"l":523,"w":514,"q":4,"m":"","e":"","g":"","n":"Bottom"},
+{"r":14,"l":498,"w":312,"q":6,"m":"","e":"2L2W","g":"","n":"Bedroom 2 Doors"},
+{"r":15,"l":2158,"w":312,"q":4,"m":"","e":"2L2W","g":"","n":""},
+{"r":16,"l":229,"w":686,"q":4,"m":"","e":"2L2W","g":"","n":"Faces"},
+{"r":17,"l":550,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Insides"},
+{"r":18,"l":530,"w":180,"q":8,"m":"","e":"1L","g":"","n":""},
+{"r":19,"l":530,"w":514,"q":4,"m":"","e":"","g":"","n":"Bottoms"},
+{"r":20,"l":564,"w":275,"q":4,"m":"","e":"1L","g":"","n":"Shelves"},
+{"r":21,"l":625,"w":315,"q":4,"m":"","e":"1L","g":"","n":"Shoe Rack HI"},
+{"r":22,"l":498,"w":498,"q":4,"m":"","e":"2L2W","g":"","n":"Walk In Doors"},
+{"r":23,"l":2198,"w":500,"q":2,"m":"","e":"","g":"","n":""},
+{"r":24,"l":2198,"w":247,"q":4,"m":"","e":"2L2W","g":"","n":""}
 ]
+
+## CAI TEMPLATE FORMAT (BRANDED FORMS)
+
+If you see a CAI Smart Template form with header row:
+| # | Part Name | L(mm) | W(mm) | Thk | Qty | Material | Edge (code) | Groove | Drill | CNC | Notes |
+
+**READ THE EDGE COLUMN CAREFULLY!** It contains codes like:
+- "2L2W" = all 4 edges banded
+- "2L" = both long edges
+- "2W" = both short edges  
+- "1L" = one long edge
+- "1L1W" = one long + one short
+- Empty = no edging
+
+These codes are written IN THE EDGE COLUMN, not as checkmarks!
 
 ## RULES
 
 1. **EXTRACT EVERYTHING** - Every row with dimensions = 1 object in output
 2. **USE COMPACT FORMAT** - Keep each object on ~1 line, use abbreviations
-3. **MATERIAL FROM SECTION** - Use section header as material (WC, WD, WP)
-4. **EDGE CODES** - Translate checkmarks to codes: L1+L2=2L, W1+W2=2W, all 4=2L2W
-5. **NO VERBOSE OBJECTS** - Don't use {detected: true, L1: true...}, use "2L2W"
-6. **START WITH [, END WITH ]** - Valid JSON array only
-7. **NO EXPLANATIONS** - Just the JSON array
+3. **MATERIAL FROM SECTION** - Use section header OR first row material for subsequent rows
+4. **READ EDGE COLUMN CAREFULLY** - This is CRITICAL!
+   - Look at the "Edge" or "Edge (code)" column for EVERY row
+   - Copy the exact code written: "2L2W", "2L", "1L", etc.
+   - If checkmarks: L1+L2=2L, W1+W2=2W, all 4=2L2W
+   - Empty edge cell = "" in output
+5. **READ GROOVE COLUMN** - Look for "GL", "GW" or checkmarks
+6. **NO VERBOSE OBJECTS** - Don't use {detected: true, L1: true...}, use simple codes
+7. **START WITH [, END WITH ]** - Valid JSON array only
+8. **NO EXPLANATIONS** - Just the JSON array
+9. **PART NAMES** - Copy exactly as written (DOWNSTAIRS not "Downstands")
 
 ## DIMENSION READING
 
