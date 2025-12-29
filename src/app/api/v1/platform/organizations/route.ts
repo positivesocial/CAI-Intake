@@ -74,6 +74,16 @@ export async function GET(request: NextRequest) {
       return acc;
     }, {});
 
+    // Helper to ensure timestamps are properly formatted with UTC timezone
+    const formatTimestamp = (ts: unknown): string | null => {
+      if (!ts || typeof ts !== 'string') return null;
+      // If timestamp doesn't have timezone info, append 'Z' to indicate UTC
+      if (!ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
+        return ts + 'Z';
+      }
+      return ts;
+    };
+
     // Format response
     const formattedOrgs = (organizations || []).map((org: Record<string, unknown>) => ({
       id: org.id,
@@ -83,7 +93,7 @@ export async function GET(request: NextRequest) {
       status: org.subscription_status || "active",
       members: (org.profiles as { count: number }[])?.length || 0,
       cutlists: cutlistCountMap[org.id as string] || 0,
-      createdAt: org.created_at,
+      createdAt: formatTimestamp(org.created_at),
     }));
 
     return NextResponse.json({

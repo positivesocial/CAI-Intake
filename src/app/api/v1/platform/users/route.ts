@@ -68,6 +68,16 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
+    // Helper to ensure timestamps are properly formatted with UTC timezone
+    const formatTimestamp = (ts: unknown): string | null => {
+      if (!ts || typeof ts !== 'string') return null;
+      // If timestamp doesn't have timezone info, append 'Z' to indicate UTC
+      if (!ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
+        return ts + 'Z';
+      }
+      return ts;
+    };
+
     // Format response
     const formattedUsers = (users || []).map((u: Record<string, unknown>) => ({
       id: u.id,
@@ -77,8 +87,8 @@ export async function GET(request: NextRequest) {
       organization: (u.organizations as Record<string, string>)?.name || "No Organization",
       organizationId: u.organization_id,
       status: u.last_sign_in_at ? "active" : "pending",
-      createdAt: u.created_at,
-      lastActive: u.last_sign_in_at || null,
+      createdAt: formatTimestamp(u.created_at),
+      lastActive: formatTimestamp(u.last_sign_in_at),
     }));
 
     return NextResponse.json({

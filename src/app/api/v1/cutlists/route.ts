@@ -204,6 +204,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Helper to ensure timestamps are properly formatted with UTC timezone
+    const formatTimestamp = (ts: string | null): string | null => {
+      if (!ts) return null;
+      // If timestamp doesn't have timezone info, append 'Z' to indicate UTC
+      // PostgreSQL TIMESTAMPTZ returns without 'Z' suffix
+      if (!ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
+        return ts + 'Z';
+      }
+      return ts;
+    };
+
     return NextResponse.json({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       cutlists: cutlists?.map((c: any) => ({
@@ -220,8 +231,8 @@ export async function GET(request: NextRequest) {
         totalPieces: pieceCounts[c.id] || 0,
         totalArea: 0,   // Will be calculated if needed
         materialsCount: materialCounts[c.id] || 0,
-        createdAt: c.created_at,
-        updatedAt: c.updated_at,
+        createdAt: formatTimestamp(c.created_at),
+        updatedAt: formatTimestamp(c.updated_at),
         efficiency: c.efficiency,
         filesCount: fileCounts[c.id] || 0,
         sourceMethod: c.source_method,

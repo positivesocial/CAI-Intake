@@ -269,3 +269,47 @@ export function validateId(id: string, resourceName = "Resource"): NextResponse 
   return null;
 }
 
+// =============================================================================
+// TIMESTAMP UTILITIES
+// =============================================================================
+
+/**
+ * Format a database timestamp to ensure it has proper UTC timezone indicator.
+ * PostgreSQL TIMESTAMPTZ returns timestamps without 'Z' suffix, which causes
+ * JavaScript's Date to interpret them as local time instead of UTC.
+ * 
+ * @param ts - The timestamp string from the database
+ * @returns The timestamp with proper UTC indicator, or null if invalid
+ */
+export function formatTimestamp(ts: string | null | undefined): string | null {
+  if (!ts) return null;
+  // If timestamp doesn't have timezone info, append 'Z' to indicate UTC
+  // This handles PostgreSQL TIMESTAMPTZ which returns like "2025-12-29T09:56:45.341"
+  if (!ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
+    return ts + 'Z';
+  }
+  return ts;
+}
+
+/**
+ * Format multiple timestamp fields in an object.
+ * Useful for formatting entire database records.
+ * 
+ * @param obj - Object containing timestamp fields
+ * @param fields - Array of field names to format
+ * @returns Object with formatted timestamps
+ */
+export function formatTimestamps<T extends Record<string, unknown>>(
+  obj: T,
+  fields: (keyof T)[]
+): T {
+  const result = { ...obj };
+  for (const field of fields) {
+    const value = result[field];
+    if (typeof value === 'string') {
+      (result[field] as unknown) = formatTimestamp(value);
+    }
+  }
+  return result;
+}
+
