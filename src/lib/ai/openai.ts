@@ -890,11 +890,18 @@ Respond with valid JSON only containing the extracted parts array. Include EVERY
       
       audit.setVerification({ truncationDetected: truncation.isTruncated });
       
-      logger.debug("🖼️ [OpenAI] Image analysis raw response", {
-        rawResponsePreview: rawResponse.substring(0, 1000),
-        responseLength: rawResponse.length,
-        tokensUsed: response.usage,
-      });
+      // DETAILED OCR LOGGING - Log full raw response for debugging
+      logger.info("🖼️ [OpenAI] ========== RAW AI RESPONSE START ==========");
+      logger.info("🖼️ [OpenAI] Raw response length:", { length: rawResponse.length });
+      
+      // Log in chunks to avoid truncation in logs
+      const chunkSize = 2000;
+      for (let i = 0; i < rawResponse.length; i += chunkSize) {
+        logger.info(`🖼️ [OpenAI] Raw response chunk ${Math.floor(i/chunkSize) + 1}:`, {
+          chunk: rawResponse.substring(i, i + chunkSize),
+        });
+      }
+      logger.info("🖼️ [OpenAI] ========== RAW AI RESPONSE END ==========");
       
       // Use enterprise validation
       const validation = validateAIResponse(rawResponse);
@@ -928,6 +935,34 @@ Respond with valid JSON only containing the extracted parts array. Include EVERY
       
       // Convert validated parts to AIPartResponse format
       const parts = validation.parts as AIPartResponse[];
+      
+      // DETAILED OCR LOGGING - Log each extracted part
+      logger.info("🖼️ [OpenAI] ========== EXTRACTED PARTS DETAILS ==========");
+      logger.info("🖼️ [OpenAI] Total parts extracted:", { count: parts.length });
+      
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        logger.info(`🖼️ [OpenAI] Part ${i + 1}/${parts.length}:`, {
+          row: part.row,
+          label: part.label,
+          length: part.length,
+          width: part.width,
+          thickness: part.thickness,
+          quantity: part.quantity,
+          material: part.material,
+          grain: part.grain,
+          allowRotation: part.allowRotation,
+          confidence: part.confidence,
+          // Operations - log in detail
+          edgeBanding: JSON.stringify(part.edgeBanding),
+          grooving: JSON.stringify(part.grooving),
+          drilling: JSON.stringify(part.drilling),
+          cncOperations: JSON.stringify(part.cncOperations),
+          notes: part.notes,
+          warnings: part.warnings,
+        });
+      }
+      logger.info("🖼️ [OpenAI] ========== END EXTRACTED PARTS ==========");
       
       // Generate review flags
       const reviewFlags = generateReviewFlags(validation.parts);
@@ -1286,8 +1321,28 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
   ): AIParseResult {
     const parts: ParsedPartResult[] = [];
     const errors: string[] = [];
+    
+    logger.info("🔄 [OpenAI] ========== PROCESSING AI PARTS TO CUTPARTS ==========");
+    logger.info("🔄 [OpenAI] Total AI parts to process:", { count: aiParts.length });
 
-    for (const aiPart of aiParts) {
+    for (let idx = 0; idx < aiParts.length; idx++) {
+      const aiPart = aiParts[idx];
+      
+      // Log incoming AI part data BEFORE processing
+      logger.info(`🔄 [OpenAI] Processing part ${idx + 1}/${aiParts.length} - INPUT:`, {
+        row: aiPart.row,
+        label: aiPart.label,
+        length: aiPart.length,
+        width: aiPart.width,
+        thickness: aiPart.thickness,
+        quantity: aiPart.quantity,
+        material: aiPart.material,
+        edgeBanding_raw: JSON.stringify(aiPart.edgeBanding),
+        grooving_raw: JSON.stringify(aiPart.grooving),
+        drilling_raw: JSON.stringify(aiPart.drilling),
+        cncOperations_raw: JSON.stringify(aiPart.cncOperations),
+      });
+      
       const validationErrors = validateAIPartResponse(aiPart);
       
       if (validationErrors.length > 0 && !aiPart.length && !aiPart.width) {
@@ -1331,6 +1386,19 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
       // Add edge banding operations - from AI detection OR post-processing extraction
       const edgesToApply = extractedEdges || (aiPart.edgeBanding?.detected ? aiPart.edgeBanding.edges : undefined);
       
+      logger.info(`🔄 [OpenAI] Part ${idx + 1} - Edge banding analysis:`, {
+        aiEdgeBanding: JSON.stringify(aiPart.edgeBanding),
+        detected: aiPart.edgeBanding?.detected,
+        edgesFromAI: aiPart.edgeBanding?.edges,
+        extractedEdgesFromLabel: extractedEdges,
+        edgesToApply: edgesToApply,
+        L1: aiPart.edgeBanding?.L1,
+        L2: aiPart.edgeBanding?.L2,
+        W1: aiPart.edgeBanding?.W1,
+        W2: aiPart.edgeBanding?.W2,
+        description: aiPart.edgeBanding?.description,
+      });
+      
       if (edgesToApply && edgesToApply.length > 0) {
         cutPart.ops = {
           edging: {
@@ -1342,6 +1410,9 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
             }, {} as Record<string, { apply: boolean }>),
           },
         };
+        logger.info(`🔄 [OpenAI] Part ${idx + 1} - Applied edging:`, { edging: JSON.stringify(cutPart.ops.edging) });
+      } else {
+        logger.warn(`🔄 [OpenAI] Part ${idx + 1} - NO edging applied (edgesToApply was empty or undefined)`);
       }
 
       // ===== MAP AI-DETECTED OPERATIONS TO OPS FIELD =====
@@ -1512,6 +1583,23 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         }
       }
 
+      // Log the final CutPart BEFORE adding to results
+      logger.info(`🔄 [OpenAI] Part ${idx + 1} - FINAL OUTPUT:`, {
+        part_id: cutPart.part_id,
+        label: cutPart.label,
+        size: cutPart.size,
+        qty: cutPart.qty,
+        thickness_mm: cutPart.thickness_mm,
+        material_id: cutPart.material_id,
+        allow_rotation: cutPart.allow_rotation,
+        ops_edging: cutPart.ops?.edging ? JSON.stringify(cutPart.ops.edging) : "NONE",
+        ops_grooves: cutPart.ops?.grooves ? JSON.stringify(cutPart.ops.grooves) : "NONE",
+        ops_holes: cutPart.ops?.holes ? JSON.stringify(cutPart.ops.holes) : "NONE",
+        ops_routing: cutPart.ops?.routing ? JSON.stringify(cutPart.ops.routing) : "NONE",
+        ops_custom_cnc: cutPart.ops?.custom_cnc_ops ? JSON.stringify(cutPart.ops.custom_cnc_ops) : "NONE",
+        notes: cutPart.notes,
+      });
+
       parts.push({
         part: cutPart,
         confidence: aiPart.confidence || 0.8,
@@ -1528,6 +1616,11 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         originalText: aiPart.label,
       });
     }
+    
+    logger.info("🔄 [OpenAI] ========== END PROCESSING ==========", {
+      totalPartsProcessed: parts.length,
+      errorsEncountered: errors.length,
+    });
 
     return {
       success: parts.length > 0,
