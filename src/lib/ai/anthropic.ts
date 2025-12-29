@@ -37,9 +37,10 @@ const MAX_TOKENS = 16384;
 
 /**
  * Request timeout in milliseconds.
- * Vision/OCR requests can take longer, so allow up to 60 seconds.
+ * Vision/OCR requests can take 2-3 minutes for complex images.
+ * Allow up to 180 seconds (3 minutes) for Claude to process.
  */
-const REQUEST_TIMEOUT_MS = 60000;
+const REQUEST_TIMEOUT_MS = 180000;
 import { generateId } from "@/lib/utils";
 import type { CutPart } from "@/lib/schema";
 import {
@@ -770,12 +771,21 @@ export class AnthropicProvider implements AIProvider {
         fileSizeKB: Math.round(base64Data.length * 0.75 / 1024),
       });
 
+      // Log before making request for debugging
+      logger.info("🤖 [Anthropic] Starting API request", {
+        requestId,
+        model: CLAUDE_MODEL,
+        imageSizeKB: Math.round(base64Data.length * 0.75 / 1024),
+        timeoutMs: REQUEST_TIMEOUT_MS,
+      });
+      
       // Use retry wrapper for resilience
       const response = await withRetry(
         async () => {
           return await client.messages.create({
             model: CLAUDE_MODEL,
             max_tokens: MAX_TOKENS,
+            temperature: 0.3, // Low temperature for consistent extraction
             system: ANTHROPIC_SYSTEM_PROMPT,
             messages: [
               {

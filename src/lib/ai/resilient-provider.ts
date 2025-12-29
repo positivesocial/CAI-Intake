@@ -31,8 +31,8 @@ import { generateId } from "@/lib/utils";
 /** Maximum retries before failing over to secondary provider */
 const MAX_RETRIES_PRIMARY = 2;
 
-/** Timeout for primary provider in ms (60 seconds - matches Anthropic timeout) */
-const PRIMARY_TIMEOUT_MS = 60000;
+/** Timeout for primary provider in ms (180 seconds - matches Anthropic timeout for vision) */
+const PRIMARY_TIMEOUT_MS = 180000;
 
 /** Batch size for parallel page processing */
 const PAGE_BATCH_SIZE = 3;
