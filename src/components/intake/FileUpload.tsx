@@ -765,6 +765,9 @@ export function FileUpload() {
           setExcelFile(uploadedFile.file);
           setExcelDialogOpen(true);
           
+          // Notify about redirection (info notification, not error)
+          // Note: This is intentional redirection, not a failure
+          
           // Mark as cancelled (will be handled by dialog)
           setFiles((prev) =>
             prev.map((f) =>
@@ -777,7 +780,7 @@ export function FileUpload() {
                 : f
             )
           );
-          setBatchStats((prev) => ({ ...prev, failedFiles: prev.failedFiles + 1 }));
+          // Don't count as failed - it's being handled by dialog
           return;
         }
 
@@ -811,7 +814,37 @@ export function FileUpload() {
         metadata: metadata.edgeBanding || metadata.grooving || metadata.cncOps ? metadata : undefined,
       });
       
-      // Add notification for successful processing
+      // Add notification for processing result
+      if (parts.length === 0) {
+        // Notify as a warning when no parts were extracted
+        notifyFileError(uploadedFile.file.name, "No parts could be extracted from this file");
+        
+        // Mark as error since no parts were found
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === uploadedFile.id
+              ? {
+                  ...f,
+                  status: "error" as ProcessingStatus,
+                  error: "No parts found in file",
+                  result: {
+                    partsCount: 0,
+                    confidence: 0,
+                    method,
+                    processingTime,
+                  },
+                }
+              : f
+          )
+        );
+        setBatchStats((prev) => ({
+          ...prev,
+          failedFiles: prev.failedFiles + 1,
+        }));
+        return;
+      }
+      
+      // Notify successful processing
       notifyFileProcessed(uploadedFile.file.name, parts.length);
 
       setFiles((prev) =>
