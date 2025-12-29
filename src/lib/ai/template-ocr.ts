@@ -892,6 +892,453 @@ export function mergeTemplatePages(
 }
 
 // ============================================================
+// 2-PASS TEMPLATE PARSING
+// ============================================================
+
+/**
+ * Pass 1: Pre-scan result
+ * Quick analysis to count rows, extract metadata, assess quality
+ */
+export interface TemplatePreScanResult {
+  success: boolean;
+  rowsWithData: number;
+  estimatedParts: number;
+  metadata: {
+    projectName?: string;
+    projectCode?: string;
+    customerName?: string;
+    page?: number;
+    totalPages?: number;
+    sectionArea?: string;
+  };
+  quality: "excellent" | "good" | "fair" | "poor";
+  qualityIssues: string[];
+  columnVisibility: {
+    edge: boolean;
+    groove: boolean;
+    drill: boolean;
+    cnc: boolean;
+    notes: boolean;
+  };
+  processingTimeMs: number;
+}
+
+/**
+ * Pass 1 Prompt: Quick pre-scan for metadata and row count
+ * Minimal token usage, just validation and counting
+ */
+export const TEMPLATE_PRESCAN_PROMPT = `## CAI TEMPLATE PRE-SCAN (Fast Analysis)
+
+This is a CAI Intake Smart Template form. Perform a QUICK analysis without extracting all data.
+
+### TASK 1: COUNT ROWS WITH DATA
+Look at the numbered rows (1-35) in the main table.
+Count how many rows have ANY data written in them.
+- Row is "filled" if it has Part Name, L, W, or Qty written
+- Skip completely empty rows
+
+### TASK 2: EXTRACT PROJECT METADATA
+Read the header section for:
+- Project Name
+- Project Code (important for multi-page matching)
+- Customer Name
+- Section/Area
+- Page __ of __
+
+### TASK 3: ASSESS HANDWRITING QUALITY
+Rate the overall legibility:
+- excellent: Clear printed text or very neat handwriting
+- good: Readable handwriting with minor issues
+- fair: Some characters hard to read
+- poor: Significant portions unclear
+
+### TASK 4: CHECK COLUMN USAGE
+Note which operation columns have ANY data:
+- Edge column (has any checkmarks or codes?)
+- Groove column (has any GL/GW marks?)
+- Drill column (has any drill codes?)
+- CNC column (has any CNC codes?)
+- Notes column (has any text?)
+
+### OUTPUT FORMAT (JSON ONLY - NO MARKDOWN):
+{
+  "rowsWithData": 23,
+  "metadata": {
+    "projectName": "Kitchen Renovation",
+    "projectCode": "KR-2024",
+    "customerName": "John Smith",
+    "page": 1,
+    "totalPages": 2,
+    "sectionArea": "Base Cabinets"
+  },
+  "quality": "good",
+  "qualityIssues": ["Some numbers in column L slightly smudged"],
+  "columnUsage": {
+    "edge": true,
+    "groove": false,
+    "drill": false,
+    "cnc": false,
+    "notes": true
+  }
+}
+
+RESPOND WITH JSON ONLY - NO MARKDOWN FENCES, NO EXPLANATIONS.`;
+
+/**
+ * Pass 2 Prompt: Full cell-by-cell extraction with shortcode matching
+ */
+export function buildPass2ExtractionPrompt(
+  config: OrgTemplateConfig,
+  preScan: TemplatePreScanResult
+): string {
+  const shortcodeHints = [];
+  
+  if (config.shortcodes.edgebanding?.length && preScan.columnVisibility.edge) {
+    shortcodeHints.push(`Edge codes: ${config.shortcodes.edgebanding.join(", ")}`);
+  }
+  if (config.shortcodes.grooving?.length && preScan.columnVisibility.groove) {
+    shortcodeHints.push(`Groove codes: ${config.shortcodes.grooving.join(", ")}`);
+  }
+  if (config.shortcodes.drilling?.length && preScan.columnVisibility.drill) {
+    shortcodeHints.push(`Drill codes: ${config.shortcodes.drilling.join(", ")}`);
+  }
+  if (config.shortcodes.cnc?.length && preScan.columnVisibility.cnc) {
+    shortcodeHints.push(`CNC codes: ${config.shortcodes.cnc.join(", ")}`);
+  }
+
+  return `## CAI TEMPLATE CELL EXTRACTION (Pass 2)
+
+This is a CAI Intake Smart Template for: ${config.org_name}
+Template Version: v${config.version}
+
+### PRE-SCAN RESULTS (from Pass 1):
+- Rows with data: ${preScan.rowsWithData}
+- Quality: ${preScan.quality}
+${preScan.qualityIssues.length > 0 ? `- Issues noted: ${preScan.qualityIssues.join(", ")}` : ""}
+
+### DETERMINISTIC COLUMN ORDER (LEFT TO RIGHT):
+| Col | Header | Field | Type |
+|-----|--------|-------|------|
+| 1 | # | rowNumber | number |
+| 2 | Part Name | label | text |
+| 3 | L(mm) | length | number (grain direction) |
+| 4 | W(mm) | width | number |
+| 5 | Thk | thickness | number (default 18) |
+| 6 | Qty | quantity | number (default 1) |
+| 7 | Material | material | code |
+| 8 | Edge | edge | shortcode |
+| 9 | Groove | groove | shortcode (GL/GW) |
+| 10 | Drill | drill | shortcode |
+| 11 | CNC | cnc | shortcode |
+| 12 | Notes | notes | text |
+
+${shortcodeHints.length > 0 ? `### VALID SHORTCODES (match exactly):\n${shortcodeHints.join("\n")}` : ""}
+
+### EXTRACTION RULES:
+1. Extract EXACTLY ${preScan.rowsWithData} rows (from pre-scan)
+2. Read each cell in the FIXED column order above
+3. For shortcode columns, return the EXACT code written (for server resolution)
+4. If shortcode is unclear, return best guess with lower confidence
+5. Do NOT swap Length/Width - Length is grain direction, may be smaller
+6. Empty cells = null, not empty string
+
+### OUTPUT FORMAT (COMPACT JSON):
+[
+  {"r":1,"n":"Side Panel","l":720,"w":560,"t":18,"q":2,"m":"WPB","e":"2L","g":"GL","d":null,"c":null,"x":"shelf pins","cf":0.95},
+  {"r":2,"n":"Back","l":1200,"w":600,"t":6,"q":1,"m":"PLY","e":null,"g":null,"d":"H2","c":null,"x":null,"cf":0.92}
+]
+
+Field key mapping:
+- r: rowNumber
+- n: label (part name)
+- l: length (mm)
+- w: width (mm)
+- t: thickness (mm)
+- q: quantity
+- m: material code
+- e: edge shortcode
+- g: groove shortcode
+- d: drill shortcode
+- c: cnc shortcode
+- x: notes
+- cf: confidence (0.0-1.0)
+
+RESPOND WITH JSON ARRAY ONLY - NO MARKDOWN FENCES, NO EXPLANATIONS.`;
+}
+
+/**
+ * 2-Pass Template Parser Result
+ */
+export interface TwoPassTemplateResult {
+  success: boolean;
+  templateId: string;
+  orgId: string;
+  version: string;
+  preScan: TemplatePreScanResult;
+  parts: ParsedTemplatePart[];
+  projectInfo?: TemplateParseResult["projectInfo"];
+  errors: string[];
+  warnings: string[];
+  totalProcessingTimeMs: number;
+}
+
+/**
+ * Parse CAI template using 2-pass approach
+ * 
+ * Pass 1: Quick pre-scan for metadata and row count
+ * Pass 2: Full cell extraction with shortcode matching
+ * 
+ * Benefits:
+ * - Pass 1 validates template and counts rows (fast, cheap)
+ * - Pass 2 uses row count for accurate extraction (no missed rows)
+ * - Shortcodes returned as-is for server-side resolution
+ */
+export async function parseTemplateWith2Pass(
+  imageBase64: string,
+  mimeType: string,
+  templateId: string,
+  aiImageParseFunction: (imageBase64: string, mimeType: string, prompt: string) => Promise<string>
+): Promise<TwoPassTemplateResult> {
+  const startTime = Date.now();
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  
+  // Parse template ID
+  const parsed = parseTemplateId(templateId);
+  if (!parsed.isCAI || !parsed.orgId || !parsed.version) {
+    return {
+      success: false,
+      templateId,
+      orgId: "",
+      version: "",
+      preScan: {
+        success: false,
+        rowsWithData: 0,
+        estimatedParts: 0,
+        metadata: {},
+        quality: "poor",
+        qualityIssues: ["Invalid template ID"],
+        columnVisibility: { edge: false, groove: false, drill: false, cnc: false, notes: false },
+        processingTimeMs: 0,
+      },
+      parts: [],
+      errors: ["Invalid template ID format"],
+      warnings: [],
+      totalProcessingTimeMs: Date.now() - startTime,
+    };
+  }
+  
+  // Get org config
+  const orgConfig = await getOrgTemplateConfig(parsed.orgId, parsed.version);
+  if (!orgConfig) {
+    warnings.push(`Org config not found for ${parsed.orgId} v${parsed.version}, using defaults`);
+  }
+  
+  console.log(`[TemplateOCR] 2-Pass: Starting Pass 1 (pre-scan) for ${templateId}`);
+  
+  // ============================================
+  // PASS 1: PRE-SCAN
+  // ============================================
+  const pass1Start = Date.now();
+  let preScan: TemplatePreScanResult;
+  
+  try {
+    const pass1Response = await aiImageParseFunction(imageBase64, mimeType, TEMPLATE_PRESCAN_PROMPT);
+    
+    // Parse pre-scan response
+    let cleanedResponse = pass1Response.trim();
+    cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+    
+    const pass1Data = JSON.parse(cleanedResponse);
+    
+    preScan = {
+      success: true,
+      rowsWithData: pass1Data.rowsWithData || 0,
+      estimatedParts: pass1Data.rowsWithData || 0,
+      metadata: pass1Data.metadata || {},
+      quality: pass1Data.quality || "fair",
+      qualityIssues: pass1Data.qualityIssues || [],
+      columnVisibility: {
+        edge: pass1Data.columnUsage?.edge ?? true,
+        groove: pass1Data.columnUsage?.groove ?? true,
+        drill: pass1Data.columnUsage?.drill ?? true,
+        cnc: pass1Data.columnUsage?.cnc ?? true,
+        notes: pass1Data.columnUsage?.notes ?? true,
+      },
+      processingTimeMs: Date.now() - pass1Start,
+    };
+    
+    console.log(`[TemplateOCR] 2-Pass: Pass 1 complete - ${preScan.rowsWithData} rows found, quality: ${preScan.quality}, ${preScan.processingTimeMs}ms`);
+    
+    // Early exit if no data
+    if (preScan.rowsWithData === 0) {
+      return {
+        success: true,
+        templateId,
+        orgId: parsed.orgId,
+        version: parsed.version,
+        preScan,
+        parts: [],
+        projectInfo: preScan.metadata,
+        errors: [],
+        warnings: ["Template appears empty - no rows with data found"],
+        totalProcessingTimeMs: Date.now() - startTime,
+      };
+    }
+    
+  } catch (error) {
+    console.error(`[TemplateOCR] 2-Pass: Pass 1 failed`, error);
+    // Fall back to single-pass if pre-scan fails
+    preScan = {
+      success: false,
+      rowsWithData: 35, // Assume max rows
+      estimatedParts: 35,
+      metadata: {},
+      quality: "fair",
+      qualityIssues: ["Pre-scan failed, using fallback"],
+      columnVisibility: { edge: true, groove: true, drill: true, cnc: true, notes: true },
+      processingTimeMs: Date.now() - pass1Start,
+    };
+    warnings.push("Pre-scan failed, falling back to full extraction");
+  }
+  
+  // ============================================
+  // PASS 2: FULL EXTRACTION
+  // ============================================
+  console.log(`[TemplateOCR] 2-Pass: Starting Pass 2 (extraction) - expecting ${preScan.rowsWithData} rows`);
+  const pass2Start = Date.now();
+  
+  try {
+    // Build pass 2 prompt with org config and pre-scan results
+    const pass2Prompt = orgConfig 
+      ? buildPass2ExtractionPrompt(orgConfig, preScan)
+      : buildDefaultPass2Prompt(preScan);
+    
+    const pass2Response = await aiImageParseFunction(imageBase64, mimeType, pass2Prompt);
+    
+    // Parse extraction response
+    let cleanedResponse = pass2Response.trim();
+    cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+    
+    const pass2Data = JSON.parse(cleanedResponse) as Array<{
+      r: number;
+      n?: string;
+      l: number;
+      w: number;
+      t?: number;
+      q?: number;
+      m?: string;
+      e?: string;
+      g?: string;
+      d?: string;
+      c?: string;
+      x?: string;
+      cf?: number;
+    }>;
+    
+    // Convert compact format to ParsedTemplatePart
+    const parts: ParsedTemplatePart[] = pass2Data.map(p => ({
+      rowNumber: p.r,
+      label: p.n || undefined,
+      length: p.l,
+      width: p.w,
+      thickness: p.t || 18,
+      quantity: p.q || 1,
+      material: p.m || undefined,
+      edge: p.e || undefined,
+      groove: p.g || undefined,
+      drill: p.d || undefined,
+      cnc: p.c || undefined,
+      notes: p.x || undefined,
+      confidence: p.cf || 0.8,
+    }));
+    
+    const pass2TimeMs = Date.now() - pass2Start;
+    console.log(`[TemplateOCR] 2-Pass: Pass 2 complete - ${parts.length} parts extracted, ${pass2TimeMs}ms`);
+    
+    // Validate row count
+    if (parts.length !== preScan.rowsWithData) {
+      warnings.push(`Expected ${preScan.rowsWithData} rows from pre-scan, got ${parts.length}`);
+    }
+    
+    // Calculate average confidence
+    const avgConfidence = parts.length > 0
+      ? parts.reduce((sum, p) => sum + p.confidence, 0) / parts.length
+      : 0;
+    
+    return {
+      success: true,
+      templateId,
+      orgId: parsed.orgId,
+      version: parsed.version,
+      preScan,
+      parts,
+      projectInfo: preScan.metadata,
+      errors,
+      warnings,
+      totalProcessingTimeMs: Date.now() - startTime,
+    };
+    
+  } catch (error) {
+    console.error(`[TemplateOCR] 2-Pass: Pass 2 failed`, error);
+    errors.push(`Pass 2 extraction failed: ${String(error)}`);
+    
+    return {
+      success: false,
+      templateId,
+      orgId: parsed.orgId,
+      version: parsed.version,
+      preScan,
+      parts: [],
+      projectInfo: preScan.metadata,
+      errors,
+      warnings,
+      totalProcessingTimeMs: Date.now() - startTime,
+    };
+  }
+}
+
+/**
+ * Default Pass 2 prompt when org config is not available
+ */
+function buildDefaultPass2Prompt(preScan: TemplatePreScanResult): string {
+  return `## CAI TEMPLATE CELL EXTRACTION (Pass 2 - Default)
+
+### PRE-SCAN RESULTS:
+- Rows with data: ${preScan.rowsWithData}
+- Quality: ${preScan.quality}
+
+### DETERMINISTIC COLUMN ORDER (LEFT TO RIGHT):
+| Col | Header | Field | Type |
+|-----|--------|-------|------|
+| 1 | # | rowNumber | number |
+| 2 | Part Name | label | text |
+| 3 | L(mm) | length | number |
+| 4 | W(mm) | width | number |
+| 5 | Thk | thickness | number (default 18) |
+| 6 | Qty | quantity | number (default 1) |
+| 7 | Material | material | code |
+| 8 | Edge | edge | shortcode |
+| 9 | Groove | groove | shortcode |
+| 10 | Drill | drill | shortcode |
+| 11 | CNC | cnc | shortcode |
+| 12 | Notes | notes | text |
+
+### EXTRACTION RULES:
+1. Extract EXACTLY ${preScan.rowsWithData} rows
+2. Read each cell in the FIXED column order above
+3. Return shortcodes EXACTLY as written
+4. Do NOT swap Length/Width - Length is grain direction
+
+### OUTPUT FORMAT (COMPACT JSON ARRAY):
+[{"r":1,"n":"Side","l":720,"w":560,"t":18,"q":2,"m":"WPB","e":"2L","g":"GL","d":null,"c":null,"x":"note","cf":0.95}]
+
+Field keys: r=row, n=name, l=length, w=width, t=thickness, q=qty, m=material, e=edge, g=groove, d=drill, c=cnc, x=notes, cf=confidence
+
+RESPOND WITH JSON ARRAY ONLY.`;
+}
+
+// ============================================================
 // EXPORTS
 // ============================================================
 
