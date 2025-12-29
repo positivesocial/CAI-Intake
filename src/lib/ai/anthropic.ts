@@ -27,13 +27,15 @@ const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929"
 
 /**
  * Maximum tokens for response generation.
- * Claude 3.5 Sonnet supports up to 8192 output tokens by default.
- * However, for large cutlists (100+ parts), we need more.
- * Each part is ~100-150 tokens in JSON, so 100 parts = ~12000+ tokens.
- * We request 16384 to ensure large cutlists aren't truncated.
- * If the model has a lower limit, it will use its max.
+ * Claude Sonnet 4.5 supports up to 64K output tokens.
+ * For large cutlists (200+ parts), we need substantial headroom.
+ * 
+ * With COMPACT format (~25 tokens/part): 32K tokens = ~1200+ parts capacity
+ * With VERBOSE format (~150 tokens/part): 32K tokens = ~200 parts capacity
+ * 
+ * Using 32768 (32K) as a balance between capacity and cost.
  */
-const MAX_TOKENS = 16384;
+const MAX_TOKENS = 32768;
 
 /**
  * Request timeout in milliseconds.
