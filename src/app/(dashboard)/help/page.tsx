@@ -321,12 +321,15 @@ function QuickActions() {
               <p className="text-sm text-[var(--muted-foreground)] mb-3">
                 Watch step-by-step guides
               </p>
-              <Button variant="outline" size="sm" asChild>
-                <a href="https://youtube.com/@cai-intake" target="_blank" rel="noopener noreferrer">
-                  Watch Now
-                  <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
-                </a>
-              </Button>
+              <a 
+                href="https://youtube.com/@cai-intake" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-3 py-1.5 text-sm border border-[var(--border)] rounded-md hover:bg-[var(--muted)] transition-colors"
+              >
+                Watch Now
+                <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
+              </a>
             </div>
           </div>
         </CardContent>
@@ -343,12 +346,13 @@ function QuickActions() {
               <p className="text-sm text-[var(--muted-foreground)] mb-3">
                 Full technical docs & API
               </p>
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/docs">
-                  Read Docs
-                  <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
-                </Link>
-              </Button>
+              <Link 
+                href="/docs"
+                className="inline-flex items-center px-3 py-1.5 text-sm border border-[var(--border)] rounded-md hover:bg-[var(--muted)] transition-colors"
+              >
+                Read Docs
+                <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+              </Link>
             </div>
           </div>
         </CardContent>
@@ -365,12 +369,13 @@ function QuickActions() {
               <p className="text-sm text-[var(--muted-foreground)] mb-3">
                 Get help from our team
               </p>
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/contact">
-                  Contact Us
-                  <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
-                </Link>
-              </Button>
+              <Link 
+                href="/contact"
+                className="inline-flex items-center px-3 py-1.5 text-sm border border-[var(--border)] rounded-md hover:bg-[var(--muted)] transition-colors"
+              >
+                Contact Us
+                <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+              </Link>
             </div>
           </div>
         </CardContent>
@@ -512,18 +517,20 @@ export default function HelpPage() {
               Our support team is here to assist you. Response time is typically within 24 hours.
             </p>
             <div className="flex items-center justify-center gap-4">
-              <Button variant="outline" asChild>
-                <a href="mailto:support@cai-intake.io">
-                  <Mail className="h-4 w-4 mr-2" />
-                  Email Support
-                </a>
-              </Button>
-              <Button variant="primary" asChild>
-                <Link href="/contact">
-                  <MessageCircle className="h-4 w-4 mr-2" />
-                  Contact Form
-                </Link>
-              </Button>
+              <a 
+                href="mailto:support@cai-intake.io"
+                className="inline-flex items-center px-4 py-2 border border-[var(--border)] rounded-md hover:bg-[var(--muted)] transition-colors"
+              >
+                <Mail className="h-4 w-4 mr-2" />
+                Email Support
+              </a>
+              <Link 
+                href="/contact"
+                className="inline-flex items-center px-4 py-2 bg-[var(--cai-teal)] text-white rounded-md hover:bg-[var(--cai-teal)]/90 transition-colors"
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Contact Form
+              </Link>
             </div>
           </div>
         </section>
