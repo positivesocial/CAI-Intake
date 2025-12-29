@@ -836,19 +836,39 @@ export class OpenAIProvider implements AIProvider {
 This document contains ONLY standard manufacturing data:
 - Part dimensions in millimeters (Length × Width × Thickness)
 - Quantities (how many pieces to cut)
-- Material names (like "WHITE PB", "WALNUT", "MDF")
-- Edge banding codes (like "2L2W" = 2 long + 2 short edges, "1L" = 1 long edge)
+- Material names (like "WHITE PB", "WALNUT", "MDF", "HUORD WALNUT")
+- Edge banding codes (like "2L2W" = all 4 edges, "2L" = 2 long edges, "1L" = 1 long edge)
 - Operations like drilling, grooving, or CNC routing
 
-CRITICAL EXTRACTION RULES:
-1. This page may have MULTIPLE COLUMNS - scan LEFT, CENTER, and RIGHT
-2. Extract from ALL SECTIONS (e.g., "Downstairs", "Bedroom 1", "Bedroom 2")
-3. Count and extract EVERY numbered row - if you see 25+ items, extract ALL 25+
-4. For each part: label, length, width, quantity, material, edge banding
+THIS IS A STRUCTURED TABLE FORMAT. The document has COLUMNS like:
+# | Part Name | L(mm) | W(mm) | Thk | Qty | Material | Edge (code) | Groove | Drill | CNC | Notes
+
+CRITICAL EXTRACTION RULES - READ ROW BY ROW:
+1. Start at ROW 1 (the first filled row after headers)
+2. Read EACH CELL in that row from left to right
+3. Move to the NEXT ROW and repeat
+4. Do NOT skip any rows - even if they look similar
+5. Each row is a UNIQUE part with its own dimensions
+
+ROW-BY-ROW EXTRACTION:
+- Row 1: Read Label, L, W, Qty, Material, Edge code for ROW 1
+- Row 2: Read Label, L, W, Qty, Material, Edge code for ROW 2
+- Row 3: Read Label, L, W, Qty, Material, Edge code for ROW 3
+- Continue for ALL rows...
+
+IMPORTANT: Labels might include section names like "Downstairs", "Down face", "Bedroom I Doors", "Bedroom 2 Doors", etc.
+IMPORTANT: Do NOT combine or summarize rows - each numbered row is a separate part!
+
+EDGE BANDING INTERPRETATION:
+- "2L2W" = ALL 4 edges banded (L1=true, L2=true, W1=true, W2=true)
+- "2L" = both length edges (L1=true, L2=true, W1=false, W2=false)  
+- "1L" = one length edge only (L1=true, L2=false, W1=false, W2=false)
+- "2W" = both width edges (L1=false, L2=false, W1=true, W2=true)
+- "1W" = one width edge (L1=false, L2=false, W1=true, W2=false)
 
 ${prompt}
 
-Respond with valid JSON array containing ALL extracted parts. Do not omit any rows.` },
+Respond with valid JSON array containing ALL extracted parts. Every row number in the document should have a corresponding object in your output.` },
                   { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
                 ],
               },
@@ -896,17 +916,29 @@ Respond with valid JSON array containing ALL extracted parts. Do not omit any ro
       audit.setVerification({ truncationDetected: truncation.isTruncated });
       
       // DETAILED OCR LOGGING - Log full raw response for debugging
-      logger.info("🖼️ [OpenAI] ========== RAW AI RESPONSE START ==========");
-      logger.info("🖼️ [OpenAI] Raw response length:", { length: rawResponse.length });
+      // Using console.log for better visibility in terminal
+      console.log("\n\n🖼️ ========== [OpenAI] RAW AI RESPONSE START ==========");
+      console.log("🖼️ [OpenAI] Response length:", rawResponse.length, "characters");
+      console.log("🖼️ [OpenAI] Finish reason:", finishReason);
+      console.log("🖼️ [OpenAI] Tokens used:", JSON.stringify(response.usage));
       
       // Log in chunks to avoid truncation in logs
-      const chunkSize = 2000;
+      const chunkSize = 3000;
       for (let i = 0; i < rawResponse.length; i += chunkSize) {
-        logger.info(`🖼️ [OpenAI] Raw response chunk ${Math.floor(i/chunkSize) + 1}:`, {
-          chunk: rawResponse.substring(i, i + chunkSize),
-        });
+        const chunkNum = Math.floor(i/chunkSize) + 1;
+        const totalChunks = Math.ceil(rawResponse.length / chunkSize);
+        console.log(`🖼️ [OpenAI] RAW RESPONSE CHUNK ${chunkNum}/${totalChunks}:`);
+        console.log(rawResponse.substring(i, i + chunkSize));
       }
-      logger.info("🖼️ [OpenAI] ========== RAW AI RESPONSE END ==========");
+      console.log("🖼️ ========== [OpenAI] RAW AI RESPONSE END ==========\n\n");
+      
+      // Also log via logger for persistence
+      logger.info("🖼️ [OpenAI] Raw AI response captured", {
+        length: rawResponse.length,
+        finishReason,
+        tokensUsed: response.usage,
+        responsePreview: rawResponse.substring(0, 1000),
+      });
       
       // Use enterprise validation
       const validation = validateAIResponse(rawResponse);
@@ -941,33 +973,39 @@ Respond with valid JSON array containing ALL extracted parts. Do not omit any ro
       // Convert validated parts to AIPartResponse format
       const parts = validation.parts as AIPartResponse[];
       
-      // DETAILED OCR LOGGING - Log each extracted part
-      logger.info("🖼️ [OpenAI] ========== EXTRACTED PARTS DETAILS ==========");
-      logger.info("🖼️ [OpenAI] Total parts extracted:", { count: parts.length });
+      // DETAILED OCR LOGGING - Log each extracted part using console.log for visibility
+      console.log("\n\n🖼️ ========== [OpenAI] PARSED PARTS FROM AI RESPONSE ==========");
+      console.log("🖼️ [OpenAI] Total parts parsed from AI:", parts.length);
+      console.log("🖼️ [OpenAI] Validation success:", validation.success);
+      console.log("🖼️ [OpenAI] Validation warnings:", validation.warnings);
+      console.log("🖼️ [OpenAI] Validation errors:", validation.errors);
       
+      // Log each part in a readable format
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
-        logger.info(`🖼️ [OpenAI] Part ${i + 1}/${parts.length}:`, {
-          row: part.row,
-          label: part.label,
-          length: part.length,
-          width: part.width,
-          thickness: part.thickness,
-          quantity: part.quantity,
-          material: part.material,
-          grain: part.grain,
-          allowRotation: part.allowRotation,
-          confidence: part.confidence,
-          // Operations - log in detail
-          edgeBanding: JSON.stringify(part.edgeBanding),
-          grooving: JSON.stringify(part.grooving),
-          drilling: JSON.stringify(part.drilling),
-          cncOperations: JSON.stringify(part.cncOperations),
-          notes: part.notes,
-          warnings: part.warnings,
-        });
+        console.log(`\n🖼️ [OpenAI] Part ${i + 1}/${parts.length}:`);
+        console.log(`   Row: ${part.row}`);
+        console.log(`   Label: "${part.label}"`);
+        console.log(`   Dimensions: ${part.length} x ${part.width} x ${part.thickness || 18}mm`);
+        console.log(`   Quantity: ${part.quantity}`);
+        console.log(`   Material: "${part.material}"`);
+        console.log(`   Edge Banding: ${JSON.stringify(part.edgeBanding)}`);
+        console.log(`   Grooving: ${JSON.stringify(part.grooving)}`);
+        console.log(`   Drilling: ${JSON.stringify(part.drilling)}`);
+        console.log(`   CNC Ops: ${JSON.stringify(part.cncOperations)}`);
+        console.log(`   Notes: "${part.notes || ''}"`);
+        console.log(`   Confidence: ${part.confidence}`);
       }
-      logger.info("🖼️ [OpenAI] ========== END EXTRACTED PARTS ==========");
+      console.log("\n🖼️ ========== [OpenAI] END PARSED PARTS ==========\n\n");
+      
+      // Also log summary via logger
+      logger.info("🖼️ [OpenAI] Parts parsed from AI", {
+        count: parts.length,
+        firstPartLabel: parts[0]?.label,
+        lastPartLabel: parts[parts.length - 1]?.label,
+        uniqueLabels: [...new Set(parts.map(p => p.label))].length,
+        uniqueDimensions: [...new Set(parts.map(p => `${p.length}x${p.width}`))].length,
+      });
       
       // Generate review flags
       const reviewFlags = generateReviewFlags(validation.parts);
@@ -1396,7 +1434,24 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
       };
 
       // Add edge banding operations - from AI detection OR post-processing extraction
-      const edgesToApply = extractedEdges || (aiPart.edgeBanding?.detected ? aiPart.edgeBanding.edges : undefined);
+      // Prefer the individual flags (L1, L2, W1, W2) as they're more reliable than the edges array
+      let edgesToApply: string[] = [];
+      
+      if (extractedEdges && extractedEdges.length > 0) {
+        // Use edges extracted from label
+        edgesToApply = extractedEdges;
+      } else if (aiPart.edgeBanding?.detected) {
+        // Build edges list from individual flags (more reliable than edges array)
+        if (aiPart.edgeBanding.L1) edgesToApply.push("L1");
+        if (aiPart.edgeBanding.L2) edgesToApply.push("L2");
+        if (aiPart.edgeBanding.W1) edgesToApply.push("W1");
+        if (aiPart.edgeBanding.W2) edgesToApply.push("W2");
+        
+        // Fall back to edges array if no individual flags set
+        if (edgesToApply.length === 0 && aiPart.edgeBanding.edges && aiPart.edgeBanding.edges.length > 0) {
+          edgesToApply = aiPart.edgeBanding.edges;
+        }
+      }
       
       logger.info(`🔄 [OpenAI] Part ${idx + 1} - Edge banding analysis:`, {
         aiEdgeBanding: JSON.stringify(aiPart.edgeBanding),
@@ -1411,7 +1466,7 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         description: aiPart.edgeBanding?.description,
       });
       
-      if (edgesToApply && edgesToApply.length > 0) {
+      if (edgesToApply.length > 0) {
         cutPart.ops = {
           edging: {
             edges: edgesToApply.reduce((acc, edge) => {
@@ -1424,7 +1479,7 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         };
         logger.info(`🔄 [OpenAI] Part ${idx + 1} - Applied edging:`, { edging: JSON.stringify(cutPart.ops.edging) });
       } else {
-        logger.warn(`🔄 [OpenAI] Part ${idx + 1} - NO edging applied (edgesToApply was empty or undefined)`);
+        logger.warn(`🔄 [OpenAI] Part ${idx + 1} - NO edging applied (edgesToApply was empty)`);
       }
 
       // ===== MAP AI-DETECTED OPERATIONS TO OPS FIELD =====
@@ -1633,6 +1688,32 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
       totalPartsProcessed: parts.length,
       errorsEncountered: errors.length,
     });
+    
+    // Log final summary using console for visibility
+    console.log("\n\n🔄 ========== [OpenAI] FINAL OUTPUT SUMMARY ==========");
+    console.log(`🔄 Total parts output: ${parts.length}`);
+    console.log(`🔄 Errors: ${errors.length}`);
+    if (errors.length > 0) {
+      console.log(`🔄 Error details: ${errors.join(", ")}`);
+    }
+    
+    // Log summary of unique values
+    const uniqueLabels = [...new Set(parts.map(p => p.part.label))];
+    const uniqueDimensions = [...new Set(parts.map(p => `${p.part.size.L}x${p.part.size.W}`))];
+    const uniqueMaterials = [...new Set(parts.map(p => p.part.material_id))];
+    
+    console.log(`🔄 Unique labels (${uniqueLabels.length}): ${uniqueLabels.slice(0, 10).join(", ")}${uniqueLabels.length > 10 ? "..." : ""}`);
+    console.log(`🔄 Unique dimensions (${uniqueDimensions.length}): ${uniqueDimensions.slice(0, 10).join(", ")}${uniqueDimensions.length > 10 ? "..." : ""}`);
+    console.log(`🔄 Unique materials (${uniqueMaterials.length}): ${uniqueMaterials.join(", ")}`);
+    
+    // Check for potential issues
+    if (uniqueLabels.length === 1 && parts.length > 3) {
+      console.log("⚠️ WARNING: All parts have the same label - AI may have misread the template!");
+    }
+    if (uniqueDimensions.length === 1 && parts.length > 5) {
+      console.log("⚠️ WARNING: All parts have the same dimensions - AI may have misread the template!");
+    }
+    console.log("🔄 ========== [OpenAI] END FINAL OUTPUT ==========\n\n");
 
     return {
       success: parts.length > 0,
