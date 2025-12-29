@@ -141,12 +141,25 @@ export interface ValidationResult {
  * @param rawResponse - The raw JSON string from the AI
  * @returns Validated parts or error information
  */
-export function validateAIResponse(rawResponse: string): ValidationResult {
+/**
+ * Template metadata from AI response
+ */
+export interface TemplateMetadata {
+  template?: string;      // QR code / template ID (e.g., "CAI-1.6-24279729")
+  org?: string;           // Organization name
+  customer?: string;      // Customer name
+  phone?: string;         // Phone number
+  project?: string;       // Project/section name
+  version?: string;       // Template version
+}
+
+export function validateAIResponse(rawResponse: string): ValidationResult & { metadata?: TemplateMetadata } {
   const errors: string[] = [];
   const warnings: string[] = [];
+  let metadata: TemplateMetadata | undefined;
   
   // Step 1: Parse JSON using the robust parser that handles markdown fences
-  const parsed = parseAIResponseJSON<unknown>(rawResponse);
+  let parsed = parseAIResponseJSON<unknown>(rawResponse);
   
   if (parsed === null) {
     errors.push("Failed to parse AI response as JSON");
@@ -172,6 +185,51 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
       warnings,
       partialData,
     };
+  }
+  
+  // Step 1.2: Handle NEW wrapper format: { meta: {...}, parts: [...] }
+  // This format includes template metadata alongside parts
+  if (
+    typeof parsed === "object" && 
+    parsed !== null && 
+    !Array.isArray(parsed) && 
+    "parts" in parsed
+  ) {
+    const wrapper = parsed as { meta?: TemplateMetadata; parts?: unknown[] };
+    
+    // Extract metadata if present
+    if (wrapper.meta && typeof wrapper.meta === "object") {
+      metadata = {
+        template: typeof wrapper.meta.template === "string" ? wrapper.meta.template : undefined,
+        org: typeof wrapper.meta.org === "string" ? wrapper.meta.org : undefined,
+        customer: typeof wrapper.meta.customer === "string" ? wrapper.meta.customer : undefined,
+        phone: typeof wrapper.meta.phone === "string" ? wrapper.meta.phone : undefined,
+        project: typeof wrapper.meta.project === "string" ? wrapper.meta.project : undefined,
+        version: typeof wrapper.meta.version === "string" ? wrapper.meta.version : undefined,
+      };
+      
+      logger.info("📋 [Validation] Extracted template metadata", {
+        template: metadata.template,
+        org: metadata.org,
+        hasCustomer: !!metadata.customer,
+        hasProject: !!metadata.project,
+      });
+    }
+    
+    // Extract parts array from wrapper
+    if (Array.isArray(wrapper.parts)) {
+      parsed = wrapper.parts;
+      warnings.push("Extracted parts from {meta, parts} wrapper format");
+    } else {
+      errors.push("Wrapper format detected but 'parts' is not an array");
+      return {
+        success: false,
+        parts: [],
+        errors,
+        warnings,
+        metadata,
+      };
+    }
   }
   
   // Step 1.5: Check for COMPACT format and expand if needed
@@ -220,6 +278,7 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
         parts: expandedParts as z.infer<typeof AIPartSchema>[],
         errors: [],
         warnings,
+        metadata,
       };
     }
   }
@@ -254,6 +313,7 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
         parts,
         errors: [],
         warnings,
+        metadata,
       };
     }
     
@@ -267,6 +327,7 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
       parts: [],
       errors,
       warnings,
+      metadata,
     };
   }
   
@@ -297,6 +358,7 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
   logger.debug("✅ [Validation] AI response validated", {
     partsCount: parts.length,
     warnings: warnings.length,
+    hasMetadata: !!metadata,
   });
   
   return {
@@ -304,6 +366,7 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
     parts,
     errors: [],
     warnings,
+    metadata,
   };
 }
 

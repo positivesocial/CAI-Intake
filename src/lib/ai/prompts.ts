@@ -941,10 +941,32 @@ Many cutlists have 2-4 columns of data:
 
 ## COMPACT OUTPUT FORMAT (CRITICAL - USE THIS EXACT FORMAT)
 
-Output each part on ONE LINE in this compact format:
-\`{"r":1,"l":2400,"w":580,"q":38,"m":"WC","e":"","g":"","n":""}\`
+Return a JSON object with TWO properties: "meta" (template metadata) and "parts" (array).
 
-Field abbreviations:
+\`\`\`json
+{
+  "meta": {
+    "template": "CAI-1.6-24279729",
+    "org": "RADIANT INTERIORS",
+    "customer": "MARY ANNE",
+    "phone": "0720302750",
+    "project": "WARDROBE DOORS & DRAWERS"
+  },
+  "parts": [
+    {"r":1,"l":2400,"w":580,"q":38,"m":"WC","e":"2L2W","g":"","n":""}
+  ]
+}
+\`\`\`
+
+### Meta fields (read from header/footer):
+- template: QR code text or template ID (e.g., "CAI-1.6-24279729", "CAI-org-v1.0")
+- org: Organization name (e.g., "RADIANT INTERIORS & HARDWARE LTD")
+- customer: Customer name from form
+- phone: Phone number from form  
+- project: Project/Section from form
+- version: Template version if visible (e.g., "v1.0")
+
+### Part field abbreviations:
 - r: row number (integer)
 - l: length in mm (integer)
 - w: width in mm (integer)
@@ -958,34 +980,46 @@ Field abbreviations:
 
 **IMPORTANT**: Read the Edge column for EVERY row! Edge codes are common on ALL part types.
 
-For a cutlist with 25 parts:
+For a cutlist with 25 parts on a CAI template:
 
-[
-{"r":1,"l":498,"w":275,"q":6,"m":"HUORD WALNUT","e":"2L2W","g":"","n":"DOWNSTAIRS"},
-{"r":2,"l":2100,"w":275,"q":4,"m":"","e":"2L2W","g":"","n":""},
-{"r":3,"l":1173,"w":275,"q":2,"m":"","e":"2L2W","g":"","n":""},
-{"r":4,"l":229,"w":552,"q":4,"m":"","e":"2L2W","g":"","n":"Down face"},
-{"r":5,"l":550,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Down Inside"},
-{"r":6,"l":456,"w":180,"q":8,"m":"","e":"1L","g":"","n":""},
-{"r":7,"l":456,"w":514,"q":2,"m":"","e":"","g":"","n":"Bottom"},
-{"r":8,"l":498,"w":308,"q":4,"m":"","e":"2L2W","g":"","n":"Bedroom 1 Doors"},
-{"r":9,"l":2200,"w":308,"q":4,"m":"","e":"2L2W","g":"","n":""},
-{"r":10,"l":229,"w":619,"q":4,"m":"","e":"2L2W","g":"","n":"faces"},
-{"r":11,"l":523,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Inside"},
-{"r":12,"l":550,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Inside"},
-{"r":13,"l":523,"w":514,"q":4,"m":"","e":"","g":"","n":"Bottom"},
-{"r":14,"l":498,"w":312,"q":6,"m":"","e":"2L2W","g":"","n":"Bedroom 2 Doors"},
-{"r":15,"l":2158,"w":312,"q":4,"m":"","e":"2L2W","g":"","n":""},
-{"r":16,"l":229,"w":686,"q":4,"m":"","e":"2L2W","g":"","n":"Faces"},
-{"r":17,"l":550,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Insides"},
-{"r":18,"l":530,"w":180,"q":8,"m":"","e":"1L","g":"","n":""},
-{"r":19,"l":530,"w":514,"q":4,"m":"","e":"","g":"","n":"Bottoms"},
-{"r":20,"l":564,"w":275,"q":4,"m":"","e":"1L","g":"","n":"Shelves"},
-{"r":21,"l":625,"w":315,"q":4,"m":"","e":"1L","g":"","n":"Shoe Rack HI"},
-{"r":22,"l":498,"w":498,"q":4,"m":"","e":"2L2W","g":"","n":"Walk In Doors"},
-{"r":23,"l":2198,"w":500,"q":2,"m":"","e":"","g":"","n":""},
-{"r":24,"l":2198,"w":247,"q":4,"m":"","e":"2L2W","g":"","n":""}
-]
+{
+  "meta": {
+    "template": "CAI-1.6-24279729",
+    "org": "RADIANT INTERIORS & HARDWARE LTD",
+    "customer": "MARY ANNE",
+    "phone": "0720302750",
+    "project": "WARDROBE DOORS & DRAWERS",
+    "version": "v1.0"
+  },
+  "parts": [
+    {"r":1,"l":498,"w":275,"q":6,"m":"HUORD WALNUT","e":"2L2W","g":"","n":"DOWNSTAIRS"},
+    {"r":2,"l":2100,"w":275,"q":4,"m":"","e":"2L2W","g":"","n":""},
+    {"r":3,"l":1173,"w":275,"q":2,"m":"","e":"2L2W","g":"","n":""},
+    {"r":4,"l":229,"w":552,"q":4,"m":"","e":"2L2W","g":"","n":"Down face"},
+    {"r":5,"l":550,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Down Inside"},
+    {"r":6,"l":456,"w":180,"q":8,"m":"","e":"1L","g":"","n":""},
+    {"r":7,"l":456,"w":514,"q":2,"m":"","e":"","g":"","n":"Bottom"},
+    {"r":8,"l":498,"w":308,"q":4,"m":"","e":"2L2W","g":"","n":"Bedroom 1 Doors"},
+    {"r":9,"l":2200,"w":308,"q":4,"m":"","e":"2L2W","g":"","n":""},
+    {"r":10,"l":229,"w":619,"q":4,"m":"","e":"2L2W","g":"","n":"faces"},
+    {"r":11,"l":523,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Inside"},
+    {"r":12,"l":550,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Inside"},
+    {"r":13,"l":523,"w":514,"q":4,"m":"","e":"","g":"","n":"Bottom"},
+    {"r":14,"l":498,"w":312,"q":6,"m":"","e":"2L2W","g":"","n":"Bedroom 2 Doors"},
+    {"r":15,"l":2158,"w":312,"q":4,"m":"","e":"2L2W","g":"","n":""},
+    {"r":16,"l":229,"w":686,"q":4,"m":"","e":"2L2W","g":"","n":"Faces"},
+    {"r":17,"l":550,"w":180,"q":8,"m":"","e":"1L","g":"","n":"Insides"},
+    {"r":18,"l":530,"w":180,"q":8,"m":"","e":"1L","g":"","n":""},
+    {"r":19,"l":530,"w":514,"q":4,"m":"","e":"","g":"","n":"Bottoms"},
+    {"r":20,"l":564,"w":275,"q":4,"m":"","e":"1L","g":"","n":"Shelves"},
+    {"r":21,"l":625,"w":315,"q":4,"m":"","e":"1L","g":"","n":"Shoe Rack HI"},
+    {"r":22,"l":498,"w":498,"q":4,"m":"","e":"2L2W","g":"","n":"Walk In Doors"},
+    {"r":23,"l":2198,"w":500,"q":2,"m":"","e":"","g":"","n":""},
+    {"r":24,"l":2198,"w":247,"q":4,"m":"","e":"2L2W","g":"","n":""}
+  ]
+}
+
+**For non-template cutlists (no CAI header)**, just use: \`{"meta": {}, "parts": [...]}\`
 
 ## CAI TEMPLATE FORMAT (BRANDED FORMS)
 
@@ -1053,7 +1087,7 @@ Before outputting, verify:
 - Does my array have parts from EVERY section I can see?
 - For pages with 100+ items, is my output count correct?
 
-**OUTPUT: Start directly with [ - NO markdown, NO explanation, NO text. Just the JSON array.**`;
+**OUTPUT: Start directly with { - NO markdown, NO explanation, NO text. Just the JSON object with "meta" and "parts".**`;
 
 // ============================================================
 // TEMPLATE-SPECIFIC PROMPTS
