@@ -1371,10 +1371,16 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
       if (aiPart.cncOperations?.detected) {
         cutPart.ops = cutPart.ops || {};
         
+        const cnc = aiPart.cncOperations;
+        const cncHoles = cnc.holes || [];
+        const cncDrilling = cnc.drilling || [];
+        const cncRouting = cnc.routing || [];
+        const cncPockets = cnc.pockets || [];
+        
         // Map holes
-        if (aiPart.cncOperations.holes?.length > 0) {
+        if (cncHoles.length > 0) {
           cutPart.ops.holes = cutPart.ops.holes || [];
-          for (const hole of aiPart.cncOperations.holes) {
+          for (const hole of cncHoles) {
             cutPart.ops.holes.push({
               pattern_id: hole,
               notes: hole,
@@ -1383,9 +1389,9 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         }
         
         // Map drilling as holes
-        if (aiPart.cncOperations.drilling?.length > 0) {
+        if (cncDrilling.length > 0) {
           cutPart.ops.holes = cutPart.ops.holes || [];
-          for (const drill of aiPart.cncOperations.drilling) {
+          for (const drill of cncDrilling) {
             cutPart.ops.holes.push({
               pattern_id: drill,
               notes: drill,
@@ -1394,9 +1400,9 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         }
         
         // Map routing
-        if (aiPart.cncOperations.routing?.length > 0) {
+        if (cncRouting.length > 0) {
           cutPart.ops.routing = cutPart.ops.routing || [];
-          for (const route of aiPart.cncOperations.routing) {
+          for (const route of cncRouting) {
             cutPart.ops.routing.push({
               profile_id: route,
               notes: route,
@@ -1405,21 +1411,22 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         }
         
         // Map pockets as custom CNC ops
-        if (aiPart.cncOperations.pockets?.length > 0) {
+        if (cncPockets.length > 0) {
           cutPart.ops.custom_cnc_ops = cutPart.ops.custom_cnc_ops || [];
-          for (const pocket of aiPart.cncOperations.pockets) {
+          for (const pocket of cncPockets) {
             cutPart.ops.custom_cnc_ops.push({
-              code: "POCKET",
-              description: pocket,
+              op_type: "pocket",
+              payload: { description: pocket },
+              notes: pocket,
             });
           }
         }
         
         // Store CNC description in notes
-        if (aiPart.cncOperations.description) {
+        if (cnc.description) {
           cutPart.notes = {
             ...cutPart.notes,
-            cnc: aiPart.cncOperations.description,
+            cnc: cnc.description,
           };
         }
       }
