@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus,
   Search,
@@ -19,6 +19,10 @@ import {
   Info,
   Percent,
   ArrowLeftRight,
+  FileJson,
+  FileSpreadsheet,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,8 +52,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 // ============================================================
 // TYPES
@@ -1452,11 +1463,229 @@ function EdgebandingTab() {
 }
 
 // ============================================================
+// IMPORT/EXPORT TYPES
+// ============================================================
+
+interface ImportResult {
+  success: number;
+  failed: number;
+  skipped: number;
+  errors: { index: number; id: string; error: string }[];
+}
+
+// ============================================================
 // MAIN PAGE
 // ============================================================
 
 export default function MaterialsLibraryPage() {
   const [activeTab, setActiveTab] = useState("sheets");
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importType, setImportType] = useState<"materials" | "edgebands">("materials");
+  const [importMode, setImportMode] = useState<"add" | "replace" | "upsert">("upsert");
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Refs to trigger refresh in child tabs
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Export materials or edgebands
+  const handleExport = async (type: "materials" | "edgebands", format: "json" | "csv") => {
+    try {
+      const endpoint = type === "materials" ? "/api/v1/materials" : "/api/v1/edgebands";
+      const res = await fetch(endpoint);
+      if (!res.ok) throw new Error("Failed to fetch data");
+      const data = await res.json();
+      
+      const items = type === "materials" ? data.materials : data.edgebands;
+      
+      if (!items || items.length === 0) {
+        toast.error("No data to export");
+        return;
+      }
+
+      let content: string;
+      let mimeType: string;
+      let filename: string;
+
+      if (format === "json") {
+        // Clean export data (remove internal IDs)
+        const cleanedItems = items.map((item: Record<string, unknown>) => {
+          const { id, created_at, updated_at, ...rest } = item;
+          return rest;
+        });
+        content = JSON.stringify(cleanedItems, null, 2);
+        mimeType = "application/json";
+        filename = `${type}-export-${new Date().toISOString().split("T")[0]}.json`;
+      } else {
+        // CSV format
+        const headers = type === "materials" 
+          ? ["material_id", "name", "thickness_mm", "core_type", "grain", "finish", "color_code", "default_sheet_L", "default_sheet_W", "sku", "supplier"]
+          : ["edgeband_id", "name", "thickness_mm", "width_mm", "material", "color_code", "color_match_material_id", "finish", "waste_factor_pct", "overhang_mm", "supplier"];
+        
+        const rows = items.map((item: Record<string, unknown>) => {
+          if (type === "materials") {
+            const ds = item.default_sheet as { L?: number; W?: number } | null;
+            return [
+              item.material_id,
+              item.name,
+              item.thickness_mm,
+              item.core_type || "",
+              item.grain || "none",
+              item.finish || "",
+              item.color_code || "",
+              ds?.L || "",
+              ds?.W || "",
+              item.sku || "",
+              item.supplier || "",
+            ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",");
+          } else {
+            return [
+              item.edgeband_id,
+              item.name,
+              item.thickness_mm,
+              item.width_mm,
+              item.material || "",
+              item.color_code || "",
+              item.color_match_material_id || "",
+              item.finish || "",
+              item.waste_factor_pct,
+              item.overhang_mm,
+              item.supplier || "",
+            ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(",");
+          }
+        });
+        
+        content = [headers.join(","), ...rows].join("\n");
+        mimeType = "text/csv";
+        filename = `${type}-export-${new Date().toISOString().split("T")[0]}.csv`;
+      }
+
+      // Download file
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Exported ${items.length} ${type}`, {
+        description: `Downloaded as ${filename}`,
+      });
+    } catch (err) {
+      toast.error("Export failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  };
+
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImportFile(file);
+      setImportResult(null);
+    }
+  };
+
+  // Parse imported file
+  const parseImportFile = async (file: File): Promise<unknown[]> => {
+    const text = await file.text();
+    
+    if (file.name.endsWith(".json")) {
+      return JSON.parse(text);
+    } else if (file.name.endsWith(".csv")) {
+      // Parse CSV
+      const lines = text.split("\n").filter(l => l.trim());
+      if (lines.length < 2) return [];
+      
+      const headers = lines[0].split(",").map(h => h.replace(/^"|"$/g, "").trim());
+      const items: unknown[] = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].match(/("([^"]*("")*)*"|[^,]*)/g) || [];
+        const cleanValues = values.map(v => v.replace(/^"|"$/g, "").replace(/""/g, '"').trim());
+        
+        const item: Record<string, unknown> = {};
+        headers.forEach((h, idx) => {
+          let value: unknown = cleanValues[idx] || "";
+          // Convert numeric fields
+          if (["thickness_mm", "width_mm", "waste_factor_pct", "overhang_mm", "default_sheet_L", "default_sheet_W"].includes(h)) {
+            value = value ? parseFloat(value as string) : undefined;
+          }
+          item[h] = value;
+        });
+        
+        // Handle default_sheet for materials CSV
+        if (item.default_sheet_L && item.default_sheet_W) {
+          item.default_sheet = { L: item.default_sheet_L, W: item.default_sheet_W };
+          delete item.default_sheet_L;
+          delete item.default_sheet_W;
+        }
+        
+        items.push(item);
+      }
+      
+      return items;
+    }
+    
+    throw new Error("Unsupported file format. Use .json or .csv");
+  };
+
+  // Handle import
+  const handleImport = async () => {
+    if (!importFile) return;
+    
+    setImporting(true);
+    setImportResult(null);
+    
+    try {
+      const data = await parseImportFile(importFile);
+      
+      const res = await fetch("/api/v1/materials/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: importType,
+          mode: importMode,
+          data,
+        }),
+      });
+      
+      const result = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(result.error || "Import failed");
+      }
+      
+      setImportResult(result.results);
+      toast.success(result.message);
+      
+      // Trigger refresh of the tabs
+      setRefreshKey(prev => prev + 1);
+      
+    } catch (err) {
+      toast.error("Import failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // Reset import dialog
+  const resetImportDialog = () => {
+    setImportFile(null);
+    setImportResult(null);
+    setImportMode("upsert");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -1469,16 +1698,163 @@ export default function MaterialsLibraryPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => {
+              setImportType(activeTab === "sheets" ? "materials" : "edgebands");
+              resetImportDialog();
+              setIsImportDialogOpen(true);
+            }}
+          >
             <Upload className="h-4 w-4 mr-2" />
             Import
           </Button>
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExport(activeTab === "sheets" ? "materials" : "edgebands", "json")}>
+                <FileJson className="h-4 w-4 mr-2" />
+                Export as JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport(activeTab === "sheets" ? "materials" : "edgebands", "csv")}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Export as CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
+
+      {/* Import Dialog */}
+      <Dialog open={isImportDialogOpen} onOpenChange={(open) => {
+        setIsImportDialogOpen(open);
+        if (!open) resetImportDialog();
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import {importType === "materials" ? "Sheet Materials" : "Edgebands"}</DialogTitle>
+            <DialogDescription>
+              Upload a JSON or CSV file to import {importType}. 
+              You can export existing data first to use as a template.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Import Type Selection */}
+            <div className="space-y-2">
+              <Label>Import Type</Label>
+              <Select 
+                value={importType} 
+                onValueChange={(v) => setImportType(v as "materials" | "edgebands")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="materials">Sheet Materials</SelectItem>
+                  <SelectItem value="edgebands">Edgebands</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Import Mode */}
+            <div className="space-y-2">
+              <Label>Import Mode</Label>
+              <RadioGroup value={importMode} onValueChange={(v) => setImportMode(v as "add" | "replace" | "upsert")}>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="upsert" id="upsert" />
+                  <Label htmlFor="upsert" className="font-normal cursor-pointer">
+                    <span className="font-medium">Update or Add</span> - Update existing, add new
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="add" id="add" />
+                  <Label htmlFor="add" className="font-normal cursor-pointer">
+                    <span className="font-medium">Add Only</span> - Skip existing items
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="replace" id="replace" />
+                  <Label htmlFor="replace" className="font-normal cursor-pointer text-destructive">
+                    <span className="font-medium">Replace All</span> - Delete all, then import
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* File Input */}
+            <div className="space-y-2">
+              <Label>File</Label>
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,.csv"
+                onChange={handleFileSelect}
+                className="cursor-pointer"
+              />
+              {importFile && (
+                <p className="text-sm text-muted-foreground">
+                  Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
+            </div>
+
+            {/* Import Result */}
+            {importResult && (
+              <Card className={importResult.failed > 0 ? "border-yellow-500" : "border-green-500"}>
+                <CardContent className="pt-4 space-y-2">
+                  <div className="flex items-center gap-4 text-sm">
+                    <div className="flex items-center gap-1 text-green-600">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>{importResult.success} imported</span>
+                    </div>
+                    {importResult.skipped > 0 && (
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <span>{importResult.skipped} skipped</span>
+                      </div>
+                    )}
+                    {importResult.failed > 0 && (
+                      <div className="flex items-center gap-1 text-red-600">
+                        <XCircle className="h-4 w-4" />
+                        <span>{importResult.failed} failed</span>
+                      </div>
+                    )}
+                  </div>
+                  {importResult.errors.length > 0 && (
+                    <div className="text-xs text-red-600 max-h-24 overflow-y-auto">
+                      {importResult.errors.slice(0, 5).map((err, i) => (
+                        <div key={i}>Row {err.index + 1} ({err.id}): {err.error}</div>
+                      ))}
+                      {importResult.errors.length > 5 && (
+                        <div>...and {importResult.errors.length - 5} more errors</div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsImportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleImport} 
+              disabled={!importFile || importing}
+            >
+              {importing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {importing ? "Importing..." : "Import"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Info Card */}
       <Card className="bg-blue-50 border-blue-200">
@@ -1505,11 +1881,11 @@ export default function MaterialsLibraryPage() {
         </TabsList>
 
         <TabsContent value="sheets" className="mt-6">
-          <SheetGoodsTab />
+          <SheetGoodsTab key={`sheets-${refreshKey}`} />
         </TabsContent>
 
         <TabsContent value="edgebands" className="mt-6">
-          <EdgebandingTab />
+          <EdgebandingTab key={`edgebands-${refreshKey}`} />
         </TabsContent>
       </Tabs>
     </div>
