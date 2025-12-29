@@ -16,6 +16,14 @@ export interface QRDetectionResult {
   found: boolean;
   templateId?: string;
   parsed?: ParsedTemplateId;
+  orgConfig?: {
+    orgId: string;
+    orgName: string;
+    template: string;
+    edgebanding?: string[];
+    drilling?: string[];
+    cnc?: string[];
+  };
   rawData?: string;
   error?: string;
 }
