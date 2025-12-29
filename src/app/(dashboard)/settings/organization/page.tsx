@@ -495,7 +495,7 @@ export default function OrganizationSettingsPage() {
                 <label className="block text-sm font-medium mb-1.5">API Key</label>
                 <div className="flex items-center gap-2">
                   <Input
-                    value={settings.apiKey}
+                    value="cai_live_••••••••••••••••"
                     readOnly
                     className="flex-1 font-mono text-sm"
                   />
