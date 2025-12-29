@@ -1,8 +1,8 @@
 /**
  * CAI Intake - OpenAI Provider Implementation
  * 
- * Uses GPT-4o for text parsing and vision/OCR tasks.
- * This is OpenAI's flagship multimodal model.
+ * Uses GPT-5.2 for text parsing and vision/OCR tasks.
+ * This is OpenAI's most advanced multimodal model.
  */
 
 import OpenAI from "openai";
@@ -14,14 +14,15 @@ import OpenAI from "openai";
 /**
  * GPT model to use for all operations.
  * 
- * Available models:
- * - gpt-4o          : Flagship multimodal model with vision support
+ * Available models (as of Dec 2025):
+ * - gpt-5.2         : Latest flagship model with enhanced reasoning and vision (recommended)
+ * - gpt-5.2-instant : Faster version for everyday tasks
+ * - gpt-4o          : Previous flagship multimodal model
  * - gpt-4o-mini     : Smaller, faster, cheaper version
- * - gpt-4-turbo     : Previous generation model
  * 
  * Update this constant to switch models across all operations.
  */
-const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
+const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-5.2";
 
 /**
  * Maximum completion tokens for response generation.

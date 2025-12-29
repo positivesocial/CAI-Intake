@@ -180,7 +180,7 @@ export class ResilientAIProvider implements AIProvider {
     
     if (this.primary.isConfigured()) {
       try {
-        audit.setProvider("anthropic", "claude-3-5-sonnet");
+        audit.setProvider("anthropic", "claude-opus-4-5");
         
         const result = await this.withTimeout(
           this.primary.parseImage(imageData, options),
@@ -225,7 +225,7 @@ export class ResilientAIProvider implements AIProvider {
           });
           
           audit.setUsedFallback(true);
-          audit.setProvider("openai", "gpt-4o");
+          audit.setProvider("openai", "gpt-5.2");
           
           const fallbackResult = await this.fallback.parseImage(imageData, options);
           
@@ -277,7 +277,7 @@ export class ResilientAIProvider implements AIProvider {
         
         // Try fallback
         audit.setUsedFallback(true);
-        audit.setProvider("openai", "gpt-4o");
+        audit.setProvider("openai", "gpt-5.2");
         
         logger.info("🔄 [Resilient] Falling back to OpenAI", { requestId });
         
@@ -311,7 +311,7 @@ export class ResilientAIProvider implements AIProvider {
     // Fallback to secondary provider
     if (this.fallback.isConfigured()) {
       audit.setUsedFallback(true);
-      audit.setProvider("openai", "gpt-4o");
+      audit.setProvider("openai", "gpt-5.2");
       
       try {
         const result = await this.fallback.parseImage(imageData, options);
