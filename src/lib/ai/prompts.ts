@@ -799,6 +799,35 @@ Each object MUST have:
 - cncOperations: {detected, routing[], pockets[], custom[], description}
 - confidence: 0.0-1.0
 
+## ANTI-REPETITION RULES (CRITICALLY IMPORTANT!)
+
+**DO NOT REPEAT THE SAME VALUES ACROSS MULTIPLE ROWS!**
+
+Each row in a cutlist contains UNIQUE data. If you find yourself returning the same dimensions or labels for multiple consecutive rows, YOU ARE DOING IT WRONG.
+
+### DETECTING HALLUCINATION:
+❌ WRONG: Rows 5-25 all have "Bedroom Doors" with 550x438mm
+✅ RIGHT: Each row should have its OWN unique dimensions read from that specific row
+
+### IF YOU CANNOT READ A ROW CLEARLY:
+1. **Try harder** - zoom in mentally, consider handwriting variations
+2. **Use row context** - if row 7 is between 6 and 8, its dimensions should be different from both
+3. **Mark as uncertain** - set confidence to 0.3-0.5 instead of repeating previous values
+4. **Add warning** - "Could not read clearly, verify dimensions"
+5. **NEVER copy** - Do NOT copy values from adjacent rows
+
+### VALIDATION CHECK BEFORE RETURNING:
+After building your JSON array, scan for repetition:
+- If >3 consecutive rows have IDENTICAL dimensions → RE-READ those rows
+- If >50% of rows have the SAME label → RE-READ the label column
+- Different rows almost always have different dimensions
+
+### EACH ROW IS INDEPENDENT:
+- Row 1: Read label, L, W from row 1's cells
+- Row 2: Read label, L, W from row 2's cells (NOT copied from row 1!)
+- Row 3: Read label, L, W from row 3's cells (NOT copied from row 1 or 2!)
+- ...and so on
+
 ## FINAL VERIFICATION (CRITICAL!)
 Before returning your response:
 1. Count the number of parts in your JSON array
@@ -806,6 +835,7 @@ Before returning your response:
 3. If template shows rows 1-25 filled, your array MUST have ~25 items
 4. If you extracted fewer parts than row numbers, GO BACK and re-scan for missed rows
 5. Each row with dimensions = 1 part in output (unless qty > 1)
+6. **NEW**: If >5 rows have identical dimensions, STOP and re-read each row carefully
 
 ## EDGE BANDING OBJECT FORMAT
 
