@@ -136,6 +136,8 @@ const MAX_CONCURRENT_FILES = 10;
 export function FileUpload() {
   const addToInbox = useIntakeStore((state) => state.addToInbox);
   const addPendingFileId = useIntakeStore((state) => state.addPendingFileId);
+  const addSourceFilePreview = useIntakeStore((state) => state.addSourceFilePreview);
+  const updateSourceFilePreview = useIntakeStore((state) => state.updateSourceFilePreview);
 
   const [files, setFiles] = React.useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -226,6 +228,17 @@ export function FileUpload() {
         
         // Log file being queued
         fileUploadLogger.fileQueued(fileContext);
+        
+        // Create object URL for preview (for Compare Mode)
+        const objectUrl = URL.createObjectURL(file);
+        addSourceFilePreview({
+          id,
+          name: file.name,
+          mimeType: file.type,
+          size: file.size,
+          objectUrl,
+          status: "queued",
+        });
         
         return {
           id,
@@ -450,6 +463,8 @@ export function FileUpload() {
           : f
       )
     );
+    // Update source file preview status for Compare Mode
+    updateSourceFilePreview(uploadedFile.id, { status: "processing" });
 
     try {
       let parts: ParsedPartWithStatus[] = [];
@@ -866,6 +881,8 @@ export function FileUpload() {
             : f
         )
       );
+      // Update source file preview for Compare Mode
+      updateSourceFilePreview(uploadedFile.id, { status: "complete", partsCount: parts.length });
 
       // Update batch stats with animation effect
       setBatchStats((prev) => ({
@@ -915,6 +932,8 @@ export function FileUpload() {
             : f
         )
       );
+      // Update source file preview for Compare Mode
+      updateSourceFilePreview(uploadedFile.id, { status: "error" });
       setBatchStats((prev) => ({ ...prev, failedFiles: prev.failedFiles + 1 }));
     }
   };

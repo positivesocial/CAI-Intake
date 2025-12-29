@@ -20,13 +20,20 @@ import {
   AlertCircle,
   X,
   Maximize2,
+  Edit2,
+  Check,
+  RotateCcw,
+  Save,
+  Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { SpreadsheetPreview } from "@/components/preview/SpreadsheetPreview";
 import { PdfPreview } from "@/components/preview/PdfPreview";
+import { ZoomableImage } from "@/components/preview/ZoomableImage";
 
 // =============================================================================
 // TYPES
@@ -54,6 +61,137 @@ interface CutlistPart {
   material_id: string;
   allow_rotation?: boolean;
   ops?: Record<string, unknown>;
+  notes?: Record<string, string>;
+}
+
+// Editable part row component
+function EditablePartRow({
+  part,
+  index,
+  isEditing,
+  editedPart,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onEditChange,
+}: {
+  part: CutlistPart;
+  index: number;
+  isEditing: boolean;
+  editedPart: Partial<CutlistPart> | null;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: () => void;
+  onEditChange: (updates: Partial<CutlistPart>) => void;
+}) {
+  if (isEditing && editedPart) {
+    return (
+      <tr className="border-b border-[var(--border)] bg-[var(--cai-teal)]/5">
+        <td className="py-2 px-3 text-[var(--muted-foreground)]">{index + 1}</td>
+        <td className="py-2 px-3">
+          <Input
+            value={editedPart.label || ""}
+            onChange={(e) => onEditChange({ label: e.target.value })}
+            className="h-7 text-sm"
+            placeholder="Label"
+          />
+        </td>
+        <td className="py-2 px-3">
+          <Input
+            type="number"
+            value={editedPart.qty || 1}
+            onChange={(e) => onEditChange({ qty: parseInt(e.target.value) || 1 })}
+            className="h-7 text-sm w-16 text-right"
+            min={1}
+          />
+        </td>
+        <td className="py-2 px-3">
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              value={editedPart.size?.L || 0}
+              onChange={(e) => onEditChange({ size: { ...editedPart.size!, L: parseFloat(e.target.value) || 0 } })}
+              className="h-7 text-sm w-20 text-right font-mono"
+            />
+            <span className="text-xs text-[var(--muted-foreground)]">×</span>
+            <Input
+              type="number"
+              value={editedPart.size?.W || 0}
+              onChange={(e) => onEditChange({ size: { ...editedPart.size!, W: parseFloat(e.target.value) || 0 } })}
+              className="h-7 text-sm w-20 text-right font-mono"
+            />
+          </div>
+        </td>
+        <td className="py-2 px-3">
+          <Input
+            value={editedPart.material_id || ""}
+            onChange={(e) => onEditChange({ material_id: e.target.value })}
+            className="h-7 text-sm"
+            placeholder="Material"
+          />
+        </td>
+        <td className="py-2 px-3 text-center">
+          <button
+            onClick={() => onEditChange({ allow_rotation: !editedPart.allow_rotation })}
+            className={cn(
+              "w-6 h-6 rounded flex items-center justify-center",
+              editedPart.allow_rotation !== false ? "bg-green-100 text-green-600" : "bg-amber-100 text-amber-600"
+            )}
+          >
+            {editedPart.allow_rotation !== false ? "✓" : "⊘"}
+          </button>
+        </td>
+        <td className="py-2 px-3 text-right">
+          <div className="flex items-center justify-end gap-1">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onCancelEdit} title="Cancel">
+              <X className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-green-600" onClick={onSaveEdit} title="Save">
+              <Check className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr
+      className="border-b border-[var(--border)] hover:bg-[var(--muted)]/50 group cursor-pointer"
+      onClick={onStartEdit}
+    >
+      <td className="py-2 px-3 text-[var(--muted-foreground)]">{index + 1}</td>
+      <td className="py-2 px-3 font-medium">{part.label || part.part_id}</td>
+      <td className="py-2 px-3 text-right">{part.qty}</td>
+      <td className="py-2 px-3 text-right font-mono text-xs">
+        {part.size.L} × {part.size.W}
+      </td>
+      <td className="py-2 px-3 truncate max-w-[120px]" title={part.material_id}>
+        {part.material_id}
+      </td>
+      <td className="py-2 px-3 text-center">
+        {part.allow_rotation !== false ? (
+          <span className="text-green-600" title="Can rotate">✓</span>
+        ) : (
+          <span className="text-amber-600" title="Cannot rotate (respects grain)">⊘</span>
+        )}
+      </td>
+      <td className="py-2 px-3 text-right">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => {
+            e.stopPropagation();
+            onStartEdit();
+          }}
+          title="Edit part"
+        >
+          <Edit2 className="h-3.5 w-3.5" />
+        </Button>
+      </td>
+    </tr>
+  );
 }
 
 interface Cutlist {
@@ -121,6 +259,11 @@ export default function CutlistFilesGalleryPage() {
   const [zoom, setZoom] = React.useState(1);
   const [rotation, setRotation] = React.useState(0);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  
+  // Part editing
+  const [editingPartId, setEditingPartId] = React.useState<string | null>(null);
+  const [editedPart, setEditedPart] = React.useState<Partial<CutlistPart> | null>(null);
+  const [isSaving, setIsSaving] = React.useState(false);
 
   // Fetch cutlist data
   React.useEffect(() => {
@@ -192,6 +335,62 @@ export default function CutlistFilesGalleryPage() {
     setZoom(1);
     setRotation(0);
   }, [currentFileIndex]);
+
+  // Part editing handlers
+  const startEditingPart = (part: CutlistPart) => {
+    setEditingPartId(part.id);
+    setEditedPart({ ...part });
+  };
+
+  const cancelEditing = () => {
+    setEditingPartId(null);
+    setEditedPart(null);
+  };
+
+  const saveEditedPart = async () => {
+    if (!editedPart || !editingPartId || !cutlist) return;
+    
+    setIsSaving(true);
+    try {
+      // Update part in the API
+      const response = await fetch(`/api/v1/cutlists/${id}/parts/${editingPartId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: editedPart.label,
+          qty: editedPart.qty,
+          size: editedPart.size,
+          material_id: editedPart.material_id,
+          allow_rotation: editedPart.allow_rotation,
+        }),
+      });
+
+      if (response.ok) {
+        // Update local state
+        setCutlist((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            parts: prev.parts.map((p) =>
+              p.id === editingPartId ? { ...p, ...editedPart } : p
+            ),
+          };
+        });
+        setEditingPartId(null);
+        setEditedPart(null);
+      } else {
+        console.error("Failed to save part");
+      }
+    } catch (err) {
+      console.error("Failed to save part:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const updateEditedPart = (updates: Partial<CutlistPart>) => {
+    setEditedPart((prev) => prev ? { ...prev, ...updates } : null);
+  };
 
   if (loading) {
     return (
@@ -335,77 +534,71 @@ export default function CutlistFilesGalleryPage() {
               </div>
 
               {/* File Preview Area */}
-              <div className="flex-1 relative overflow-auto">
-                <div className="absolute inset-0 flex items-center justify-center p-4">
-                  {currentFile?.url && canPreview ? (
-                    currentFile.mime_type.startsWith("image/") ? (
-                      <img
-                        src={currentFile.url}
-                        alt={currentFile.original_name}
-                        className="max-w-full max-h-full object-contain transition-transform duration-200"
-                        style={{
-                          transform: `scale(${zoom}) rotate(${rotation}deg)`,
-                        }}
-                        onError={(e) => {
-                          // Image failed to load - show fallback
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          target.parentElement?.querySelector('.preview-error')?.classList.remove('hidden');
-                        }}
-                      />
-                    ) : currentFile.mime_type === "application/pdf" ? (
-                      <PdfPreview
-                        url={currentFile.url}
-                        fileName={currentFile.original_name}
-                        fileId={currentFile.id}
-                        className="w-full h-full"
-                      />
-                    ) : isSpreadsheetFile(currentFile.mime_type) ? (
-                      <SpreadsheetPreview
-                        url={currentFile.url}
-                        mimeType={currentFile.mime_type}
-                        fileName={currentFile.original_name}
-                        className="w-full h-full"
-                      />
-                    ) : null
-                  ) : currentFile?.url ? (
-                    <div className="flex flex-col items-center text-[var(--muted-foreground)]">
-                      <FileIcon className="h-20 w-20 mb-4 opacity-50" />
-                      <p className="font-medium">{currentFile?.original_name}</p>
-                      <p className="text-sm mt-1">Preview not available for this file type</p>
-                      <a
-                        href={currentFile.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-4"
-                      >
-                        <Button variant="outline" size="sm">
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          Open in new tab
-                        </Button>
-                      </a>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center text-[var(--muted-foreground)]">
-                      <AlertCircle className="h-16 w-16 mb-4 text-amber-500 opacity-70" />
-                      <p className="font-medium">{currentFile?.original_name}</p>
-                      <p className="text-sm mt-1 text-amber-600">Unable to load file preview</p>
-                      <p className="text-xs mt-2 text-center max-w-xs">
-                        The file may have been moved or the link has expired. 
-                        Try refreshing the page.
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-4"
-                        onClick={() => window.location.reload()}
-                      >
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Refresh
+              <div className="flex-1 relative overflow-hidden">
+                {currentFile?.url && canPreview ? (
+                  currentFile.mime_type.startsWith("image/") ? (
+                    <ZoomableImage
+                      src={currentFile.url}
+                      alt={currentFile.original_name}
+                      className="w-full h-full"
+                      zoom={zoom}
+                      rotation={rotation}
+                      onZoomChange={setZoom}
+                      onRotationChange={setRotation}
+                      showControls={false} // We have our own controls in toolbar
+                    />
+                  ) : currentFile.mime_type === "application/pdf" ? (
+                    <PdfPreview
+                      url={currentFile.url}
+                      fileName={currentFile.original_name}
+                      fileId={currentFile.id}
+                      className="w-full h-full"
+                    />
+                  ) : isSpreadsheetFile(currentFile.mime_type) ? (
+                    <SpreadsheetPreview
+                      url={currentFile.url}
+                      mimeType={currentFile.mime_type}
+                      fileName={currentFile.original_name}
+                      className="w-full h-full"
+                    />
+                  ) : null
+                ) : currentFile?.url ? (
+                  <div className="flex flex-col items-center justify-center h-full text-[var(--muted-foreground)]">
+                    <FileIcon className="h-20 w-20 mb-4 opacity-50" />
+                    <p className="font-medium">{currentFile?.original_name}</p>
+                    <p className="text-sm mt-1">Preview not available for this file type</p>
+                    <a
+                      href={currentFile.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-4"
+                    >
+                      <Button variant="outline" size="sm">
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Open in new tab
                       </Button>
-                    </div>
-                  )}
-                </div>
+                    </a>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-[var(--muted-foreground)]">
+                    <AlertCircle className="h-16 w-16 mb-4 text-amber-500 opacity-70" />
+                    <p className="font-medium">{currentFile?.original_name}</p>
+                    <p className="text-sm mt-1 text-amber-600">Unable to load file preview</p>
+                    <p className="text-xs mt-2 text-center max-w-xs">
+                      The file may have been moved or the link has expired. 
+                      Try refreshing the page.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => window.location.reload()}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Refresh
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* File Navigation (if multiple files) */}
@@ -472,39 +665,30 @@ export default function CutlistFilesGalleryPage() {
               </div>
             ) : (
               <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-[var(--card)] border-b border-[var(--border)]">
+                <thead className="sticky top-0 bg-[var(--card)] border-b border-[var(--border)] z-10">
                   <tr>
                     <th className="text-left py-2 px-3 font-medium">#</th>
                     <th className="text-left py-2 px-3 font-medium">Label</th>
                     <th className="text-right py-2 px-3 font-medium">Qty</th>
                     <th className="text-right py-2 px-3 font-medium">L × W</th>
                     <th className="text-left py-2 px-3 font-medium">Material</th>
-                    <th className="text-center py-2 px-3 font-medium">Grain</th>
+                    <th className="text-center py-2 px-3 font-medium">Rot</th>
+                    <th className="w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {cutlist.parts.map((part, index) => (
-                    <tr
+                    <EditablePartRow
                       key={part.id}
-                      className="border-b border-[var(--border)] hover:bg-[var(--muted)]/50"
-                    >
-                      <td className="py-2 px-3 text-[var(--muted-foreground)]">{index + 1}</td>
-                      <td className="py-2 px-3 font-medium">{part.label || part.part_id}</td>
-                      <td className="py-2 px-3 text-right">{part.qty}</td>
-                      <td className="py-2 px-3 text-right font-mono text-xs">
-                        {part.size.L} × {part.size.W}
-                      </td>
-                      <td className="py-2 px-3 truncate max-w-[120px]" title={part.material_id}>
-                        {part.material_id}
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        {part.allow_rotation !== false ? (
-                          <span className="text-green-600" title="Can rotate">✓</span>
-                        ) : (
-                          <span className="text-amber-600" title="Cannot rotate (respects grain)">⊘</span>
-                        )}
-                      </td>
-                    </tr>
+                      part={part}
+                      index={index}
+                      isEditing={editingPartId === part.id}
+                      editedPart={editingPartId === part.id ? editedPart : null}
+                      onStartEdit={() => startEditingPart(part)}
+                      onCancelEdit={cancelEditing}
+                      onSaveEdit={saveEditedPart}
+                      onEditChange={updateEditedPart}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -527,54 +711,33 @@ export default function CutlistFilesGalleryPage() {
 
       {/* Fullscreen Overlay */}
       {isFullscreen && currentFile?.url && canPreview && (
-        <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
-          <button
-            onClick={() => setIsFullscreen(false)}
-            className="absolute top-4 right-4 p-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
-          >
-            <X className="h-6 w-6" />
-          </button>
-
-          {/* Zoom/Rotate controls */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 p-2 rounded-lg bg-white/10 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 bg-black/80">
+            <span className="text-white font-medium">{currentFile?.original_name}</span>
             <Button
               variant="ghost"
               size="icon"
               className="text-white hover:bg-white/20"
-              onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+              onClick={() => setIsFullscreen(false)}
             >
-              <ZoomOut className="h-5 w-5" />
-            </Button>
-            <span className="text-white text-sm w-16 text-center">{Math.round(zoom * 100)}%</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20"
-              onClick={() => setZoom((z) => Math.min(3, z + 0.25))}
-            >
-              <ZoomIn className="h-5 w-5" />
-            </Button>
-            <div className="w-px h-6 bg-white/20 mx-1" />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20"
-              onClick={() => setRotation((r) => (r + 90) % 360)}
-            >
-              <RotateCw className="h-5 w-5" />
+              <X className="h-5 w-5" />
             </Button>
           </div>
-
-          {currentFile.mime_type.startsWith("image/") && (
-            <img
-              src={currentFile.url}
-              alt={currentFile.original_name}
-              className="max-w-[90vw] max-h-[90vh] object-contain transition-transform duration-200"
-              style={{
-                transform: `scale(${zoom}) rotate(${rotation}deg)`,
-              }}
-            />
-          )}
+          
+          <div className="flex-1">
+            {currentFile.mime_type.startsWith("image/") && (
+              <ZoomableImage
+                src={currentFile.url}
+                alt={currentFile.original_name}
+                className="w-full h-full"
+                zoom={zoom}
+                rotation={rotation}
+                onZoomChange={setZoom}
+                onRotationChange={setRotation}
+                maxZoom={5}
+              />
+            )}
+          </div>
         </div>
       )}
     </div>

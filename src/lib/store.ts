@@ -96,6 +96,26 @@ export interface UploadBatch {
   merged_into?: string;
 }
 
+/** Source file preview for Compare Mode */
+export interface SourceFilePreview {
+  /** Unique ID (local or server-assigned) */
+  id: string;
+  /** Display name */
+  name: string;
+  /** MIME type */
+  mimeType: string;
+  /** File size in bytes */
+  size?: number;
+  /** Object URL for local preview (created from File object) */
+  objectUrl?: string;
+  /** Server URL after upload */
+  serverUrl?: string;
+  /** Processing status */
+  status: "queued" | "processing" | "complete" | "error";
+  /** Number of parts extracted from this file */
+  partsCount?: number;
+}
+
 export interface IntakeState {
   // Current cutlist being edited
   currentCutlist: {
@@ -119,6 +139,9 @@ export interface IntakeState {
 
   // Upload batches for project tracking
   uploadBatches: UploadBatch[];
+
+  // Source file previews for Compare Mode (during intake)
+  sourceFilePreviews: SourceFilePreview[];
 
   // Active intake mode
   activeMode: IntakeMode;
@@ -203,6 +226,13 @@ export interface IntakeState {
   setCapabilities: (capabilities: Partial<CutlistCapabilities>) => void;
   setProjectTracking: (project: Partial<ProjectTracking>) => void;
   addPendingFileId: (fileId: string) => void;
+  
+  // Source file previews (for Compare Mode)
+  addSourceFilePreview: (file: SourceFilePreview) => void;
+  updateSourceFilePreview: (id: string, updates: Partial<SourceFilePreview>) => void;
+  removeSourceFilePreview: (id: string) => void;
+  clearSourceFilePreviews: () => void;
+  
   resetCutlist: () => void;
   
   // Save/Load
@@ -305,6 +335,7 @@ const getInitialState = () => ({
   pendingFileIds: [] as string[],
   inboxParts: [],
   uploadBatches: [] as UploadBatch[],
+  sourceFilePreviews: [] as SourceFilePreview[],
   activeMode: "manual" as IntakeMode,
   currentStep: "setup" as StepId,
   isAdvancedMode: false,
@@ -875,7 +906,50 @@ export const useIntakeStore = create<IntakeState>()(
           pendingFileIds: [...state.pendingFileIds, fileId],
         })),
 
+      // Source file preview actions for Compare Mode
+      addSourceFilePreview: (file: SourceFilePreview) =>
+        set((state) => ({
+          sourceFilePreviews: [...state.sourceFilePreviews, file],
+        })),
+
+      updateSourceFilePreview: (id: string, updates: Partial<SourceFilePreview>) =>
+        set((state) => ({
+          sourceFilePreviews: state.sourceFilePreviews.map((f) =>
+            f.id === id ? { ...f, ...updates } : f
+          ),
+        })),
+
+      removeSourceFilePreview: (id: string) =>
+        set((state) => {
+          // Revoke object URL if it exists
+          const file = state.sourceFilePreviews.find((f) => f.id === id);
+          if (file?.objectUrl) {
+            URL.revokeObjectURL(file.objectUrl);
+          }
+          return {
+            sourceFilePreviews: state.sourceFilePreviews.filter((f) => f.id !== id),
+          };
+        }),
+
+      clearSourceFilePreviews: () =>
+        set((state) => {
+          // Revoke all object URLs
+          state.sourceFilePreviews.forEach((f) => {
+            if (f.objectUrl) {
+              URL.revokeObjectURL(f.objectUrl);
+            }
+          });
+          return { sourceFilePreviews: [] };
+        }),
+
       resetCutlist: () => {
+        // Clean up object URLs before reset
+        const state = get();
+        state.sourceFilePreviews.forEach((f) => {
+          if (f.objectUrl) {
+            URL.revokeObjectURL(f.objectUrl);
+          }
+        });
         set({
           ...getInitialState(),
           savedCutlistId: null,

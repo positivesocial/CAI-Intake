@@ -25,6 +25,8 @@ import {
   Filter,
   SortAsc,
   Wand2,
+  SplitSquareVertical,
+  PanelLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +64,7 @@ import { CorrectionDiff } from "./CorrectionDiff";
 import { calculateFieldConfidence, ConfidenceSummary } from "./FieldConfidence";
 import { ValidationPanel } from "./ValidationPanel";
 import { DuplicateDetector } from "./DuplicateDetector";
+import { SourceFilesPanel, type SourceFile } from "./SourceFilesPanel";
 
 // ============================================================
 // SHORTCODE FORMATTERS
@@ -1203,6 +1206,7 @@ export function IntakeInbox() {
     clearInbox,
     updateInboxPart,
     addToInbox,
+    sourceFilePreviews,
   } = useIntakeStore();
 
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
@@ -1210,8 +1214,12 @@ export function IntakeInbox() {
   const [filter, setFilter] = React.useState<FilterStatus>("all");
   const [quickOpsType, setQuickOpsType] = React.useState<QuickOpsType>(null);
   const [dismissedDuplicateGroups, setDismissedDuplicateGroups] = React.useState<Set<string>>(new Set());
+  const [compareMode, setCompareMode] = React.useState(false);
   
   const materials = currentCutlist.materials;
+  
+  // Check if we have source files to compare against
+  const hasSourceFiles = sourceFilePreviews.length > 0;
 
   // Filter counts
   const counts = React.useMemo(() => ({
@@ -1617,6 +1625,25 @@ export function IntakeInbox() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* Compare Mode Toggle - only show if we have source files */}
+            {hasSourceFiles && (
+              <>
+                <Button
+                  variant={compareMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setCompareMode(!compareMode)}
+                  title="Toggle Compare Mode to view source files alongside parts"
+                  className={cn(
+                    "gap-1.5",
+                    compareMode && "bg-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/90"
+                  )}
+                >
+                  <SplitSquareVertical className="h-4 w-4" />
+                  <span className="hidden sm:inline">Compare</span>
+                </Button>
+                <div className="w-px h-6 bg-[var(--border)]" />
+              </>
+            )}
             <FilterBar filter={filter} onFilterChange={setFilter} counts={counts} />
             <div className="w-px h-6 bg-[var(--border)]" />
             <Button variant="ghost" size="sm" onClick={clearInbox}>
@@ -1635,103 +1662,135 @@ export function IntakeInbox() {
         </div>
       </CardHeader>
 
-      {/* Mass edit toolbar */}
-      <MassEditToolbar
-        selectedCount={selectedCount}
-        totalCount={filteredParts.filter((p) => p._status !== "rejected").length}
-        onSelectAll={handleSelectAll}
-        onSelectNone={handleSelectNone}
-        onAcceptSelected={handleAcceptSelected}
-        onRejectSelected={handleRejectSelected}
-        onSetMaterial={handleSetMaterialSelected}
-        onSetThickness={handleSetThicknessSelected}
-        onMultiplyQty={handleMultiplyQtySelected}
-        onSetEdging={handleSetEdgingSelected}
-        onClearEdging={handleClearEdgingSelected}
-        onAddGroove={handleAddGrooveSelected}
-        onClearGrooves={handleClearGroovesSelected}
-        onSetHolePattern={handleSetHolePatternSelected}
-        onClearHoles={handleClearHolesSelected}
-        onSetCncProgram={handleSetCncProgramSelected}
-        onClearCnc={handleClearCncSelected}
-        onToggleRotation={handleToggleRotationSelected}
-        materials={materials}
-        capabilities={currentCutlist.capabilities}
-      />
+      {/* Main Content - Split View when in Compare Mode */}
+      <div className={cn(
+        "flex",
+        compareMode ? "flex-col lg:flex-row" : "flex-col"
+      )}>
+        {/* Source Files Panel (Compare Mode) */}
+        {compareMode && hasSourceFiles && (
+          <div className="lg:w-1/2 h-[400px] lg:h-[600px] border-b lg:border-b-0 lg:border-r border-[var(--border)] flex-shrink-0">
+            <SourceFilesPanel
+              files={sourceFilePreviews.map((f): SourceFile => ({
+                id: f.id,
+                name: f.name,
+                mimeType: f.mimeType,
+                size: f.size,
+                url: f.objectUrl || f.serverUrl,
+              }))}
+              compact={false}
+              showThumbnails={true}
+            />
+          </div>
+        )}
 
-      {/* Validation Panel */}
-      <ValidationPanel
-        parts={filteredParts}
-        onSwapDimensions={handleSwapDimensions}
-        onScrollToRow={(index) => {
-          setFocusedIndex(index);
-          // Scroll the row into view
-          const row = document.querySelector(`[data-row-index="${index}"]`);
-          row?.scrollIntoView({ behavior: "smooth", block: "center" });
-        }}
-        onSetMaterial={(partId, materialId) => updatePartWithCorrection(partId, { material_id: materialId })}
-        defaultMaterialId={materials[0]?.material_id || "MAT-WHITE-18"}
-      />
+        {/* Parts Content */}
+        <div className={cn("flex-1 flex flex-col min-w-0", compareMode && "lg:w-1/2")}>
+          {/* Mass edit toolbar */}
+          <MassEditToolbar
+            selectedCount={selectedCount}
+            totalCount={filteredParts.filter((p) => p._status !== "rejected").length}
+            onSelectAll={handleSelectAll}
+            onSelectNone={handleSelectNone}
+            onAcceptSelected={handleAcceptSelected}
+            onRejectSelected={handleRejectSelected}
+            onSetMaterial={handleSetMaterialSelected}
+            onSetThickness={handleSetThicknessSelected}
+            onMultiplyQty={handleMultiplyQtySelected}
+            onSetEdging={handleSetEdgingSelected}
+            onClearEdging={handleClearEdgingSelected}
+            onAddGroove={handleAddGrooveSelected}
+            onClearGrooves={handleClearGroovesSelected}
+            onSetHolePattern={handleSetHolePatternSelected}
+            onClearHoles={handleClearHolesSelected}
+            onSetCncProgram={handleSetCncProgramSelected}
+            onClearCnc={handleClearCncSelected}
+            onToggleRotation={handleToggleRotationSelected}
+            materials={materials}
+            capabilities={currentCutlist.capabilities}
+          />
 
-      {/* Duplicate Detection */}
-      <DuplicateDetector
-        parts={filteredParts}
-        onMerge={handleMergeDuplicates}
-        onScrollToRow={(index) => {
-          setFocusedIndex(index);
-          const row = document.querySelector(`[data-row-index="${index}"]`);
-          row?.scrollIntoView({ behavior: "smooth", block: "center" });
-        }}
-        onDismissGroup={handleDismissDuplicateGroup}
-        dismissedGroups={dismissedDuplicateGroups}
-      />
+          {/* Validation Panel - collapsed in compare mode */}
+          {!compareMode && (
+            <ValidationPanel
+              parts={filteredParts}
+              onSwapDimensions={handleSwapDimensions}
+              onScrollToRow={(index) => {
+                setFocusedIndex(index);
+                const row = document.querySelector(`[data-row-index="${index}"]`);
+                row?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+              onSetMaterial={(partId, materialId) => updatePartWithCorrection(partId, { material_id: materialId })}
+              defaultMaterialId={materials[0]?.material_id || "MAT-WHITE-18"}
+            />
+          )}
 
-      {/* Table */}
-      <div className="overflow-x-auto" onKeyDown={handleTableKeyDown}>
-        <table className="w-full min-w-[800px]">
-          <thead className="bg-[var(--muted)]/50 border-b border-[var(--border)]">
-            <tr>
-              <th className="w-10 px-2 py-2"></th>
-              <th className="w-8 px-1 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">#</th>
-              <th className="w-[70px] px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Preview</th>
-              <th className="px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Label</th>
-              <th className="w-[70px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">L</th>
-              <th className="w-6"></th>
-              <th className="w-[70px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">W</th>
-              <th className="w-[60px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Qty</th>
-              <th className="px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Material</th>
-              <th className="w-[50px] px-1 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]" title="Can Rotate">Rot</th>
-              <th className="min-w-[100px] px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Ops</th>
-              <th className="w-[100px] px-2 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">Conf.</th>
-              <th className="w-[100px] px-2 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--border)]">
-            {filteredParts.map((part, index) => (
-              <InboxPartRow
-                key={part.part_id}
-                part={part}
-                isSelected={selectedIds.has(part.part_id)}
-                isFocused={focusedIndex === index}
-                onSelect={(selected) => handleToggleSelect(part.part_id, selected)}
-                onFocus={() => setFocusedIndex(index)}
-                onAccept={() => acceptInboxPart(part.part_id)}
-                onReject={() => rejectInboxPart(part.part_id)}
-                onUpdate={(updates) => updatePartWithCorrection(part.part_id, updates)}
-                onDuplicate={() => handleDuplicate(part)}
-                onSwapDimensions={() => handleSwapDimensions(part.part_id)}
-                onSplitQuantity={() => handleSplitQuantity(part)}
-                materials={materials}
-                rowIndex={index}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+          {/* Duplicate Detection - collapsed in compare mode */}
+          {!compareMode && (
+            <DuplicateDetector
+              parts={filteredParts}
+              onMerge={handleMergeDuplicates}
+              onScrollToRow={(index) => {
+                setFocusedIndex(index);
+                const row = document.querySelector(`[data-row-index="${index}"]`);
+                row?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+              onDismissGroup={handleDismissDuplicateGroup}
+              dismissedGroups={dismissedDuplicateGroups}
+            />
+          )}
 
-      {/* Footer with keyboard shortcuts */}
-      <div className="px-4 py-2 border-t border-[var(--border)] bg-[var(--muted)]/30">
-        <KeyboardHelp />
+          {/* Table */}
+          <div className={cn(
+            "overflow-x-auto flex-1",
+            compareMode && "max-h-[500px] lg:max-h-none overflow-y-auto"
+          )} onKeyDown={handleTableKeyDown}>
+            <table className="w-full min-w-[800px]">
+              <thead className="bg-[var(--muted)]/50 border-b border-[var(--border)] sticky top-0 z-10">
+                <tr>
+                  <th className="w-10 px-2 py-2"></th>
+                  <th className="w-8 px-1 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">#</th>
+                  <th className="w-[70px] px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Preview</th>
+                  <th className="px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Label</th>
+                  <th className="w-[70px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">L</th>
+                  <th className="w-6"></th>
+                  <th className="w-[70px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">W</th>
+                  <th className="w-[60px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Qty</th>
+                  <th className="px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Material</th>
+                  <th className="w-[50px] px-1 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]" title="Can Rotate">Rot</th>
+                  <th className="min-w-[100px] px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Ops</th>
+                  <th className="w-[100px] px-2 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">Conf.</th>
+                  <th className="w-[100px] px-2 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {filteredParts.map((part, index) => (
+                  <InboxPartRow
+                    key={part.part_id}
+                    part={part}
+                    isSelected={selectedIds.has(part.part_id)}
+                    isFocused={focusedIndex === index}
+                    onSelect={(selected) => handleToggleSelect(part.part_id, selected)}
+                    onFocus={() => setFocusedIndex(index)}
+                    onAccept={() => acceptInboxPart(part.part_id)}
+                    onReject={() => rejectInboxPart(part.part_id)}
+                    onUpdate={(updates) => updatePartWithCorrection(part.part_id, updates)}
+                    onDuplicate={() => handleDuplicate(part)}
+                    onSwapDimensions={() => handleSwapDimensions(part.part_id)}
+                    onSplitQuantity={() => handleSplitQuantity(part)}
+                    materials={materials}
+                    rowIndex={index}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer with keyboard shortcuts */}
+          <div className="px-4 py-2 border-t border-[var(--border)] bg-[var(--muted)]/30 flex-shrink-0">
+            <KeyboardHelp />
+          </div>
+        </div>
       </div>
 
       {/* Quick Ops Popover (E/G/M/H keys) */}
