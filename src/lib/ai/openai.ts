@@ -26,9 +26,10 @@ const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 /**
  * Maximum completion tokens for response generation.
  * GPT-4o supports up to 128K context, 16K output.
- * Increased to 12000 to handle larger cutlists (40+ parts).
+ * Set to 16384 (max) to ensure large cutlists (100+ parts) aren't truncated.
+ * Each JSON part is ~100-150 tokens, so 16K tokens = ~100-160 parts.
  */
-const MAX_COMPLETION_TOKENS = 12000;
+const MAX_COMPLETION_TOKENS = 16384;
 import { generateId } from "@/lib/utils";
 import type { CutPart } from "@/lib/schema";
 import {
