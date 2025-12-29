@@ -211,9 +211,12 @@ function parseRow(
     parseNumber(thkStr) ?? defaultThicknessMm ?? DEFAULTS.THICKNESS_MM;
 
   // Parse rotation (or legacy grain column)
+  // Default to NO rotation unless explicitly allowed (user must opt-in)
   const rotStr = getColumnValue(row, headers, mapping.allow_rotation);
-  const grainParsed = parseGrain(rotStr || grainStr);
-  const allowRotation = grainParsed === "none";
+  // Rotation is only allowed if there's an explicit "yes/true/allow" in the rotation column
+  const allowRotation = rotStr 
+    ? /^(yes|true|1|y|x|✓|✔|allow|can.*rot)$/i.test(rotStr.trim())
+    : false;
 
   // Parse edging
   const edgingL1 = parseEdging(getColumnValue(row, headers, mapping.edging_L1));

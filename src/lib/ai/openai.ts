@@ -1175,7 +1175,7 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         size: { L, W },
         thickness_mm: aiPart.thickness || options.defaultThicknessMm || 18,
         material_id: this.mapMaterialToId(aiPart.material) || options.defaultMaterialId || "MAT-WHITE-18",
-        allow_rotation: aiPart.allowRotation !== false,
+        allow_rotation: aiPart.allowRotation === true, // Default to false - users must explicitly enable rotation
         notes: aiPart.notes ? { operator: aiPart.notes } : undefined,
         audit: {
           source_method: "api",

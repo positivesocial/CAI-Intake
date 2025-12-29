@@ -550,8 +550,8 @@ function extractGrain(text: string): { grain: GrainMode; allowRotation: boolean;
     }
   }
   
-  // Default to no grain, allow rotation
-  return { grain: "none", allowRotation: true, confidence: 0.5 };
+  // Default to no grain, NO rotation (users must explicitly enable rotation)
+  return { grain: "none", allowRotation: false, confidence: 0.5 };
 }
 
 /**
@@ -844,7 +844,7 @@ export function parseTextLine(
       size: { L, W },
       thickness_mm: thickness,
       material_id: materialId,
-      allow_rotation: true,
+      allow_rotation: false, // Default to false - users must explicitly enable rotation
       audit: {
         source_method: options.sourceMethod ?? "paste_parser",
         parsed_text_snippet: cleanText.substring(0, 100),
@@ -1000,7 +1000,7 @@ function createEmptyPart(options: TextParseOptions): CutPart {
     size: { L: 0, W: 0 },
     thickness_mm: options.defaultThicknessMm ?? DEFAULTS.THICKNESS_MM,
     material_id: options.defaultMaterialId ?? "default",
-    allow_rotation: true,
+    allow_rotation: false, // Default to false - users must explicitly enable rotation
     audit: {
       source_method: options.sourceMethod ?? "paste_parser",
       confidence: 0,

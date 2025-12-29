@@ -49,8 +49,8 @@ function generateRequestId(): string {
 
 // Size limits
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
-const MAX_IMAGE_DIMENSION = 2048; // Max width or height in pixels
-const TARGET_IMAGE_KB = 500; // Target size after optimization (500KB)
+const MAX_IMAGE_DIMENSION = 1024; // Max width or height in pixels (reduced from 2048 for faster AI processing)
+const TARGET_IMAGE_KB = 300; // Target size after optimization (reduced from 500KB for faster AI processing)
 
 export async function POST(request: NextRequest) {
   const requestId = generateRequestId();
@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
             parseOptions.templateConfig = detectedTemplateConfig;
             parseOptions.deterministicPrompt = deterministicPrompt;
           } else {
-            logger.debug("📥 [ParseFile] No CAI template QR found (generic document)", {
+            logger.info("📥 [ParseFile] No CAI template QR found (generic document)", {
               requestId,
               qrFound: qrDetectionResult.found,
               qrError: qrDetectionResult.error,
