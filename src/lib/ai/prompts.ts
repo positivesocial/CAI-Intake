@@ -1096,8 +1096,15 @@ export interface AIPartResponse {
   };
   cncOperations?: {
     detected: boolean;
-    holes?: number;
-    routing?: boolean;
+    /** Array of hole pattern identifiers */
+    holes?: string[];
+    /** Array of drilling operation descriptions */
+    drilling?: string[];
+    /** Array of routing operation descriptions */
+    routing?: string[];
+    /** Array of pocket/recess operation descriptions */
+    pockets?: string[];
+    /** Human-readable description */
     description?: string;
   };
   notes?: string;

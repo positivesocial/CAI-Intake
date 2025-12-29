@@ -1575,18 +1575,99 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         },
       };
 
-      // Add edge banding operations if detected
-      if (aiPart.edgeBanding?.detected && aiPart.edgeBanding.edges) {
-        cutPart.ops = {
-          edging: {
-            edges: aiPart.edgeBanding.edges.reduce((acc, edge) => {
+      // Initialize ops if any operations detected
+      const edges = aiPart.edgeBanding?.edges || [];
+      const hasEdging = aiPart.edgeBanding?.detected && edges.length > 0;
+      const hasGrooving = aiPart.grooving?.detected;
+      const hasCnc = aiPart.cncOperations?.detected;
+      
+      if (hasEdging || hasGrooving || hasCnc) {
+        cutPart.ops = {};
+        
+        // Add edge banding operations
+        if (hasEdging) {
+          cutPart.ops.edging = {
+            edges: edges.reduce((acc, edge) => {
               if (["L1", "L2", "W1", "W2"].includes(edge)) {
                 acc[edge] = { apply: true };
               }
               return acc;
             }, {} as Record<string, { apply: boolean }>),
-          },
-        };
+          };
+        }
+        
+        // Add groove operations
+        if (hasGrooving && aiPart.grooving) {
+          cutPart.ops.grooves = [];
+          if (aiPart.grooving.GL) {
+            cutPart.ops.grooves.push({
+              side: "L1" as const,
+              offset_mm: 10, // Default offset
+              notes: aiPart.grooving.description || "groove on length",
+            });
+          }
+          if (aiPart.grooving.GW) {
+            cutPart.ops.grooves.push({
+              side: "W1" as const,
+              offset_mm: 10, // Default offset
+              notes: aiPart.grooving.description || "groove on width",
+            });
+          }
+        }
+        
+        // Add CNC/drilling operations
+        if (hasCnc && aiPart.cncOperations) {
+          const cnc = aiPart.cncOperations;
+          const cncHoles = cnc.holes || [];
+          const cncDrilling = cnc.drilling || [];
+          const cncRouting = cnc.routing || [];
+          const cncPockets = cnc.pockets || [];
+          
+          // Add holes from cncOperations.holes array
+          if (cncHoles.length > 0) {
+            cutPart.ops.holes = cncHoles.map((hole: string) => ({
+              pattern_id: hole,
+              notes: hole,
+            }));
+          }
+          
+          // Add drilling as holes
+          if (cncDrilling.length > 0) {
+            cutPart.ops.holes = [
+              ...(cutPart.ops.holes || []),
+              ...cncDrilling.map((drill: string) => ({
+                pattern_id: drill,
+                notes: drill,
+              })),
+            ];
+          }
+          
+          // Add routing operations
+          if (cncRouting.length > 0) {
+            cutPart.ops.routing = cncRouting.map((route: string) => ({
+              region: { x: 0, y: 0, L: 100, W: 100 }, // Placeholder region
+              profile_id: route,
+              notes: route,
+            }));
+          }
+          
+          // Add pockets as custom CNC ops
+          if (cncPockets.length > 0) {
+            cutPart.ops.custom_cnc_ops = cncPockets.map((pocket: string) => ({
+              op_type: "pocket",
+              payload: { description: pocket },
+              notes: pocket,
+            }));
+          }
+          
+          // Store full description in notes
+          if (cnc.description) {
+            cutPart.notes = {
+              ...cutPart.notes,
+              cnc: cnc.description,
+            };
+          }
+        }
       }
 
       parts.push({
@@ -1595,7 +1676,7 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         extractedMetadata: {
           grooving: aiPart.grooving,
           edgeBanding: aiPart.edgeBanding,
-          cncOperations: aiPart.cncOperations,
+          cncOperations: aiPart.cncOperations as unknown as { detected: boolean; holes?: number; routing?: boolean; description?: string; },
         },
         warnings: [
           ...validationErrors,

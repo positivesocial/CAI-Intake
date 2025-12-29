@@ -1344,49 +1344,130 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         };
       }
 
-      // Post-process notes for grooving, CNC, and other metadata
-      const allText = `${cleanLabel} ${aiPart.notes || ""}`.toLowerCase();
-      const extractedOps = this.extractOperationsFromText(allText, aiPart);
+      // ===== MAP AI-DETECTED OPERATIONS TO OPS FIELD =====
       
-      // Merge extracted grooving operations as proper GrooveOp entries
-      if (extractedOps.grooving?.detected) {
+      // 1. First, map grooving from AI response (aiPart.grooving)
+      if (aiPart.grooving?.detected) {
         cutPart.ops = cutPart.ops || {};
         cutPart.ops.grooves = cutPart.ops.grooves || [];
         
-        // Determine side based on profileHint
-        const side = extractedOps.grooving.profileHint === "width" ? "W1" : "L1";
+        if (aiPart.grooving.GL) {
+          cutPart.ops.grooves.push({
+            side: "L1" as const,
+            offset_mm: 10,
+            notes: aiPart.grooving.description || "groove on length",
+          });
+        }
+        if (aiPart.grooving.GW) {
+          cutPart.ops.grooves.push({
+            side: "W1" as const,
+            offset_mm: 10,
+            notes: aiPart.grooving.description || "groove on width",
+          });
+        }
+      }
+      
+      // 2. Map CNC operations from AI response (aiPart.cncOperations)
+      if (aiPart.cncOperations?.detected) {
+        cutPart.ops = cutPart.ops || {};
         
+        // Map holes
+        if (aiPart.cncOperations.holes?.length > 0) {
+          cutPart.ops.holes = cutPart.ops.holes || [];
+          for (const hole of aiPart.cncOperations.holes) {
+            cutPart.ops.holes.push({
+              pattern_id: hole,
+              notes: hole,
+            });
+          }
+        }
+        
+        // Map drilling as holes
+        if (aiPart.cncOperations.drilling?.length > 0) {
+          cutPart.ops.holes = cutPart.ops.holes || [];
+          for (const drill of aiPart.cncOperations.drilling) {
+            cutPart.ops.holes.push({
+              pattern_id: drill,
+              notes: drill,
+            });
+          }
+        }
+        
+        // Map routing
+        if (aiPart.cncOperations.routing?.length > 0) {
+          cutPart.ops.routing = cutPart.ops.routing || [];
+          for (const route of aiPart.cncOperations.routing) {
+            cutPart.ops.routing.push({
+              profile_id: route,
+              notes: route,
+            });
+          }
+        }
+        
+        // Map pockets as custom CNC ops
+        if (aiPart.cncOperations.pockets?.length > 0) {
+          cutPart.ops.custom_cnc_ops = cutPart.ops.custom_cnc_ops || [];
+          for (const pocket of aiPart.cncOperations.pockets) {
+            cutPart.ops.custom_cnc_ops.push({
+              code: "POCKET",
+              description: pocket,
+            });
+          }
+        }
+        
+        // Store CNC description in notes
+        if (aiPart.cncOperations.description) {
+          cutPart.notes = {
+            ...cutPart.notes,
+            cnc: aiPart.cncOperations.description,
+          };
+        }
+      }
+      
+      // 3. ALSO post-process notes for additional operations (in case AI missed them)
+      const allText = `${cleanLabel} ${aiPart.notes || ""}`.toLowerCase();
+      const extractedOps = this.extractOperationsFromText(allText, aiPart);
+      
+      // Merge extracted grooving operations (if not already detected by AI)
+      if (extractedOps.grooving?.detected && (!cutPart.ops?.grooves || cutPart.ops.grooves.length === 0)) {
+        cutPart.ops = cutPart.ops || {};
+        cutPart.ops.grooves = cutPart.ops.grooves || [];
+        
+        const side = extractedOps.grooving.profileHint === "width" ? "W1" : "L1";
         cutPart.ops.grooves.push({
           side: side as "L1" | "L2" | "W1" | "W2",
-          offset_mm: 10, // Default offset
+          offset_mm: 10,
           notes: extractedOps.grooving.description || "Groove detected from notes",
         });
       }
       
-      // Merge extracted CNC operations as custom_cnc_ops
+      // Merge extracted CNC operations (if not already detected by AI)
       if (extractedOps.cnc?.detected) {
         cutPart.ops = cutPart.ops || {};
-        cutPart.ops.custom_cnc_ops = cutPart.ops.custom_cnc_ops || [];
         
-        // Add hole operations
-        if (extractedOps.cnc.holes && extractedOps.cnc.holes > 0) {
+        // Add hole operations if not already present
+        if (extractedOps.cnc.holes && extractedOps.cnc.holes > 0 && (!cutPart.ops.holes || cutPart.ops.holes.length === 0)) {
           cutPart.ops.holes = cutPart.ops.holes || [];
           cutPart.ops.holes.push({
             notes: `${extractedOps.cnc.holes} holes - ${extractedOps.cnc.description || ""}`.trim(),
           });
         }
         
-        // Add routing operations
-        if (extractedOps.cnc.routing) {
+        // Add routing operations if not already present
+        if (extractedOps.cnc.routing && (!cutPart.ops.routing || cutPart.ops.routing.length === 0)) {
           cutPart.ops.routing = cutPart.ops.routing || [];
           cutPart.ops.routing.push({
-            region: { x: 0, y: 0, L: 100, W: 100 }, // Placeholder
+            region: { x: 0, y: 0, L: 100, W: 100 },
             notes: extractedOps.cnc.description || "Routing detected from notes",
           });
         }
         
-        // Add generic CNC operations as custom
-        if (extractedOps.cnc.description && !extractedOps.cnc.holes && !extractedOps.cnc.routing) {
+        // Add generic CNC operations as custom (if nothing else detected)
+        if (extractedOps.cnc.description && 
+            !extractedOps.cnc.holes && 
+            !extractedOps.cnc.routing && 
+            (!cutPart.ops.custom_cnc_ops || cutPart.ops.custom_cnc_ops.length === 0)) {
+          cutPart.ops.custom_cnc_ops = cutPart.ops.custom_cnc_ops || [];
           cutPart.ops.custom_cnc_ops.push({
             op_type: "detected",
             payload: { description: extractedOps.cnc.description },
