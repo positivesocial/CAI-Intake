@@ -49,8 +49,8 @@ function generateRequestId(): string {
 
 // Size limits
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
-const MAX_IMAGE_DIMENSION = 1536; // Max width or height - balance between quality and speed
-const TARGET_IMAGE_KB = 500; // Target size after optimization - needs to be readable for handwritten text
+const MAX_IMAGE_DIMENSION = 2048; // Max width or height - increased for structured templates/QR codes
+const TARGET_IMAGE_KB = 1000; // Target size after optimization - needs to be readable for handwritten text and QR codes
 
 export async function POST(request: NextRequest) {
   const requestId = generateRequestId();
@@ -349,12 +349,12 @@ export async function POST(request: NextRequest) {
           });
           
           // Calculate quality based on original size
-          // Higher quality needed for handwritten text readability
-          // Note: After resize to 1536px max dimension, quality determines final file size
-          let quality = 90;
-          if (originalSizeKB > 10000) quality = 80; // >10MB: 80% quality
-          else if (originalSizeKB > 5000) quality = 85; // >5MB: 85% quality  
-          // For smaller images, keep 90% quality
+          // Higher quality needed for handwritten text readability and QR code detection
+          // Note: After resize to 2048px max dimension, quality determines final file size
+          let quality = 92;
+          if (originalSizeKB > 15000) quality = 85; // >15MB: 85% quality
+          else if (originalSizeKB > 8000) quality = 88; // >8MB: 88% quality  
+          // For smaller images, keep 92% quality
           
           imageBuffer = await sharpInstance
             .resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, {

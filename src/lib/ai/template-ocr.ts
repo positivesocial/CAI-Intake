@@ -201,8 +201,10 @@ export async function getOrgTemplateConfig(
  * Detect QR code in an image and parse template ID
  * Uses sharp for Node.js compatible image processing
  * 
- * Strategy: First try scanning the top-left corner (where QR typically is),
- * then fall back to full image scan if not found.
+ * Strategy: Multiple scan approaches for high-res images
+ * 1. Scan top-left corner at original resolution (best for clear QR codes)
+ * 2. Scan top-left corner at enhanced size (for very high-res images)
+ * 3. Scan resized full image as fallback
  */
 export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetectionResult> {
   try {
@@ -214,14 +216,21 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
       return { found: false, error: "Could not read image dimensions" };
     }
     
-    // Strategy 1: Try scanning just the top-left corner (where QR typically appears)
-    // QR codes are usually in the first 15-20% of the image
-    const cornerWidth = Math.min(Math.ceil(metadata.width * 0.25), 800);
-    const cornerHeight = Math.min(Math.ceil(metadata.height * 0.20), 600);
+    console.log(`[TemplateOCR] Scanning image ${metadata.width}x${metadata.height} for QR code`);
+    
+    // Strategy 1: Try scanning top-left corner (where QR typically appears in templates)
+    // For high-res images, use a proportionally larger corner
+    // QR codes on CAI templates are typically 100-150px when printed, which on a 
+    // 5712px wide photo could be ~200-400px depending on how close the photo was taken
+    const cornerWidth = Math.min(Math.ceil(metadata.width * 0.30), 1500);  // 30% of width, max 1500px
+    const cornerHeight = Math.min(Math.ceil(metadata.height * 0.25), 1200); // 25% of height, max 1200px
     
     try {
+      // First try with contrast enhancement for better QR detection
       const cornerImage = sharp(Buffer.from(imageData))
         .extract({ left: 0, top: 0, width: cornerWidth, height: cornerHeight })
+        .greyscale()  // Convert to greyscale for better QR contrast
+        .normalise()  // Enhance contrast
         .ensureAlpha();
       
       const { data: cornerData, info: cornerInfo } = await cornerImage
@@ -232,41 +241,77 @@ export async function detectTemplateQR(imageData: ArrayBuffer): Promise<QRDetect
       const cornerCode = jsQR(cornerPixels, cornerInfo.width, cornerInfo.height);
       
       if (cornerCode) {
-        console.log(`[TemplateOCR] QR found in corner region (${cornerWidth}x${cornerHeight})`);
+        console.log(`[TemplateOCR] QR found in corner region (${cornerWidth}x${cornerHeight}) with greyscale`);
         return processQRCode(cornerCode.data.trim());
       }
+      
+      // Try without greyscale/normalise (some QR readers work better with color)
+      const cornerImageColor = sharp(Buffer.from(imageData))
+        .extract({ left: 0, top: 0, width: cornerWidth, height: cornerHeight })
+        .ensureAlpha();
+      
+      const { data: cornerDataColor, info: cornerInfoColor } = await cornerImageColor
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      
+      const cornerPixelsColor = new Uint8ClampedArray(cornerDataColor);
+      const cornerCodeColor = jsQR(cornerPixelsColor, cornerInfoColor.width, cornerInfoColor.height);
+      
+      if (cornerCodeColor) {
+        console.log(`[TemplateOCR] QR found in corner region (${cornerWidth}x${cornerHeight}) with color`);
+        return processQRCode(cornerCodeColor.data.trim());
+      }
+      
+      console.log(`[TemplateOCR] QR not found in corner (${cornerWidth}x${cornerHeight}), trying full image`);
     } catch (cornerError) {
       console.warn("[TemplateOCR] Corner scan failed, trying full image:", cornerError);
     }
     
-    // Strategy 2: Scan a resized version of the full image (faster for large images)
-    const maxDimension = 2000;
-    let scanImage = image;
+    // Strategy 2: Scan a resized version of the full image
+    // Use larger size for better QR detection
+    const maxDimension = 2500;
+    let scanImage = sharp(Buffer.from(imageData));
     
     if (metadata.width > maxDimension || metadata.height > maxDimension) {
-      scanImage = sharp(Buffer.from(imageData)).resize(maxDimension, maxDimension, {
+      scanImage = scanImage.resize(maxDimension, maxDimension, {
         fit: "inside",
         withoutEnlargement: true,
       });
     }
     
-    // Get raw RGBA pixel data
-    const { data, info } = await scanImage
-      .ensureAlpha() // Ensure RGBA format
+    // Try with greyscale first (better contrast)
+    const { data: greyData, info: greyInfo } = await scanImage
+      .clone()
+      .greyscale()
+      .normalise()
+      .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
     
-    // Convert to Uint8ClampedArray for jsQR
-    const pixelData = new Uint8ClampedArray(data);
+    const greyPixels = new Uint8ClampedArray(greyData);
+    const greyCode = jsQR(greyPixels, greyInfo.width, greyInfo.height);
     
-    // Scan for QR code
-    const code = jsQR(pixelData, info.width, info.height);
-    
-    if (!code) {
-      return { found: false };
+    if (greyCode) {
+      console.log(`[TemplateOCR] QR found in full image (greyscale, ${greyInfo.width}x${greyInfo.height})`);
+      return processQRCode(greyCode.data.trim());
     }
     
-    return processQRCode(code.data.trim());
+    // Try with color as fallback
+    const { data, info } = await scanImage
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    
+    const pixelData = new Uint8ClampedArray(data);
+    const code = jsQR(pixelData, info.width, info.height);
+    
+    if (code) {
+      console.log(`[TemplateOCR] QR found in full image (color, ${info.width}x${info.height})`);
+      return processQRCode(code.data.trim());
+    }
+    
+    console.log(`[TemplateOCR] No QR code found in image after all strategies`);
+    return { found: false };
     
   } catch (error) {
     console.warn("QR code detection failed:", error);
