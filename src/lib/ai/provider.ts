@@ -7,6 +7,7 @@
 
 import type { CutPart } from "@/lib/schema";
 import type { LearningContext } from "@/lib/learning";
+import type { AIPartResponse } from "@/lib/ai/prompts";
 
 // ============================================================
 // TYPES
