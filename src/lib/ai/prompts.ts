@@ -18,7 +18,7 @@ export const VALIDATION_RULES = `
 - Length and Width MUST be positive numbers
 - Typical range: 50mm to 3000mm (standard sheets are 2440×1220mm or 2800×2070mm)
 - If a dimension > 3000mm, set fieldConfidence.length/width to 0.5 and add warning
-- Length MUST be >= Width. If L < W, SWAP them
+- Length is the GRAIN DIRECTION, Width is across grain. Length can be smaller than Width - do NOT swap!
 - If dimensions look like they might be inches, multiply by 25.4 to get mm
 
 ### Quantity Validation
@@ -221,7 +221,7 @@ apply them to relevant parts (sides, doors, etc.) in their notes field.
 
 ## Rules
 1. Dimensions: Always in mm. Convert inches (multiply by 25.4)
-2. Length is always the longer dimension (L >= W) - swap if needed
+2. Length = grain direction, Width = across grain. Do NOT swap even if L < W
 3. Default thickness: 18mm if not specified
 4. Default quantity: 1 if not specified
 5. Confidence: 0.0-1.0 based on how clearly the data was specified
@@ -359,7 +359,7 @@ Return JSON array with this EXACT structure:
 5. **Map groove columns correctly** - check GL and GW columns
 6. **Default thickness: 18mm** if not specified
 7. **Default quantity: 1** if unclear
-8. **Length >= Width** - swap if needed
+8. **Length = grain direction** - do NOT swap even if L < W
 9. **Include row numbers** for verification
 
 ## EXAMPLE PARSING
@@ -552,7 +552,7 @@ Handle ALL dimension formats: "600 x 520", "764*520", "400 by 540", "560 X 397",
 
 ## Rules
 1. Extract EVERY part - don't skip any, even if format is unusual
-2. Length >= Width - swap if needed
+2. Length = grain direction, Width = across grain. Do NOT swap dimensions
 3. Default thickness: 18mm, default quantity: 1
 4. NEVER lose notes - capture ALL contextual information
 5. Lower confidence for parts with ambiguous specifications
@@ -788,7 +788,7 @@ Return a JSON array starting with [ and ending with ]. Example structure:
 
 Each object MUST have:
 - row: row/item number
-- length: dimension in mm (must be >= width)
+- length: dimension in mm (grain direction - can be smaller than width)
 - width: dimension in mm
 - thickness: default 18 if not specified
 - quantity: default 1 if unclear
@@ -891,7 +891,7 @@ The cncOperations object structure:
 6. **Empty means FALSE** - Empty edge/groove cells = false
 7. **Default quantity is 1** - If QTY is unclear, use 1
 8. **Default thickness is 18mm** - Unless clearly specified otherwise
-9. **Verify dimensions** - Length should be >= Width (swap if needed)
+9. **Preserve dimensions as written** - Length = grain direction, do NOT swap even if L < W
 10. **Include row number** - Helps verify all rows extracted
 11. **Don't guess labels** - Use section name (e.g., "White Carcase", "White Door", "White Plywood") if no explicit label
 
@@ -988,7 +988,7 @@ Common handwritten patterns:
 - "① 764x600 = 10" → r:1, l:764, w:600, q:10
 - "2400 x 600 - 8pc" → l:2400, w:600, q:8
 
-Always: length >= width (swap if needed)
+IMPORTANT: Length = grain direction. Do NOT swap even if length < width
 
 ## FINAL CHECK
 
@@ -1103,7 +1103,7 @@ Output:
 1. ALWAYS include "confidence" field (0.0-1.0)
 2. Default quantity to 1 if not spoken
 3. Default all edges/grooves to false unless specifically mentioned
-4. Length must be >= Width (swap if needed)
+4. Length = grain direction - do NOT swap even if L < W
 5. Parse spoken numbers: "seven twenty" = 720, "five sixty" = 560
 6. Return ONLY valid JSON array
 `;

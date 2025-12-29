@@ -289,13 +289,9 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
       warnings.push(`Part ${i + 1}: Quantity ${part.quantity} is unusually high`);
     }
     
-    // Auto-fix: swap length/width if length < width
-    if (part.length < part.width) {
-      const temp = part.length;
-      part.length = part.width;
-      part.width = temp;
-      warnings.push(`Part ${i + 1}: Swapped length and width (length should be >= width)`);
-    }
+    // NOTE: We do NOT auto-swap length/width because in cabinet making,
+    // "Length" is the grain direction dimension, not necessarily the longer dimension.
+    // Width can legitimately be longer than length. Users can swap manually if needed.
   }
   
   logger.debug("✅ [Validation] AI response validated", {

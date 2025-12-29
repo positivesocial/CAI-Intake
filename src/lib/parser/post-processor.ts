@@ -56,7 +56,7 @@ const DEFAULT_OPTIONS: Required<PostProcessorOptions> = {
   maxDimension: 3000,
   minDimension: 10,
   maxQuantity: 500,
-  autoSwapDimensions: true,
+  autoSwapDimensions: false, // Don't auto-swap: in cabinet making, "Length" is grain direction, not necessarily longer
   validMaterialCodes: ["W", "Ply", "B", "M", "MDF", "OAK", "BK", "WH", "NAT"],
   defaultMaterialId: "",
 };
