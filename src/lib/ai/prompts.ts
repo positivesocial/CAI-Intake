@@ -1018,12 +1018,30 @@ These codes are written IN THE EDGE COLUMN, not as checkmarks!
 8. **NO EXPLANATIONS** - Just the JSON array
 9. **PART NAMES** - Copy exactly as written (DOWNSTAIRS not "Downstands")
 
-## DIMENSION READING
+## DIMENSION READING (CRITICAL FOR ACCURACY)
 
-Common handwritten patterns:
+### Handwritten Digit Confusion (BE CAREFUL!)
+- **9 vs 7**: Look for the loop at top. 9 has a loop/circle, 7 doesn't
+- **8 vs 0 vs 6**: 8 has two loops, 0 is oval, 6 has one loop at bottom
+- **4 vs 9**: 4 has a pointed top or cross, 9 has rounded top
+- **1 vs 7**: 1 is straight vertical, 7 has a horizontal stroke at top
+- **5 vs S**: In dimension columns, prefer 5 (numbers expected)
+
+### Common CAI Template Dimensions (use for sanity check)
+- Panel widths: 275, 308, 312, 315, 498, 500, 514, 550, 560, 580, 600, 619, 686
+- Panel lengths: 229, 456, 498, 523, 530, 550, 564, 625, 1173, 2100, 2158, 2198, 2200
+- Common thicknesses: 16, 18, 22, 25
+
+### If a dimension seems wrong:
+- 478 in L column → Could be 498 (check if 9 has a loop)
+- 178 in W column → Could be 180 (very common width)
+- 255 in W column → Could be 275 (check the 5/7)
+
+### Reading patterns:
 - "2400x580 = 38pcs" → l:2400, w:580, q:38
 - "① 764x600 = 10" → r:1, l:764, w:600, q:10
 - "2400 x 600 - 8pc" → l:2400, w:600, q:8
+- Struck-through numbers: Read the CORRECTED value above/beside
 
 IMPORTANT: Length = grain direction. Do NOT swap even if length < width
 
