@@ -18,13 +18,13 @@ import OpenAI from "openai";
  * - gpt-5.2-instant : FASTEST - optimized for quick responses, ideal for OCR (recommended)
  * - gpt-5.2         : Flagship model with enhanced reasoning (slower)
  * - gpt-5.2-pro     : Most capable, for complex tasks (slowest)
- * - gpt-4o          : Previous flagship multimodal model
- * - gpt-4o-mini     : Smaller, faster, cheaper version
+ * - gpt-5-mini          : Previous flagship multimodal model
+ * - gpt-5-mini-mini     : Smaller, faster, cheaper version
  * 
  * Using Instant for best OCR speed while maintaining quality.
  * Update this constant to switch models across all operations.
  */
-const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
+const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-5-mini";
 
 /**
  * Maximum completion tokens for response generation.
