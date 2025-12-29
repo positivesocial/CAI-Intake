@@ -389,15 +389,18 @@ export function generateReviewFlags(
     
     // Check field confidence if available
     if (part.fieldConfidence) {
-      const lowConfidenceFields = Object.entries(part.fieldConfidence)
-        .filter(([_, conf]) => conf !== undefined && conf < 0.6)
+      const entries = Object.entries(part.fieldConfidence) as [string, number | undefined][];
+      const lowConfidenceFields = entries
+        .filter((entry): entry is [string, number] => 
+          entry[1] !== undefined && entry[1] !== null && entry[1] < 0.6
+        )
         .map(([field, conf]) => ({ field, conf }));
       
       for (const { field, conf } of lowConfidenceFields) {
         flags.push({
           partIndex: i,
           field,
-          reason: `Low field confidence for ${field}: ${Math.round((conf as number) * 100)}%`,
+          reason: `Low field confidence for ${field}: ${Math.round(conf * 100)}%`,
           severity: "medium",
           suggestedAction: `Verify ${field} value`,
           currentValue: conf,
