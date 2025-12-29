@@ -758,7 +758,11 @@ export class AnthropicProvider implements AIProvider {
               },
               {
                 type: "text",
-                text: `${prompt}\n\nRespond with JSON only.`,
+                text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. Please extract all parts from this manufacturing document.
+
+${prompt}
+
+Respond with valid JSON only containing the extracted parts array.`,
               },
             ],
           },
@@ -903,7 +907,11 @@ export class AnthropicProvider implements AIProvider {
               },
               {
                 type: "text",
-                text: `${prompt}\n\nRespond with JSON only.`,
+                text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. Please extract all parts from this manufacturing document.
+
+${prompt}
+
+Respond with valid JSON only containing the extracted parts array.`,
               },
             ],
           },
@@ -1193,7 +1201,11 @@ export class AnthropicProvider implements AIProvider {
               },
               {
                 type: "text",
-                text: `${ocrPrompt}\n\nRespond with JSON only.`,
+                text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. Please extract all parts from this manufacturing document.
+
+${ocrPrompt}
+
+Respond with valid JSON only containing the extracted parts array.`,
               },
             ],
           },

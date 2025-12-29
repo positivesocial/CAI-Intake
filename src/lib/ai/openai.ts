@@ -795,7 +795,7 @@ export class OpenAIProvider implements AIProvider {
           {
             role: "user",
             content: [
-              { type: "text", text: prompt },
+              { type: "text", text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. Please extract all parts from this manufacturing document.\n\n${prompt}\n\nRespond with valid JSON only containing the extracted parts array.` },
               { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
             ],
           },
@@ -924,7 +924,7 @@ export class OpenAIProvider implements AIProvider {
           {
             role: "user",
             content: [
-              { type: "text", text: ocrPrompt },
+              { type: "text", text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop. Please extract all parts from this manufacturing document.\n\n${ocrPrompt}\n\nRespond with valid JSON only containing the extracted parts array.` },
               { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
             ],
           },
