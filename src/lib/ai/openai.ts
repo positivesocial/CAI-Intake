@@ -1420,6 +1420,7 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
           cutPart.ops.routing = cutPart.ops.routing || [];
           for (const route of cncRouting) {
             cutPart.ops.routing.push({
+              region: { x: 0, y: 0, L: 100, W: 100 }, // Placeholder region
               profile_id: route,
               notes: route,
             });
