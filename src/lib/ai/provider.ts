@@ -163,7 +163,7 @@ export interface AIProvider {
 // ============================================================
 
 let currentProvider: AIProvider | null = null;
-let providerType: AIProviderType = "openai";
+let providerType: AIProviderType = "resilient"; // Default to resilient for automatic fallback
 
 /**
  * Get the current AI provider instance
@@ -181,9 +181,17 @@ export async function setAIProvider(type: AIProviderType): Promise<AIProvider> {
   if (type === "openai") {
     const { OpenAIProvider } = await import("./openai");
     currentProvider = new OpenAIProvider();
-  } else {
+  } else if (type === "anthropic") {
     const { AnthropicProvider } = await import("./anthropic");
     currentProvider = new AnthropicProvider();
+  } else if (type === "resilient") {
+    // ResilientProvider uses Anthropic as primary and OpenAI as fallback
+    const { ResilientProvider } = await import("./resilient-provider");
+    currentProvider = new ResilientProvider();
+  } else {
+    // Default to resilient
+    const { ResilientProvider } = await import("./resilient-provider");
+    currentProvider = new ResilientProvider();
   }
   
   return currentProvider;

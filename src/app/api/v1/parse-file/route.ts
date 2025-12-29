@@ -350,11 +350,11 @@ export async function POST(request: NextRequest) {
           
           // Calculate quality based on original size
           // Higher quality needed for handwritten text readability
-          let quality = 85;
-          if (originalSizeKB > 10000) quality = 70; // >10MB: 70% quality
-          else if (originalSizeKB > 5000) quality = 75; // >5MB: 75% quality  
-          else if (originalSizeKB > 2000) quality = 80; // >2MB: 80% quality
-          // For smaller images, keep 85% quality
+          // Note: After resize to 1536px max dimension, quality determines final file size
+          let quality = 90;
+          if (originalSizeKB > 10000) quality = 80; // >10MB: 80% quality
+          else if (originalSizeKB > 5000) quality = 85; // >5MB: 85% quality  
+          // For smaller images, keep 90% quality
           
           imageBuffer = await sharpInstance
             .resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, {
@@ -451,7 +451,7 @@ export async function POST(request: NextRequest) {
         mimeType, 
         base64LengthKB: imageSizeKB.toFixed(1),
         estimatedImageTokens,
-        model: "claude-3-5-sonnet-20241022",
+        provider: provider.name,
         streaming: useStreaming,
       });
       
