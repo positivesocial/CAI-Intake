@@ -24,7 +24,7 @@ import OpenAI from "openai";
  * Using Instant for best OCR speed while maintaining quality.
  * Update this constant to switch models across all operations.
  */
-const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-5.2-instant";
+const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 
 /**
  * Maximum completion tokens for response generation.

@@ -15,7 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
  * Claude model to use for all operations.
  * 
  * Available models (as of Dec 2025):
- * - claude-sonnet-4-5-20250514: FASTEST - Sonnet 4.5, excellent for OCR/vision (recommended)
+ * - claude-3-5-sonnet-20241022: FASTEST - Sonnet 4.5, excellent for OCR/vision (recommended)
  * - claude-opus-4-5-20251124: Opus 4.5, most capable but slower
  * - claude-3-5-sonnet-20241022: Previous Sonnet 3.5, good balance of speed/quality
  * - claude-3-opus-20240229: Previous Opus 3, capable but older
@@ -23,7 +23,7 @@ import Anthropic from "@anthropic-ai/sdk";
  * Using Sonnet 4.5 for best OCR speed while maintaining quality.
  * Update this constant to switch models across all operations.
  */
-const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250514";
+const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
 
 /**
  * Maximum tokens for response generation.

@@ -375,7 +375,11 @@ export function autoDetectMapping(headers: string[]): ColumnMapping {
   };
 
   headers.forEach((header, index) => {
-    const normalizedHeader = header.toLowerCase().trim();
+    // Ensure header is a string (Excel cells can be numbers, dates, null, etc.)
+    const headerStr = header != null ? String(header) : "";
+    const normalizedHeader = headerStr.toLowerCase().trim();
+    
+    if (!normalizedHeader) return; // Skip empty headers
 
     for (const [field, regexes] of Object.entries(patterns)) {
       if (mapping[field as keyof ColumnMapping] !== undefined) continue;
@@ -594,5 +598,12 @@ export function detectPartsSheet(sheets: SheetInfo[]): number {
   });
   
   return bestIndex;
+}
+
+
+  return bestIndex;
+}
+
+
 }
 
