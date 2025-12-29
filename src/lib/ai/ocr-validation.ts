@@ -178,6 +178,19 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
   // Compact format uses abbreviated keys: r, l, w, q, m, e, g, n
   if (Array.isArray(parsed) && parsed.length > 0) {
     const first = parsed[0] as Record<string, unknown>;
+    
+    // Log what keys the first object has for debugging
+    logger.info("📦 [Validation] Checking response format", {
+      partsCount: parsed.length,
+      firstObjectKeys: Object.keys(first).slice(0, 10),
+      hasL: 'l' in first,
+      hasW: 'w' in first,
+      hasLength: 'length' in first,
+      hasWidth: 'width' in first,
+      firstObjectPreview: JSON.stringify(first).substring(0, 200),
+    });
+    
+    // Check for compact format (has 'l' and 'w' but NOT 'length')
     const isCompactFormat = 'l' in first && 'w' in first && !('length' in first);
     
     if (isCompactFormat) {
@@ -440,24 +453,83 @@ function extractPartsLeniently(data: unknown): z.infer<typeof AIPartSchema>[] {
       parts.push(result.data);
       schemaValidatedCount++;
     } else {
-      // Try minimal validation (just length/width)
+      // Try minimal validation - handle BOTH verbose format (length/width) AND compact format (l/w)
       if (typeof candidate === "object" && candidate !== null) {
         const obj = candidate as Record<string, unknown>;
-        if (typeof obj.length === "number" && typeof obj.width === "number") {
+        
+        // Check for compact format first (l/w keys)
+        const isCompactFormat = 'l' in obj && 'w' in obj && typeof obj.l === "number" && typeof obj.w === "number";
+        // Check for verbose format (length/width keys)
+        const isVerboseFormat = typeof obj.length === "number" && typeof obj.width === "number";
+        
+        if (isCompactFormat || isVerboseFormat) {
+          // Extract dimensions - prefer compact format if both exist
+          const length = isCompactFormat ? (obj.l as number) : (obj.length as number);
+          const width = isCompactFormat ? (obj.w as number) : (obj.width as number);
+          
+          // Extract other fields - handle both compact and verbose keys
+          const quantity = typeof obj.q === "number" ? obj.q : 
+                          typeof obj.quantity === "number" ? obj.quantity : 1;
+          const thickness = typeof obj.t === "number" ? obj.t : 
+                           typeof obj.thickness === "number" ? obj.thickness : 18;
+          const material = typeof obj.m === "string" ? obj.m : 
+                          typeof obj.material === "string" ? obj.material : undefined;
+          const row = typeof obj.r === "number" ? obj.r : 
+                     typeof obj.row === "number" ? obj.row : undefined;
+          const notes = typeof obj.n === "string" ? obj.n : 
+                       typeof obj.notes === "string" ? obj.notes : undefined;
+          const edgeCode = typeof obj.e === "string" ? obj.e : undefined;
+          const grooveCode = typeof obj.g === "string" ? obj.g : undefined;
+          
           // Create a part preserving ALL properties from the AI response
           const partData: z.infer<typeof AIPartSchema> = {
-            length: obj.length as number,
-            width: obj.width as number,
-            quantity: (typeof obj.quantity === "number" ? obj.quantity : 1) as number,
-            thickness: (typeof obj.thickness === "number" ? obj.thickness : 18) as number,
-            material: typeof obj.material === "string" ? obj.material : undefined,
-            label: typeof obj.label === "string" ? obj.label : undefined,
-            row: typeof obj.row === "number" ? obj.row : undefined,
-            confidence: typeof obj.confidence === "number" ? obj.confidence : 0.6,
+            length,
+            width,
+            quantity,
+            thickness,
+            material,
+            label: typeof obj.label === "string" ? obj.label : (material || `Part ${row || parts.length + 1}`),
+            row,
+            confidence: typeof obj.confidence === "number" ? obj.confidence : 0.8,
             grain: typeof obj.grain === "string" ? obj.grain : undefined,
-            allowRotation: typeof obj.allowRotation === "boolean" ? obj.allowRotation : undefined,
-            notes: typeof obj.notes === "string" ? obj.notes : undefined,
+            allowRotation: typeof obj.allowRotation === "boolean" ? obj.allowRotation : false,
+            notes,
           };
+          
+          // Handle compact edge banding codes (e.g., "2L2W", "2L", "1L1W")
+          if (edgeCode && edgeCode.length > 0) {
+            const upperCode = edgeCode.toUpperCase();
+            const L1 = upperCode.includes("2L") || upperCode.includes("2L2W") || upperCode.includes("4E") || upperCode === "ALL";
+            const L2 = L1;
+            const W1 = upperCode.includes("2W") || upperCode.includes("2L2W") || upperCode.includes("4E") || upperCode === "ALL" || upperCode.includes("1W");
+            const W2 = upperCode.includes("2W") || upperCode.includes("2L2W") || upperCode.includes("4E") || upperCode === "ALL";
+            const edges: string[] = [];
+            if (L1) edges.push("L1");
+            if (L2) edges.push("L2");
+            if (W1) edges.push("W1");
+            if (W2) edges.push("W2");
+            
+            partData.edgeBanding = {
+              detected: edges.length > 0,
+              L1, L2, W1, W2,
+              edges,
+              description: edgeCode,
+            };
+          }
+          
+          // Handle compact groove codes (e.g., "GL", "GW", "GL+GW")
+          if (grooveCode && grooveCode.length > 0) {
+            const upperGroove = grooveCode.toUpperCase();
+            const GL = upperGroove.includes("GL") || upperGroove.includes("L");
+            const GW = upperGroove.includes("GW") || upperGroove.includes("W");
+            
+            partData.grooving = {
+              detected: GL || GW,
+              GL,
+              GW,
+              description: grooveCode,
+            };
+          }
           
           // Preserve nested operation objects - CRITICAL for edgeBanding, grooving, drilling, cncOperations
           if (obj.edgeBanding && typeof obj.edgeBanding === "object") {
