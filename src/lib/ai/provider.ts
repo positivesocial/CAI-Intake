@@ -563,25 +563,26 @@ export function expandCompactParts(compactParts: CompactPart[]): ParsedPartResul
       allow_rotation: false,
       group_id: undefined,
       ops: {
-        edgebanding: edgeBanding.detected ? {
-          L1: edgeBanding.L1 ? { edgeband_id: undefined } : undefined,
-          L2: edgeBanding.L2 ? { edgeband_id: undefined } : undefined,
-          W1: edgeBanding.W1 ? { edgeband_id: undefined } : undefined,
-          W2: edgeBanding.W2 ? { edgeband_id: undefined } : undefined,
+        edging: edgeBanding.detected ? {
+          edges: {
+            ...(edgeBanding.L1 ? { L1: { apply: true } } : {}),
+            ...(edgeBanding.L2 ? { L2: { apply: true } } : {}),
+            ...(edgeBanding.W1 ? { W1: { apply: true } } : {}),
+            ...(edgeBanding.W2 ? { W2: { apply: true } } : {}),
+          },
         } : undefined,
         grooves: grooving.detected ? [{
-          edge: grooving.GL ? "L1" : "W1",
+          side: (grooving.GL ? "L1" : "W1") as "L1" | "L2" | "W1" | "W2",
           offset_mm: 0,
-          width_mm: 4,
           depth_mm: 10,
         }] : undefined,
-        drilling: hasDrilling ? [{
-          pattern_id: undefined,
-          description: notes,
+        holes: hasDrilling ? [{
+          notes: notes,
         }] : undefined,
-        cnc: hasCNC ? [{
-          operation_id: undefined,
-          description: notes,
+        custom_cnc_ops: hasCNC ? [{
+          op_type: "custom",
+          payload: { description: notes },
+          notes: notes,
         }] : undefined,
       },
       notes: notes ? { operator: notes } : undefined,
