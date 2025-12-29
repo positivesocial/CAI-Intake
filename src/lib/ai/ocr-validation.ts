@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { parseAIResponseJSON } from "./provider";
 
 // ============================================================
 // ZOD SCHEMAS
@@ -129,18 +130,25 @@ export interface ValidationResult {
 export function validateAIResponse(rawResponse: string): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
-  let parsed: unknown;
   
-  // Step 1: Parse JSON
-  try {
-    parsed = JSON.parse(rawResponse);
-  } catch (error) {
-    errors.push(`JSON parse failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+  // Step 1: Parse JSON using the robust parser that handles markdown fences
+  const parsed = parseAIResponseJSON<unknown>(rawResponse);
+  
+  if (parsed === null) {
+    errors.push("Failed to parse AI response as JSON");
     
     // Try to recover partial data
     const partialData = tryRecoverPartialJSON(rawResponse);
     if (partialData.length > 0) {
       warnings.push(`Recovered ${partialData.length} parts from malformed JSON`);
+      
+      // If we recovered parts, return them as a partial success
+      return {
+        success: true,
+        parts: partialData as AIPartSchema[],
+        errors: [],
+        warnings,
+      };
     }
     
     return {
@@ -235,15 +243,25 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
 function tryRecoverPartialJSON(raw: string): unknown[] {
   const parts: unknown[] = [];
   
-  // Regex to find complete part objects
-  const partPattern = /\{[^{}]*"length"\s*:\s*\d+\.?\d*[^{}]*"width"\s*:\s*\d+\.?\d*[^{}]*\}/g;
-  const matches = raw.match(partPattern);
+  // First, strip markdown fences if present
+  let cleanedRaw = raw.trim();
+  const openingFenceMatch = cleanedRaw.match(/^```(?:json)?\s*([\s\S]*)/);
+  if (openingFenceMatch) {
+    cleanedRaw = openingFenceMatch[1].trim();
+  }
+  // Also remove closing fence if present
+  cleanedRaw = cleanedRaw.replace(/```\s*$/, "").trim();
+  
+  // Strategy 1: Find complete part objects with nested structures
+  // This regex finds objects that contain length and width, allowing for nested braces
+  const complexPartPattern = /\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*"(?:length|row)"\s*:\s*\d+(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}/g;
+  const matches = cleanedRaw.match(complexPartPattern);
   
   if (matches) {
     for (const match of matches) {
       try {
         const part = JSON.parse(match);
-        if (typeof part.length === "number" && typeof part.width === "number") {
+        if ((typeof part.length === "number" && typeof part.width === "number") || part.row !== undefined) {
           parts.push(part);
         }
       } catch {
@@ -252,7 +270,96 @@ function tryRecoverPartialJSON(raw: string): unknown[] {
     }
   }
   
+  // Strategy 2: If no matches, try simpler pattern for flat objects
+  if (parts.length === 0) {
+    const simplePartPattern = /\{[^{}]*"length"\s*:\s*\d+\.?\d*[^{}]*"width"\s*:\s*\d+\.?\d*[^{}]*\}/g;
+    const simpleMatches = cleanedRaw.match(simplePartPattern);
+    
+    if (simpleMatches) {
+      for (const match of simpleMatches) {
+        try {
+          const part = JSON.parse(match);
+          if (typeof part.length === "number" && typeof part.width === "number") {
+            parts.push(part);
+          }
+        } catch {
+          // Skip malformed objects
+        }
+      }
+    }
+  }
+  
+  // Strategy 3: Try to extract by finding balanced braces for each object
+  if (parts.length === 0) {
+    const extractedObjects = extractBalancedObjects(cleanedRaw);
+    for (const obj of extractedObjects) {
+      if ((typeof obj.length === "number" && typeof obj.width === "number") || obj.row !== undefined) {
+        parts.push(obj);
+      }
+    }
+  }
+  
+  logger.debug("🔧 [OCR Validation] Recovered partial JSON", {
+    rawLength: raw.length,
+    partsRecovered: parts.length,
+  });
+  
   return parts;
+}
+
+/**
+ * Extract balanced JSON objects from a potentially truncated string
+ */
+function extractBalancedObjects(text: string): Record<string, unknown>[] {
+  const objects: Record<string, unknown>[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    
+    if (char === "\\") {
+      escape = true;
+      continue;
+    }
+    
+    if (char === '"' && !escape) {
+      inString = !inString;
+      continue;
+    }
+    
+    if (!inString) {
+      if (char === "{") {
+        if (depth === 0) {
+          start = i;
+        }
+        depth++;
+      } else if (char === "}") {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          const objectStr = text.slice(start, i + 1);
+          try {
+            const obj = JSON.parse(objectStr);
+            if (typeof obj === "object" && obj !== null) {
+              objects.push(obj);
+            }
+          } catch {
+            // Skip invalid objects
+          }
+          start = -1;
+        }
+      }
+    }
+  }
+  
+  return objects;
 }
 
 /**

@@ -10,6 +10,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { parseAIResponseJSON } from "./provider";
 
 // ============================================================
 // TYPES
@@ -220,10 +221,16 @@ export function detectTruncation(
     };
   }
   
-  // Check 2: Response doesn't end with valid JSON terminator
-  if (!trimmed.endsWith("]") && !trimmed.endsWith("}")) {
+  // Check 2: Strip markdown fences and check for valid JSON terminator
+  let cleanedResponse = trimmed;
+  const openingFenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*)/);
+  if (openingFenceMatch) {
+    cleanedResponse = openingFenceMatch[1].replace(/```\s*$/, "").trim();
+  }
+  
+  if (!cleanedResponse.endsWith("]") && !cleanedResponse.endsWith("}")) {
     // Count how many parts we got before truncation
-    const partMatches = trimmed.match(/"row"\s*:/g) || [];
+    const partMatches = cleanedResponse.match(/"row"\s*:/g) || [];
     return {
       isTruncated: true,
       reason: "Response ends without valid JSON terminator",
@@ -231,10 +238,18 @@ export function detectTruncation(
     };
   }
   
-  // Check 3: Try to parse JSON
+  // Check 3: Try to parse JSON using robust parser
   try {
-    const parsed = JSON.parse(trimmed);
-    const parts = Array.isArray(parsed) ? parsed : parsed?.parts;
+    const parsed = parseAIResponseJSON<{ parts?: unknown[] } | unknown[]>(trimmed);
+    if (!parsed) {
+      const partMatches = cleanedResponse.match(/"row"\s*:/g) || [];
+      return {
+        isTruncated: true,
+        reason: "Failed to parse response as JSON",
+        partialParts: partMatches.length,
+      };
+    }
+    const parts = Array.isArray(parsed) ? parsed : (parsed as { parts?: unknown[] })?.parts;
     
     if (!parts || !Array.isArray(parts)) {
       return {
@@ -266,12 +281,12 @@ export function detectTruncation(
     
     return { isTruncated: false };
     
-  } catch (error) {
-    // JSON parse failed - likely truncated
-    const partMatches = trimmed.match(/"row"\s*:/g) || [];
+  } catch {
+    // Fallback - count row patterns
+    const partMatches = cleanedResponse.match(/"row"\s*:/g) || [];
     return {
       isTruncated: true,
-      reason: `JSON parse failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      reason: "Response parsing failed unexpectedly",
       partialParts: partMatches.length,
     };
   }
