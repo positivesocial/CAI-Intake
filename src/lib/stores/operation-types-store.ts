@@ -9,6 +9,7 @@
  */
 
 import { create } from "zustand";
+import { useEffect } from "react";
 import type { 
   GrooveOperation, 
   DrillingOperation, 
@@ -320,14 +321,23 @@ function formatSidesCode(sides: string[]): string {
 export function useOperationTypes() {
   const store = useOperationTypesStore();
   
-  // Fetch all operations if not already loaded
-  if (
-    store.grooveOperations.length === 0 &&
-    !store.isLoadingGrooveOps &&
-    !store.grooveOpsError
-  ) {
-    store.fetchAllOperations();
-  }
+  // Fetch all operations on mount if not already loaded
+  // Using useEffect to avoid state updates during render
+  useEffect(() => {
+    const shouldFetch = 
+      store.grooveOperations.length === 0 &&
+      !store.isLoadingGrooveOps &&
+      !store.grooveOpsError;
+    
+    if (shouldFetch) {
+      store.fetchAllOperations();
+    }
+  }, [
+    store.grooveOperations.length,
+    store.isLoadingGrooveOps,
+    store.grooveOpsError,
+    store.fetchAllOperations,
+  ]);
 
   return {
     // Operation lists - new names only
