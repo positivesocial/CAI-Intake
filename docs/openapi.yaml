@@ -1,0 +1,1044 @@
+openapi: 3.1.0
+info:
+  title: CAI Intake API
+  version: 1.0.0
+  description: |
+    The CAI Intake API provides programmatic access to cutlist management, parsing, 
+    and export functionality for panel cutting optimization software.
+    
+    ## Authentication
+    All API requests require authentication using either:
+    - Bearer token (for user sessions)
+    - API key (for external integrations)
+    
+    ## Rate Limiting
+    Requests are rate-limited based on your subscription plan:
+    - Free: 30 req/min, 500 req/day
+    - Starter: 60 req/min, 2,000 req/day  
+    - Professional: 120 req/min, 10,000 req/day
+    - Enterprise: Custom limits
+    
+    Rate limit headers are included in all responses.
+  termsOfService: https://cai-intake.io/terms
+  contact:
+    name: CAI Intake Support
+    email: api-support@cai-intake.io
+    url: https://cai-intake.io/support
+  license:
+    name: Proprietary
+    url: https://cai-intake.io/license
+
+servers:
+  - url: https://api.cai-intake.io/v1
+    description: Production
+  - url: http://localhost:3000/api/v1
+    description: Development
+
+tags:
+  - name: Health
+    description: System health and status
+  - name: Cutlists
+    description: Cutlist management
+  - name: Parts
+    description: Part management within cutlists
+  - name: Parsing
+    description: Text and file parsing
+  - name: Exports
+    description: Export cutlists to various formats
+  - name: Materials
+    description: Material library management
+  - name: Edgebands
+    description: Edgeband library management
+  - name: Files
+    description: File upload and management
+  - name: Search
+    description: Global search
+  - name: Team
+    description: Team member management
+  - name: Webhooks
+    description: Webhook management
+  - name: API Keys
+    description: API key management
+  - name: Subscription
+    description: Subscription and billing
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Returns system health status including database and external service connectivity.
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: System is unhealthy
+
+  /cutlists:
+    get:
+      tags: [Cutlists]
+      summary: List cutlists
+      operationId: listCutlists
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, pending, processing, completed, archived]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, createdAt, updatedAt, status]
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: List of cutlists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cutlists:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CutlistSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Cutlists]
+      summary: Create cutlist
+      operationId: createCutlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCutlistRequest'
+      responses:
+        '201':
+          description: Cutlist created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  cutlist:
+                    $ref: '#/components/schemas/Cutlist'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /cutlists/{id}:
+    get:
+      tags: [Cutlists]
+      summary: Get cutlist
+      operationId: getCutlist
+      parameters:
+        - $ref: '#/components/parameters/CutlistId'
+      responses:
+        '200':
+          description: Cutlist details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cutlist:
+                    $ref: '#/components/schemas/Cutlist'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Cutlists]
+      summary: Update cutlist
+      operationId: updateCutlist
+      parameters:
+        - $ref: '#/components/parameters/CutlistId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCutlistRequest'
+      responses:
+        '200':
+          description: Cutlist updated
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Cutlists]
+      summary: Delete cutlist
+      operationId: deleteCutlist
+      parameters:
+        - $ref: '#/components/parameters/CutlistId'
+      responses:
+        '200':
+          description: Cutlist deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cutlists/{id}/parts:
+    get:
+      tags: [Parts]
+      summary: List parts
+      operationId: listParts
+      parameters:
+        - $ref: '#/components/parameters/CutlistId'
+      responses:
+        '200':
+          description: List of parts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  parts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Part'
+                  count:
+                    type: integer
+    post:
+      tags: [Parts]
+      summary: Add parts
+      operationId: addParts
+      parameters:
+        - $ref: '#/components/parameters/CutlistId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parts:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CreatePartRequest'
+      responses:
+        '201':
+          description: Parts added
+    patch:
+      tags: [Parts]
+      summary: Bulk update parts
+      operationId: bulkUpdateParts
+      parameters:
+        - $ref: '#/components/parameters/CutlistId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                updates:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/UpdatePartRequest'
+      responses:
+        '200':
+          description: Parts updated
+    delete:
+      tags: [Parts]
+      summary: Bulk delete parts
+      operationId: deleteParts
+      parameters:
+        - $ref: '#/components/parameters/CutlistId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                part_ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Parts deleted
+
+  /cutlists/{id}/duplicate:
+    post:
+      tags: [Cutlists]
+      summary: Duplicate cutlist
+      operationId: duplicateCutlist
+      parameters:
+        - $ref: '#/components/parameters/CutlistId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                include_parts:
+                  type: boolean
+                  default: true
+                include_files:
+                  type: boolean
+                  default: false
+      responses:
+        '201':
+          description: Cutlist duplicated
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cutlists/{id}/stats:
+    get:
+      tags: [Cutlists]
+      summary: Get cutlist statistics
+      operationId: getCutlistStats
+      parameters:
+        - $ref: '#/components/parameters/CutlistId'
+      responses:
+        '200':
+          description: Cutlist statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CutlistStats'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /parse-text:
+    post:
+      tags: [Parsing]
+      summary: Parse text
+      operationId: parseText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  maxLength: 500000
+                options:
+                  type: object
+                  properties:
+                    units:
+                      type: string
+                      enum: [mm, cm, inch]
+                    default_thickness_mm:
+                      type: number
+                    default_material_id:
+                      type: string
+      responses:
+        '200':
+          description: Parsed parts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  parts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Part'
+                  parse_method:
+                    type: string
+                  processing_time_ms:
+                    type: integer
+
+  /parse-file:
+    post:
+      tags: [Parsing]
+      summary: Parse file
+      operationId: parseFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                options:
+                  type: string
+      responses:
+        '200':
+          description: Parse job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+
+  /exports:
+    post:
+      tags: [Exports]
+      summary: Create export
+      operationId: createExport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cutlist_id, format]
+              properties:
+                cutlist_id:
+                  type: string
+                format:
+                  type: string
+                  enum: [json, csv, maxcut, cutlistplus, cutrite, optimik, cai2d]
+                options:
+                  type: object
+      responses:
+        '200':
+          description: Export file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+    get:
+      tags: [Exports]
+      summary: List export formats
+      operationId: listExportFormats
+      responses:
+        '200':
+          description: Available formats
+
+  /search:
+    get:
+      tags: [Search]
+      summary: Global search
+      operationId: search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: types
+          in: query
+          schema:
+            type: string
+            description: Comma-separated list of types to search
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  query:
+                    type: string
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SearchResult'
+                  total:
+                    type: integer
+
+  /bulk:
+    post:
+      tags: [Cutlists]
+      summary: Bulk operations
+      operationId: bulkOperations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      operation:
+                        type: string
+                      ids:
+                        type: array
+                        items:
+                          type: string
+                      data:
+                        type: object
+      responses:
+        '200':
+          description: Bulk operation results
+
+  /materials:
+    get:
+      tags: [Materials]
+      summary: List materials
+      operationId: listMaterials
+      responses:
+        '200':
+          description: List of materials
+    post:
+      tags: [Materials]
+      summary: Create material
+      operationId: createMaterial
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMaterialRequest'
+      responses:
+        '201':
+          description: Material created
+
+  /edgebands:
+    get:
+      tags: [Edgebands]
+      summary: List edgebands
+      operationId: listEdgebands
+      responses:
+        '200':
+          description: List of edgebands
+    post:
+      tags: [Edgebands]
+      summary: Create edgeband
+      operationId: createEdgeband
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEdgebandRequest'
+      responses:
+        '201':
+          description: Edgeband created
+
+  /files:
+    get:
+      tags: [Files]
+      summary: List files
+      operationId: listFiles
+      responses:
+        '200':
+          description: List of files
+    post:
+      tags: [Files]
+      summary: Upload file
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                kind:
+                  type: string
+      responses:
+        '201':
+          description: File uploaded
+
+  /team:
+    get:
+      tags: [Team]
+      summary: List team members
+      operationId: listTeamMembers
+      responses:
+        '200':
+          description: List of team members
+    post:
+      tags: [Team]
+      summary: Invite team member
+      operationId: inviteTeamMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [manager, operator, viewer]
+      responses:
+        '201':
+          description: Invitation sent
+
+  /webhooks:
+    get:
+      tags: [Webhooks]
+      summary: List webhooks
+      operationId: listWebhooks
+      responses:
+        '200':
+          description: List of webhooks
+    post:
+      tags: [Webhooks]
+      summary: Create webhook
+      operationId: createWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookRequest'
+      responses:
+        '201':
+          description: Webhook created
+
+  /api-keys:
+    get:
+      tags: [API Keys]
+      summary: List API keys
+      operationId: listApiKeys
+      responses:
+        '200':
+          description: List of API keys
+    post:
+      tags: [API Keys]
+      summary: Create API key
+      operationId: createApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: API key created
+
+  /subscription:
+    get:
+      tags: [Subscription]
+      summary: Get subscription
+      operationId: getSubscription
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    CutlistId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasMore:
+          type: boolean
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        uptime_seconds:
+          type: integer
+        services:
+          type: object
+
+    Size:
+      type: object
+      properties:
+        L:
+          type: number
+        W:
+          type: number
+
+    Part:
+      type: object
+      properties:
+        id:
+          type: string
+        part_id:
+          type: string
+        label:
+          type: string
+        qty:
+          type: integer
+        size:
+          $ref: '#/components/schemas/Size'
+        thickness_mm:
+          type: number
+        material_id:
+          type: string
+        allow_rotation:
+          type: boolean
+        group_id:
+          type: string
+        ops:
+          type: object
+        notes:
+          type: object
+
+    CreatePartRequest:
+      type: object
+      required: [part_id, qty, size, thickness_mm, material_id]
+      properties:
+        part_id:
+          type: string
+        label:
+          type: string
+        qty:
+          type: integer
+        size:
+          $ref: '#/components/schemas/Size'
+        thickness_mm:
+          type: number
+        material_id:
+          type: string
+        allow_rotation:
+          type: boolean
+        group_id:
+          type: string
+        ops:
+          type: object
+        notes:
+          type: object
+
+    UpdatePartRequest:
+      type: object
+      required: [part_id]
+      properties:
+        part_id:
+          type: string
+        label:
+          type: string
+        qty:
+          type: integer
+        size:
+          $ref: '#/components/schemas/Size'
+        thickness_mm:
+          type: number
+        material_id:
+          type: string
+        allow_rotation:
+          type: boolean
+        group_id:
+          type: string
+        ops:
+          type: object
+        notes:
+          type: object
+
+    CutlistSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        parts_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Cutlist:
+      allOf:
+        - $ref: '#/components/schemas/CutlistSummary'
+        - type: object
+          properties:
+            doc_id:
+              type: string
+            description:
+              type: string
+            project_name:
+              type: string
+            customer_name:
+              type: string
+            capabilities:
+              type: object
+            parts:
+              type: array
+              items:
+                $ref: '#/components/schemas/Part'
+
+    CreateCutlistRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        project_name:
+          type: string
+        customer_name:
+          type: string
+        capabilities:
+          type: object
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreatePartRequest'
+
+    UpdateCutlistRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        project_name:
+          type: string
+        customer_name:
+          type: string
+        status:
+          type: string
+        capabilities:
+          type: object
+
+    CutlistStats:
+      type: object
+      properties:
+        cutlist_id:
+          type: string
+        unique_parts:
+          type: integer
+        total_pieces:
+          type: integer
+        total_area_sqm:
+          type: number
+        total_perimeter_m:
+          type: number
+        materials:
+          type: array
+          items:
+            type: object
+        edge_banding:
+          type: array
+          items:
+            type: object
+        operations:
+          type: array
+          items:
+            type: object
+
+    SearchResult:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        subtitle:
+          type: string
+        metadata:
+          type: object
+
+    CreateMaterialRequest:
+      type: object
+      required: [material_id, name, thickness_mm]
+      properties:
+        material_id:
+          type: string
+        name:
+          type: string
+        thickness_mm:
+          type: number
+        core_type:
+          type: string
+        grain:
+          type: string
+        finish:
+          type: string
+
+    CreateEdgebandRequest:
+      type: object
+      required: [edgeband_id, name, thickness_mm]
+      properties:
+        edgeband_id:
+          type: string
+        name:
+          type: string
+        thickness_mm:
+          type: number
+        width_mm:
+          type: number
+        material:
+          type: string
+        color_code:
+          type: string
+
+    CreateWebhookRequest:
+      type: object
+      required: [url, events]
+      properties:
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        is_active:
+          type: boolean
+
+    CreateApiKeyRequest:
+      type: object
+      required: [name, scopes]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    SubscriptionResponse:
+      type: object
+      properties:
+        subscription:
+          type: object
+          properties:
+            planId:
+              type: string
+            planName:
+              type: string
+            status:
+              type: string
+            billingInterval:
+              type: string
+        usage:
+          type: object
+        limits:
+          type: object
+        plan:
+          type: object
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
