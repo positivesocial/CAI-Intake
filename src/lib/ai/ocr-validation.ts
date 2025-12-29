@@ -453,33 +453,69 @@ function extractPartsLeniently(data: unknown): z.infer<typeof AIPartSchema>[] {
       parts.push(result.data);
       schemaValidatedCount++;
     } else {
-      // Try minimal validation - handle BOTH verbose format (length/width) AND compact format (l/w)
+      // Try minimal validation - handle ALL possible formats from AI
       if (typeof candidate === "object" && candidate !== null) {
         const obj = candidate as Record<string, unknown>;
         
-        // Check for compact format first (l/w keys)
-        const isCompactFormat = 'l' in obj && 'w' in obj && typeof obj.l === "number" && typeof obj.w === "number";
-        // Check for verbose format (length/width keys)
-        const isVerboseFormat = typeof obj.length === "number" && typeof obj.width === "number";
+        // Helper to extract a number from various formats (number, string, or nested object)
+        const extractNumber = (keys: string[]): number | undefined => {
+          for (const key of keys) {
+            const val = obj[key];
+            if (typeof val === "number" && !isNaN(val) && val > 0) return val;
+            if (typeof val === "string") {
+              const parsed = parseFloat(val.replace(/[^\d.]/g, ""));
+              if (!isNaN(parsed) && parsed > 0) return parsed;
+            }
+          }
+          // Check for nested formats like {size: {length: 720}} or {dimensions: {l: 720}}
+          const nested = obj.size || obj.dimensions || obj.dim;
+          if (typeof nested === "object" && nested !== null) {
+            const nestedObj = nested as Record<string, unknown>;
+            for (const key of keys) {
+              const val = nestedObj[key];
+              if (typeof val === "number" && !isNaN(val) && val > 0) return val;
+              if (typeof val === "string") {
+                const parsed = parseFloat(val.replace(/[^\d.]/g, ""));
+                if (!isNaN(parsed) && parsed > 0) return parsed;
+              }
+            }
+          }
+          return undefined;
+        };
         
-        if (isCompactFormat || isVerboseFormat) {
-          // Extract dimensions - prefer compact format if both exist
-          const length = isCompactFormat ? (obj.l as number) : (obj.length as number);
-          const width = isCompactFormat ? (obj.w as number) : (obj.width as number);
-          
-          // Extract other fields - handle both compact and verbose keys
-          const quantity = typeof obj.q === "number" ? obj.q : 
-                          typeof obj.quantity === "number" ? obj.quantity : 1;
-          const thickness = typeof obj.t === "number" ? obj.t : 
-                           typeof obj.thickness === "number" ? obj.thickness : 18;
-          const material = typeof obj.m === "string" ? obj.m : 
-                          typeof obj.material === "string" ? obj.material : undefined;
-          const row = typeof obj.r === "number" ? obj.r : 
-                     typeof obj.row === "number" ? obj.row : undefined;
-          const notes = typeof obj.n === "string" ? obj.n : 
-                       typeof obj.notes === "string" ? obj.notes : undefined;
-          const edgeCode = typeof obj.e === "string" ? obj.e : undefined;
-          const grooveCode = typeof obj.g === "string" ? obj.g : undefined;
+        // Helper to extract a string from various formats
+        const extractString = (keys: string[]): string | undefined => {
+          for (const key of keys) {
+            const val = obj[key];
+            if (typeof val === "string" && val.trim().length > 0) return val.trim();
+          }
+          return undefined;
+        };
+        
+        // Extract dimensions with fallbacks for all possible key names
+        const length = extractNumber(["l", "L", "length", "Length", "LENGTH", "len", "long", "x"]);
+        const width = extractNumber(["w", "W", "width", "Width", "WIDTH", "wid", "short", "y"]);
+        
+        // Log what we found for debugging
+        if (candidates.indexOf(candidate) === 0) {
+          logger.info("🔍 [Validation] First part extraction attempt", {
+            keys: Object.keys(obj).slice(0, 15),
+            lengthFound: length,
+            widthFound: width,
+            objPreview: JSON.stringify(obj).substring(0, 300),
+          });
+        }
+        
+        if (length !== undefined && width !== undefined && length > 0 && width > 0) {
+          // Extract other fields - handle all possible key names
+          const quantity = extractNumber(["q", "Q", "qty", "Qty", "QTY", "quantity", "Quantity", "pcs", "count", "no"]) || 1;
+          const thickness = extractNumber(["t", "T", "thk", "Thk", "THK", "thickness", "Thickness", "thick"]) || 18;
+          const material = extractString(["m", "M", "mat", "Mat", "MAT", "material", "Material", "MATERIAL", "colour", "color", "board"]);
+          const row = extractNumber(["r", "R", "row", "Row", "ROW", "no", "#", "item", "num", "number"]);
+          const notes = extractString(["n", "N", "note", "notes", "Note", "Notes", "NOTES", "description", "desc", "remark", "remarks"]);
+          const label = extractString(["label", "Label", "LABEL", "name", "Name", "NAME", "part", "Part", "partName", "part_name", "description"]) || material || `Part ${row || parts.length + 1}`;
+          const edgeCode = extractString(["e", "E", "edge", "Edge", "EDGE", "edging", "edgeBand", "edge_band", "eb"]);
+          const grooveCode = extractString(["g", "G", "groove", "Groove", "GROOVE", "grv", "slot"]);
           
           // Create a part preserving ALL properties from the AI response
           const partData: z.infer<typeof AIPartSchema> = {
