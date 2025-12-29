@@ -42,6 +42,7 @@ export type ErrorCategory =
   | "INVALID_RESPONSE"
   | "TIMEOUT"
   | "CONTENT_FILTER"
+  | "BILLING_ERROR"
   | "API_ERROR"
   | "UNKNOWN";
 
