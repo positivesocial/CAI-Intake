@@ -179,7 +179,18 @@ export function validateAIResponse(rawResponse: string): ValidationResult {
   if (Array.isArray(parsed) && parsed.length > 0) {
     const first = parsed[0] as Record<string, unknown>;
     
-    // Log what keys the first object has for debugging
+    // Log what keys the first object has for debugging - HIGHLY VISIBLE
+    console.log("\n\n📦📦📦 ========== [Validation] RESPONSE FORMAT ANALYSIS ========== 📦📦📦");
+    console.log("📦 Parts count:", parsed.length);
+    console.log("📦 First object keys:", Object.keys(first));
+    console.log("📦 Has 'l':", 'l' in first, "| Has 'w':", 'w' in first);
+    console.log("📦 Has 'length':", 'length' in first, "| Has 'width':", 'width' in first);
+    console.log("📦 First 3 objects:");
+    for (let i = 0; i < Math.min(3, parsed.length); i++) {
+      console.log(`📦 Object ${i}:`, JSON.stringify(parsed[i]).substring(0, 500));
+    }
+    console.log("📦📦📦 ========== END FORMAT ANALYSIS ========== 📦📦📦\n\n");
+    
     logger.info("📦 [Validation] Checking response format", {
       partsCount: parsed.length,
       firstObjectKeys: Object.keys(first).slice(0, 10),
