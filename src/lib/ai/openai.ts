@@ -1367,20 +1367,18 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         }
       }
       
-      // 2. Map CNC operations from AI response (aiPart.cncOperations)
-      if (aiPart.cncOperations?.detected) {
+      // 2. Map drilling operations (SEPARATE from CNC)
+      if (aiPart.drilling?.detected) {
         cutPart.ops = cutPart.ops || {};
         
-        const cnc = aiPart.cncOperations;
-        const cncHoles = cnc.holes || [];
-        const cncDrilling = cnc.drilling || [];
-        const cncRouting = cnc.routing || [];
-        const cncPockets = cnc.pockets || [];
+        const drill = aiPart.drilling;
+        const drillHoles = drill.holes || [];
+        const drillPatterns = drill.patterns || [];
         
         // Map holes
-        if (cncHoles.length > 0) {
+        if (drillHoles.length > 0) {
           cutPart.ops.holes = cutPart.ops.holes || [];
-          for (const hole of cncHoles) {
+          for (const hole of drillHoles) {
             cutPart.ops.holes.push({
               pattern_id: hole,
               notes: hole,
@@ -1388,16 +1386,34 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
           }
         }
         
-        // Map drilling as holes
-        if (cncDrilling.length > 0) {
+        // Map drilling patterns as holes
+        if (drillPatterns.length > 0) {
           cutPart.ops.holes = cutPart.ops.holes || [];
-          for (const drill of cncDrilling) {
+          for (const pattern of drillPatterns) {
             cutPart.ops.holes.push({
-              pattern_id: drill,
-              notes: drill,
+              pattern_id: pattern,
+              notes: pattern,
             });
           }
         }
+        
+        // Store drilling description in notes
+        if (drill.description) {
+          cutPart.notes = {
+            ...cutPart.notes,
+            operator: (cutPart.notes?.operator || "") + (cutPart.notes?.operator ? "; " : "") + drill.description,
+          };
+        }
+      }
+      
+      // 3. Map CNC operations (routing, pockets - NOT drilling)
+      if (aiPart.cncOperations?.detected) {
+        cutPart.ops = cutPart.ops || {};
+        
+        const cnc = aiPart.cncOperations;
+        const cncRouting = cnc.routing || [];
+        const cncPockets = cnc.pockets || [];
+        const cncCustom = cnc.custom || [];
         
         // Map routing
         if (cncRouting.length > 0) {
@@ -1422,6 +1438,18 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
           }
         }
         
+        // Map custom CNC ops
+        if (cncCustom.length > 0) {
+          cutPart.ops.custom_cnc_ops = cutPart.ops.custom_cnc_ops || [];
+          for (const custom of cncCustom) {
+            cutPart.ops.custom_cnc_ops.push({
+              op_type: "custom",
+              payload: { description: custom },
+              notes: custom,
+            });
+          }
+        }
+        
         // Store CNC description in notes
         if (cnc.description) {
           cutPart.notes = {
@@ -1431,7 +1459,7 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         }
       }
       
-      // 3. ALSO post-process notes for additional operations (in case AI missed them)
+      // 4. ALSO post-process notes for additional operations (in case AI missed them)
       const allText = `${cleanLabel} ${aiPart.notes || ""}`.toLowerCase();
       const extractedOps = this.extractOperationsFromText(allText, aiPart);
       

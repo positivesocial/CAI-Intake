@@ -100,12 +100,17 @@ Return a JSON array of parts with this structure:
       "GW": false,
       "description": "groove on length"
     },
-    "cncOperations": {
+    "drilling": {
       "detected": false,
       "holes": [],
-      "drilling": [],
+      "patterns": [],
+      "description": ""
+    },
+    "cncOperations": {
+      "detected": false,
       "routing": [],
       "pockets": [],
+      "custom": [],
       "description": ""
     },
     "notes": "Any special instructions",
@@ -146,19 +151,28 @@ Return a JSON array of parts with this structure:
 }
 \`\`\`
 
-## CNC Operations Object Structure (IMPORTANT)
+## Drilling Operations Object Structure (SEPARATE FROM CNC!)
 \`\`\`json
 {
-  "detected": true,           // true if ANY CNC operation present
-  "holes": ["H2", "5mm shelf pins", "32mm system"],  // Hole patterns detected
-  "drilling": ["confirmat", "hinge holes", "shelf pin holes"],  // Drilling operations
-  "routing": ["radius R3", "finger pull", "profile edge"],  // Routing operations
-  "pockets": ["handle pocket", "hinge cup", "cable grommet"],  // Pocket/recess operations
-  "description": "drill H2, radius R3 on corners"
+  "detected": true,           // true if ANY drilling/hole operation present
+  "holes": ["H2", "5mm shelf pins", "32mm system"],  // Hole pattern codes
+  "patterns": ["confirmat", "hinge holes", "shelf pin holes"],  // Drilling pattern names
+  "description": "drill H2, shelf pins 5mm"
 }
 \`\`\`
 
-## CNC/Drilling Detection (CRITICAL - Look for these!)
+## CNC Operations Object Structure (routing, pockets - NOT drilling!)
+\`\`\`json
+{
+  "detected": true,           // true if ANY CNC routing/pocket operation present
+  "routing": ["radius R3", "finger pull", "profile edge"],  // Routing operations
+  "pockets": ["handle pocket", "hinge cup", "cable grommet"],  // Pocket/recess operations
+  "custom": ["special machining", "complex profile"],  // Other custom CNC operations
+  "description": "R3 radius on corners, handle pocket"
+}
+\`\`\`
+
+## Drilling Detection (CRITICAL - Look for these!)
 
 ### COLUMN-BASED CNC DETECTION:
 Look for columns labeled: CNC, DRILL, HOLES, ROUTING, OPS, OPERATIONS, H1, H2, HINGES, SHELF PINS, CONFIRMAT
@@ -466,13 +480,18 @@ Handle ALL dimension formats: "600 x 520", "764*520", "400 by 540", "560 X 397",
       "GL": true, "GW": false,
       "description": "groove along length"
     },
-    "cncOperations": {
+    "drilling": {
       "detected": true,
       "holes": ["H2"],
-      "drilling": ["H2 pattern"],
+      "patterns": ["H2 pattern"],
+      "description": "drill H2 pattern"
+    },
+    "cncOperations": {
+      "detected": false,
       "routing": [],
       "pockets": [],
-      "description": "drill H2 pattern"
+      "custom": [],
+      "description": ""
     },
     "notes": "All notes, context, special instructions here",
     "confidence": 0.9
@@ -755,7 +774,7 @@ Dimension sanity checks:
 **CRITICAL: Return ONLY raw JSON - NO markdown code blocks, NO backticks, NO explanations.**
 
 Return a JSON array starting with [ and ending with ]. Example structure:
-[{"row": 1, "label": "", "length": 780, "width": 560, "thickness": 18, "quantity": 2, "material": "W", "edgeBanding": {"detected": true, "L1": true, "L2": false, "W1": false, "W2": false, "edges": ["L1"], "description": "1 long edge"}, "grooving": {"detected": true, "GL": true, "GW": false, "description": "groove on length"}, "cncOperations": {"detected": false, "holes": [], "drilling": [], "routing": [], "pockets": [], "description": ""}, "confidence": 0.95}]
+[{"row": 1, "label": "", "length": 780, "width": 560, "thickness": 18, "quantity": 2, "material": "W", "edgeBanding": {"detected": true, "L1": true, "L2": false, "W1": false, "W2": false, "edges": ["L1"], "description": "1 long edge"}, "grooving": {"detected": true, "GL": true, "GW": false, "description": "groove on length"}, "drilling": {"detected": false, "holes": [], "patterns": [], "description": ""}, "cncOperations": {"detected": false, "routing": [], "pockets": [], "custom": [], "description": ""}, "confidence": 0.95}]
 
 Each object MUST have:
 - row: row/item number
@@ -766,7 +785,8 @@ Each object MUST have:
 - material: material code (W, Ply, B, etc.)
 - edgeBanding: {detected, L1, L2, W1, W2, edges[], description}
 - grooving: {detected, GL, GW, description}
-- cncOperations: {detected, holes[], drilling[], routing[], pockets[], description}
+- drilling: {detected, holes[], patterns[], description}
+- cncOperations: {detected, routing[], pockets[], custom[], description}
 - confidence: 0.0-1.0
 
 ## EDGE BANDING OBJECT FORMAT
@@ -1094,16 +1114,25 @@ export interface AIPartResponse {
     description?: string;
     profileHint?: string;
   };
+  /** Hole drilling operations (SEPARATE from CNC!) */
+  drilling?: {
+    detected: boolean;
+    /** Array of hole pattern identifiers (H1, H2, 32mm system, etc.) */
+    holes?: string[];
+    /** Array of drilling pattern descriptions */
+    patterns?: string[];
+    /** Human-readable description */
+    description?: string;
+  };
+  /** CNC operations (routing, pockets - NOT drilling) */
   cncOperations?: {
     detected: boolean;
-    /** Array of hole pattern identifiers */
-    holes?: string[];
-    /** Array of drilling operation descriptions */
-    drilling?: string[];
     /** Array of routing operation descriptions */
     routing?: string[];
     /** Array of pocket/recess operation descriptions */
     pockets?: string[];
+    /** Other custom CNC operations */
+    custom?: string[];
     /** Human-readable description */
     description?: string;
   };
