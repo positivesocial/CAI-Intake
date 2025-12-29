@@ -57,6 +57,19 @@ import {
   recordBatchUsage,
   type TrainingExample 
 } from "@/lib/learning/few-shot";
+import {
+  withRetry,
+  detectTruncation,
+  isRetryableError,
+  rateLimiters,
+  calculateQualityMetrics,
+} from "./ocr-utils";
+import {
+  validateAIResponse,
+  generateReviewFlags,
+  needsReview,
+} from "./ocr-validation";
+import { createAuditBuilder } from "./ocr-audit";
 
 // ============================================================
 // OPENAI PROVIDER
@@ -728,9 +741,18 @@ export class OpenAIProvider implements AIProvider {
 
   async parseImage(imageData: ArrayBuffer | string, options: ParseOptions): Promise<AIParseResult> {
     const startTime = Date.now();
+    const requestId = generateId();
+    
+    // Create audit builder for enterprise tracking
+    const audit = createAuditBuilder(requestId);
+    audit.setProvider("openai", GPT_MODEL);
+    audit.setStrategy("single-pass");
     
     try {
       const client = this.getClient();
+      
+      // Acquire rate limit token before making request
+      await rateLimiters.openai.acquire();
       
       // Use deterministic prompt if provided (for CAI template parsing)
       // This bypasses the generic prompt builder and uses org-specific shortcodes
@@ -760,6 +782,8 @@ export class OpenAIProvider implements AIProvider {
           // Verify it's a valid data URL pattern
           const dataUrlMatch = imageData.match(/^data:([^;]+);base64,(.+)$/);
           if (!dataUrlMatch) {
+            audit.addError("Invalid image data URL format");
+            audit.finalize();
             return {
               success: false,
               parts: [],
@@ -778,8 +802,16 @@ export class OpenAIProvider implements AIProvider {
         imageUrl = `data:image/jpeg;base64,${base64}`;
       }
 
+      // Set input metadata for audit
+      audit.setInput({
+        type: "image",
+        fileSizeKB: Math.round(imageUrl.length * 0.75 / 1024),
+      });
+
       // Validate the URL isn't empty or malformed
       if (imageUrl.length < 100) {
+        audit.addError("Image data is too small or empty");
+        audit.finalize();
         return {
           success: false,
           parts: [],
@@ -789,14 +821,17 @@ export class OpenAIProvider implements AIProvider {
         };
       }
 
-      const response = await client.chat.completions.create({
-        model: GPT_MODEL,
-        messages: [
-          { role: "system", content: OPENAI_SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop.
+      // Use retry wrapper for resilience
+      const response = await withRetry(
+        async () => {
+          return await client.chat.completions.create({
+            model: GPT_MODEL,
+            messages: [
+              { role: "system", content: OPENAI_SYSTEM_PROMPT },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: `This is a photo/scan of a cutlist or parts list from a cabinet/furniture manufacturing workshop.
 
 CRITICAL: This page may contain MULTIPLE COLUMNS and MULTIPLE SECTIONS. You MUST:
 1. Scan ALL columns (left, middle, right) - handwritten lists often have 2-3 columns
@@ -809,48 +844,122 @@ Please extract ALL parts from this manufacturing document.
 ${prompt}
 
 Respond with valid JSON only containing the extracted parts array. Include EVERY item from EVERY column and section.` },
-              { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+                  { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+                ],
+              },
             ],
-          },
-        ],
-        temperature: 0.1,
-        max_completion_tokens: MAX_COMPLETION_TOKENS,
-      });
+            temperature: 0.1,
+            max_completion_tokens: MAX_COMPLETION_TOKENS,
+          });
+        },
+        {
+          maxRetries: 3,
+          baseDelayMs: 1000,
+          retryOn: isRetryableError,
+        }
+      );
 
       const rawResponse = response.choices[0]?.message?.content || "";
+      
+      // Record token usage for audit
+      if (response.usage) {
+        audit.setTokenUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
+      }
+      
+      // Check for truncation
+      const truncation = detectTruncation(rawResponse);
+      if (truncation.isTruncated) {
+        logger.warn("⚠️ [OpenAI] Response may be truncated", {
+          reason: truncation.reason,
+          partialParts: truncation.partialParts,
+        });
+        audit.addWarning(`Truncation detected: ${truncation.reason}`);
+      }
+      
+      audit.setVerification({ truncationDetected: truncation.isTruncated });
       
       logger.debug("🖼️ [OpenAI] Image analysis raw response", {
         rawResponsePreview: rawResponse.substring(0, 1000),
         responseLength: rawResponse.length,
+        tokensUsed: response.usage,
       });
       
-      const parsed = parseAIResponseJSON<{ parts: AIPartResponse[] } | AIPartResponse[]>(rawResponse);
+      // Use enterprise validation
+      const validation = validateAIResponse(rawResponse);
       
-      const parts = Array.isArray(parsed) ? parsed : parsed?.parts;
-      
-      if (!parts || !Array.isArray(parts)) {
+      if (!validation.success && validation.parts.length === 0) {
         logger.warn("🖼️ [OpenAI] Image analysis returned no parseable parts", {
           rawResponsePreview: rawResponse.substring(0, 500),
-          parsedType: typeof parsed,
-          hasParts: !!(parsed as { parts?: unknown })?.parts,
+          errors: validation.errors,
         });
+        
+        audit.setOutput({ success: false, partsExtracted: 0 });
+        audit.addError(validation.errors[0] || "No parts extracted");
+        audit.finalize();
+        
         return {
           success: false,
           parts: [],
           totalConfidence: 0,
           rawResponse,
-          errors: ["Failed to parse AI response from image analysis. The image may not contain a recognizable cutlist."],
+          errors: validation.errors.length > 0 
+            ? validation.errors 
+            : ["Failed to parse AI response from image analysis. The image may not contain a recognizable cutlist."],
           processingTime: Date.now() - startTime,
         };
       }
+      
+      // Log validation warnings
+      for (const warning of validation.warnings) {
+        audit.addWarning(warning);
+      }
+      
+      // Convert validated parts to AIPartResponse format
+      const parts = validation.parts as AIPartResponse[];
+      
+      // Generate review flags
+      const reviewFlags = generateReviewFlags(validation.parts);
+      const reviewResult = needsReview(validation.parts, reviewFlags);
+      
+      // Calculate quality metrics
+      const qualityMetrics = calculateQualityMetrics(parts);
+      
+      // Finalize audit
+      audit.setQualityMetrics(qualityMetrics);
+      audit.setReviewFlags(reviewFlags);
+      audit.setOutput({
+        success: true,
+        partsExtracted: parts.length,
+        avgConfidence: qualityMetrics.avgConfidence,
+        qualityScore: qualityMetrics.qualityScore,
+      });
+      audit.setVerification({
+        validationPassed: validation.success,
+        needsReview: reviewResult.needsReview,
+        reviewReason: reviewResult.reason,
+      });
+      audit.finalize();
+      
+      logger.info("✅ [OpenAI] Image parsed with enterprise validation", {
+        requestId,
+        partsFound: parts.length,
+        qualityScore: qualityMetrics.qualityScore,
+        needsReview: reviewResult.needsReview,
+        reviewFlags: reviewFlags.length,
+        processingTimeMs: Date.now() - startTime,
+      });
 
       return this.processResults(parts, rawResponse, startTime, options);
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
       
+      audit.addError(errorMessage);
+      audit.setOutput({ success: false, partsExtracted: 0 });
+      audit.finalize();
+      
       // Log specific error for debugging
-      console.error("[OpenAI parseImage] Error:", errorMessage);
+      logger.error("[OpenAI parseImage] Error:", { error: errorMessage });
       
       return {
         success: false,

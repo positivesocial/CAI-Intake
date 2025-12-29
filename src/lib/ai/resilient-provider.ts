@@ -18,6 +18,11 @@ import type {
   OCRResult,
   OCRPageResult,
 } from "./provider";
+import { detectTruncation, calculateQualityMetrics } from "./ocr-utils";
+import { generateReviewFlags, needsReview } from "./ocr-validation";
+import { createAuditBuilder } from "./ocr-audit";
+import { logger } from "@/lib/logger";
+import { generateId } from "@/lib/utils";
 
 // ============================================================
 // CONFIGURATION
@@ -165,25 +170,137 @@ export class ResilientAIProvider implements AIProvider {
 
   async parseImage(imageData: ArrayBuffer | string, options: ParseOptions): Promise<AIParseResult> {
     const startTime = Date.now();
+    const requestId = generateId();
+    
+    // Create audit builder for tracking
+    const audit = createAuditBuilder(requestId);
+    audit.setStrategy("single-pass");
+    
+    logger.info("🔄 [Resilient] Starting image parse with fallback chain", { requestId });
     
     if (this.primary.isConfigured()) {
       try {
+        audit.setProvider("anthropic", "claude-3-5-sonnet");
+        
         const result = await this.withTimeout(
           this.primary.parseImage(imageData, options),
           this.options.primaryTimeout!
         );
         
-        if (result.success || !this.fallback.isConfigured()) {
+        // Check for quality issues that might warrant fallback
+        if (result.success) {
+          // Check for truncation or low part count
+          const truncation = result.rawResponse 
+            ? detectTruncation(result.rawResponse)
+            : { isTruncated: false };
+          
+          // If we have a good result, return it
+          if (!truncation.isTruncated && result.parts.length > 0) {
+            logger.info("✅ [Resilient] Primary provider succeeded", {
+              requestId,
+              partsFound: result.parts.length,
+              processingTimeMs: Date.now() - startTime,
+            });
+            audit.setOutput({ success: true, partsExtracted: result.parts.length });
+            audit.finalize();
+            return result;
+          }
+          
+          // If truncated but fallback not available, still return primary result
+          if (!this.fallback.isConfigured()) {
+            if (truncation.isTruncated) {
+              logger.warn("⚠️ [Resilient] Primary result may be truncated, no fallback available", {
+                requestId,
+                partsFound: result.parts.length,
+                truncationReason: truncation.reason,
+              });
+            }
+            audit.finalize();
+            return result;
+          }
+          
+          // If truncated and fallback available, try fallback
+          if (truncation.isTruncated) {
+            logger.info("🔄 [Resilient] Trying fallback due to truncation", {
+              requestId,
+              primaryParts: result.parts.length,
+              truncationReason: truncation.reason,
+            });
+            
+            audit.setUsedFallback(true);
+            audit.setProvider("openai", "gpt-4o");
+            
+            const fallbackResult = await this.fallback.parseImage(imageData, options);
+            
+            // Use whichever found more parts
+            if (fallbackResult.parts.length > result.parts.length) {
+              logger.info("✅ [Resilient] Fallback found more parts", {
+                requestId,
+                primaryParts: result.parts.length,
+                fallbackParts: fallbackResult.parts.length,
+              });
+              audit.setOutput({ success: true, partsExtracted: fallbackResult.parts.length });
+              audit.finalize();
+              return fallbackResult;
+            }
+            
+            audit.setOutput({ success: true, partsExtracted: result.parts.length });
+            audit.finalize();
+            return result;
+          }
+        }
+        
+        // If primary failed but no fallback, return the result
+        if (!this.fallback.isConfigured()) {
+          audit.finalize();
           return result;
         }
+        
       } catch (error) {
-        console.warn("Primary provider failed for image:", error);
+        const errorMsg = error instanceof Error ? error.message : "Unknown error";
+        logger.warn("⚠️ [Resilient] Primary provider failed, trying fallback", { 
+          requestId, 
+          error: errorMsg,
+        });
+        audit.addError(`Primary: ${errorMsg}`);
       }
     }
     
+    // Fallback to secondary provider
     if (this.fallback.isConfigured()) {
-      return this.fallback.parseImage(imageData, options);
+      audit.setUsedFallback(true);
+      audit.setProvider("openai", "gpt-4o");
+      
+      try {
+        const result = await this.fallback.parseImage(imageData, options);
+        
+        logger.info("✅ [Resilient] Fallback provider completed", {
+          requestId,
+          partsFound: result.parts.length,
+          processingTimeMs: Date.now() - startTime,
+        });
+        
+        audit.setOutput({ success: result.success, partsExtracted: result.parts.length });
+        audit.finalize();
+        return result;
+        
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : "Unknown error";
+        audit.addError(`Fallback: ${errorMsg}`);
+        audit.finalize();
+        
+        return {
+          success: false,
+          parts: [],
+          totalConfidence: 0,
+          errors: [`All providers failed: ${errorMsg}`],
+          processingTime: Date.now() - startTime,
+        };
+      }
     }
+    
+    audit.addError("No AI provider available");
+    audit.finalize();
     
     return {
       success: false,
