@@ -1,8 +1,8 @@
 /**
  * CAI Intake - OpenAI Provider Implementation
  * 
- * Uses GPT-5.2 Instant for fast text parsing and vision/OCR tasks.
- * The Instant variant provides significantly faster responses for OCR.
+ * Uses GPT-4o for fast text parsing and vision/OCR tasks.
+ * GPT-4o is the recommended model for multimodal tasks including OCR.
  */
 
 import OpenAI from "openai";
@@ -14,17 +14,15 @@ import OpenAI from "openai";
 /**
  * GPT model to use for all operations.
  * 
- * Available models (as of Dec 2025):
- * - gpt-5.2-instant : FASTEST - optimized for quick responses, ideal for OCR (recommended)
- * - gpt-5.2         : Flagship model with enhanced reasoning (slower)
- * - gpt-5.2-pro     : Most capable, for complex tasks (slowest)
- * - gpt-5-mini          : Previous flagship multimodal model
- * - gpt-5-mini-mini     : Smaller, faster, cheaper version
+ * Available models (as of Dec 2024):
+ * - gpt-4o       : RECOMMENDED - Fast multimodal model, excellent for OCR/vision
+ * - gpt-4o-mini  : Faster and cheaper, good for simpler tasks
+ * - gpt-4-turbo  : Previous generation, still capable
  * 
- * Using Instant for best OCR speed while maintaining quality.
+ * Using gpt-4o for best OCR quality with good speed.
  * Update this constant to switch models across all operations.
  */
-const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-5-mini";
+const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 
 /**
  * Maximum completion tokens for response generation.
@@ -324,7 +322,7 @@ export class OpenAIProvider implements AIProvider {
           { role: "system", content: OPENAI_SYSTEM_PROMPT },
           { role: "user", content: `${prompt}${continuationHint}\n\n---\n\nINPUT DATA:\n${text}\n\nIMPORTANT: Return a JSON object with a "parts" array containing ALL extracted parts. Example: {"parts": [{...}, {...}]}` },
         ],
-        temperature: 0.1,
+        // Note: gpt-5-mini doesn't support custom temperature, using default
         max_completion_tokens: MAX_COMPLETION_TOKENS,
         response_format: { type: "json_object" },
       });
@@ -498,7 +496,7 @@ export class OpenAIProvider implements AIProvider {
           { role: "system", content: OPENAI_SYSTEM_PROMPT },
           { role: "user", content: `${prompt}\n\n---\n\nINPUT DATA:\n${text}\n\nRespond with JSON only.` },
         ],
-        temperature: 0.1,
+        // Note: gpt-5-mini doesn't support custom temperature, using default
         max_completion_tokens: MAX_COMPLETION_TOKENS,
         response_format: { type: "json_object" },
       });
@@ -647,7 +645,7 @@ export class OpenAIProvider implements AIProvider {
                 content: `${prompt}\n\nIMPORTANT: This is chunk ${chunkIndex + 1} of ${chunks.length} from a larger document. Parse ALL rows in this chunk.\n\n---\n\nINPUT DATA:\n${chunk}\n\nRespond with JSON only.`
               },
             ],
-            temperature: 0.1,
+            // Note: gpt-5-mini doesn't support custom temperature, using default
             max_completion_tokens: MAX_COMPLETION_TOKENS,
             response_format: { type: "json_object" },
           });
@@ -876,7 +874,7 @@ Respond with valid JSON array containing ALL extracted parts. Every row number i
                 ],
               },
             ],
-            temperature: 0.1,
+            // Note: gpt-5-mini doesn't support custom temperature, using default
             max_completion_tokens: MAX_COMPLETION_TOKENS,
           });
         },
@@ -1161,7 +1159,7 @@ Respond with valid JSON array containing ALL extracted parts. Do not omit any ro
             ],
           },
         ],
-        temperature: 0.1,
+        // Note: gpt-5-mini doesn't support custom temperature, using default
         max_completion_tokens: MAX_COMPLETION_TOKENS,
       });
 

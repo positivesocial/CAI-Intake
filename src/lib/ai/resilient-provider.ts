@@ -31,8 +31,8 @@ import { generateId } from "@/lib/utils";
 /** Maximum retries before failing over to secondary provider */
 const MAX_RETRIES_PRIMARY = 2;
 
-/** Timeout for primary provider in ms (30 seconds) */
-const PRIMARY_TIMEOUT_MS = 30000;
+/** Timeout for primary provider in ms (60 seconds - matches Anthropic timeout) */
+const PRIMARY_TIMEOUT_MS = 60000;
 
 /** Batch size for parallel page processing */
 const PAGE_BATCH_SIZE = 3;
@@ -180,7 +180,7 @@ export class ResilientAIProvider implements AIProvider {
     
     if (this.primary.isConfigured()) {
       try {
-        audit.setProvider("anthropic", "claude-sonnet-4-5");
+        audit.setProvider("anthropic", "claude-sonnet-4-5-20250929");
         
         const result = await this.withTimeout(
           this.primary.parseImage(imageData, options),
@@ -225,7 +225,7 @@ export class ResilientAIProvider implements AIProvider {
           });
           
           audit.setUsedFallback(true);
-          audit.setProvider("openai", "gpt-5-mini");
+          audit.setProvider("openai", process.env.OPENAI_MODEL || "gpt-5-mini");
           
           const fallbackResult = await this.fallback.parseImage(imageData, options);
           
@@ -277,7 +277,7 @@ export class ResilientAIProvider implements AIProvider {
         
         // Try fallback
         audit.setUsedFallback(true);
-        audit.setProvider("openai", "gpt-5-mini");
+        audit.setProvider("openai", process.env.OPENAI_MODEL || "gpt-5-mini");
         
         logger.info("🔄 [Resilient] Falling back to OpenAI", { requestId });
         
@@ -311,7 +311,7 @@ export class ResilientAIProvider implements AIProvider {
     // Fallback to secondary provider
     if (this.fallback.isConfigured()) {
       audit.setUsedFallback(true);
-      audit.setProvider("openai", "gpt-5-mini");
+      audit.setProvider("openai", process.env.OPENAI_MODEL || "gpt-5-mini");
       
       try {
         const result = await this.fallback.parseImage(imageData, options);
