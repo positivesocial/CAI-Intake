@@ -292,7 +292,7 @@ export class EnterpriseOCRService {
     let retryCount = 0;
     const errors: string[] = [];
     
-    audit?.setProvider(currentProvider, currentProvider === "anthropic" ? "claude-opus-4-5" : "gpt-5.2");
+    audit?.setProvider(currentProvider, currentProvider === "anthropic" ? "claude-sonnet-4-5" : "gpt-5.2-instant");
     audit?.setStrategy("single-pass");
     
     // Try preferred provider with retry
@@ -382,7 +382,7 @@ export class EnterpriseOCRService {
           originalError: errorMsg,
         });
         
-        audit?.setProvider(currentProvider, currentProvider === "anthropic" ? "claude-opus-4-5" : "gpt-5.2");
+        audit?.setProvider(currentProvider, currentProvider === "anthropic" ? "claude-sonnet-4-5" : "gpt-5.2-instant");
         audit?.setUsedFallback(true);
         
         const fallbackFn = currentProvider === "anthropic" ? this.anthropicExtract : this.openaiExtract;

@@ -1,8 +1,8 @@
 /**
  * CAI Intake - OpenAI Provider Implementation
  * 
- * Uses GPT-5.2 for text parsing and vision/OCR tasks.
- * This is OpenAI's most advanced multimodal model.
+ * Uses GPT-5.2 Instant for fast text parsing and vision/OCR tasks.
+ * The Instant variant provides significantly faster responses for OCR.
  */
 
 import OpenAI from "openai";
@@ -15,14 +15,16 @@ import OpenAI from "openai";
  * GPT model to use for all operations.
  * 
  * Available models (as of Dec 2025):
- * - gpt-5.2         : Latest flagship model with enhanced reasoning and vision (recommended)
- * - gpt-5.2-instant : Faster version for everyday tasks
+ * - gpt-5.2-instant : FASTEST - optimized for quick responses, ideal for OCR (recommended)
+ * - gpt-5.2         : Flagship model with enhanced reasoning (slower)
+ * - gpt-5.2-pro     : Most capable, for complex tasks (slowest)
  * - gpt-4o          : Previous flagship multimodal model
  * - gpt-4o-mini     : Smaller, faster, cheaper version
  * 
+ * Using Instant for best OCR speed while maintaining quality.
  * Update this constant to switch models across all operations.
  */
-const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-5.2";
+const GPT_MODEL = process.env.OPENAI_MODEL || "gpt-5.2-instant";
 
 /**
  * Maximum completion tokens for response generation.

@@ -1,8 +1,8 @@
 /**
  * CAI Intake - Anthropic Claude Provider Implementation
  * 
- * Uses Claude Opus 4.5 for text parsing and image analysis.
- * This is Anthropic's most powerful model for vision and OCR tasks.
+ * Uses Claude Sonnet 4.5 for fast text parsing and image analysis.
+ * Sonnet provides excellent OCR quality with significantly faster responses than Opus.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -15,14 +15,15 @@ import Anthropic from "@anthropic-ai/sdk";
  * Claude model to use for all operations.
  * 
  * Available models (as of Dec 2025):
- * - claude-opus-4-5-20251124: Latest Opus 4.5, most capable with enhanced vision/coding/reasoning
+ * - claude-sonnet-4-5-20250514: FASTEST - Sonnet 4.5, excellent for OCR/vision (recommended)
+ * - claude-opus-4-5-20251124: Opus 4.5, most capable but slower
  * - claude-3-5-sonnet-20241022: Previous Sonnet 3.5, good balance of speed/quality
  * - claude-3-opus-20240229: Previous Opus 3, capable but older
  * 
- * Using Opus 4.5 for best performance with vision/OCR tasks.
+ * Using Sonnet 4.5 for best OCR speed while maintaining quality.
  * Update this constant to switch models across all operations.
  */
-const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-4-5-20251124";
+const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250514";
 
 /**
  * Maximum tokens for response generation.
