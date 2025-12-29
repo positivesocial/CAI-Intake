@@ -80,22 +80,30 @@ export interface ExcelParseResult {
  * Get value from row by column reference (index or header name)
  */
 function getColumnValue(
-  row: string[],
+  row: unknown[],
   headers: string[],
   ref: number | string | undefined
 ): string | undefined {
   if (ref === undefined) return undefined;
 
+  // Helper to safely convert cell value to string
+  const cellToString = (val: unknown): string | undefined => {
+    if (val == null) return undefined;
+    const str = String(val).trim();
+    return str.length > 0 ? str : undefined;
+  };
+
   if (typeof ref === "number") {
-    return row[ref]?.trim();
+    return cellToString(row[ref]);
   }
 
   // Find by header name (case-insensitive)
+  const headerStr = typeof ref === "string" ? ref : String(ref);
   const headerIndex = headers.findIndex(
-    (h) => h.toLowerCase() === ref.toLowerCase()
+    (h) => h.toLowerCase() === headerStr.toLowerCase()
   );
   if (headerIndex >= 0) {
-    return row[headerIndex]?.trim();
+    return cellToString(row[headerIndex]);
   }
 
   return undefined;
@@ -142,7 +150,7 @@ function parseEdging(value: string | undefined): boolean {
  * Parse a single row
  */
 function parseRow(
-  row: string[],
+  row: unknown[],
   rowIndex: number,
   headers: string[],
   options: ExcelParseOptions
@@ -153,10 +161,11 @@ function parseRow(
   const errors: string[] = [];
   let confidence = 1.0;
 
-  // Extract raw data for display
+  // Extract raw data for display (convert all values to strings)
   const rawData: Record<string, string> = {};
   headers.forEach((h, i) => {
-    rawData[h] = row[i] || "";
+    const val = row[i];
+    rawData[h] = val != null ? String(val) : "";
   });
 
   // Get values
@@ -301,7 +310,7 @@ export function parseCSV(text: string, delimiter: string = ","): string[][] {
  * Parse Excel/CSV data with mapping
  */
 export function parseExcelData(
-  rows: string[][],
+  rows: unknown[][],
   options: ExcelParseOptions
 ): ExcelParseResult {
   const {
@@ -310,7 +319,9 @@ export function parseExcelData(
     dataRowEnd = rows.length - 1,
   } = options;
 
-  const headers = rows[headerRowIndex] || [];
+  // Convert header row to strings
+  const rawHeaders = rows[headerRowIndex] || [];
+  const headers = rawHeaders.map(h => h != null ? String(h).trim() : "");
   const dataRows = rows.slice(dataRowStart, dataRowEnd + 1);
 
   const parsedRows: ParsedRow[] = [];
@@ -320,7 +331,7 @@ export function parseExcelData(
 
   dataRows.forEach((row, i) => {
     // Skip empty rows
-    if (row.every((cell) => !cell.trim())) return;
+    if (row.every((cell) => cell == null || String(cell).trim() === "")) return;
 
     const result = parseRow(row, dataRowStart + i, headers, options);
     parsedRows.push(result);
