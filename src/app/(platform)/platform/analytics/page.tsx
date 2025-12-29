@@ -31,6 +31,14 @@ import {
   Server,
   CheckCircle2,
   XCircle,
+  Eye,
+  FileText,
+  Clock,
+  Target,
+  RotateCcw,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +96,75 @@ interface DailyUsage {
   tokens: number;
   cost: number;
   errors: number;
+}
+
+// OCR Audit Types
+interface OCRAuditEntry {
+  id: string;
+  requestId: string;
+  timestamp: string;
+  input: {
+    type: "image" | "pdf" | "text";
+    fileName?: string;
+    fileSizeKB: number;
+  };
+  processing: {
+    provider: "anthropic" | "openai";
+    model: string;
+    processingTimeMs: number;
+    retryCount: number;
+    usedFallback: boolean;
+  };
+  output: {
+    success: boolean;
+    partsExtracted: number;
+    avgConfidence: number;
+    qualityScore: number;
+  };
+  verification: {
+    truncationDetected: boolean;
+    validationPassed: boolean;
+    reviewFlagsCount: number;
+    needsReview: boolean;
+  };
+  errors: string[];
+  warnings: string[];
+}
+
+interface OCRMetrics {
+  totalExtractions: number;
+  successfulExtractions: number;
+  failedExtractions: number;
+  avgPartsPerExtraction: number;
+  avgConfidence: number;
+  avgQualityScore: number;
+  avgProcessingTimeMs: number;
+  truncationRate: number;
+  fallbackRate: number;
+  reviewRate: number;
+  retryRate: number;
+  providerBreakdown: {
+    anthropic: { count: number; avgTime: number };
+    openai: { count: number; avgTime: number };
+  };
+}
+
+interface OCRAuditData {
+  entries: OCRAuditEntry[];
+  metrics: {
+    day: OCRMetrics;
+    week: OCRMetrics;
+    month: OCRMetrics;
+  };
+  summary: {
+    totalExtractions: number;
+    successRate: number;
+    avgQualityScore: number;
+    avgProcessingTime: number;
+    truncationRate: number;
+    reviewRate: number;
+    fallbackRate: number;
+  };
 }
 
 // ============================================================
@@ -256,23 +333,57 @@ const DEFAULT_DATA: AnalyticsData = {
   totals: { organizations: 0, users: 0 },
 };
 
+const DEFAULT_OCR_DATA: OCRAuditData = {
+  entries: [],
+  metrics: {
+    day: {} as OCRMetrics,
+    week: {} as OCRMetrics,
+    month: {} as OCRMetrics,
+  },
+  summary: {
+    totalExtractions: 0,
+    successRate: 0,
+    avgQualityScore: 0,
+    avgProcessingTime: 0,
+    truncationRate: 0,
+    reviewRate: 0,
+    fallbackRate: 0,
+  },
+};
+
 export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = React.useState("14d");
   const [isLoading, setIsLoading] = React.useState(true);
   const [lastRefresh, setLastRefresh] = React.useState(new Date());
   const [data, setData] = React.useState<AnalyticsData>(DEFAULT_DATA);
+  const [ocrData, setOcrData] = React.useState<OCRAuditData>(DEFAULT_OCR_DATA);
   const [error, setError] = React.useState<string | null>(null);
+  const [showOcrLogs, setShowOcrLogs] = React.useState(false);
+  const [ocrMetricPeriod, setOcrMetricPeriod] = React.useState<"day" | "week" | "month">("week");
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/v1/platform/analytics?range=${timeRange}`);
-      if (!response.ok) {
+      // Fetch both analytics and OCR audit data in parallel
+      const [analyticsResponse, ocrResponse] = await Promise.all([
+        fetch(`/api/v1/platform/analytics?range=${timeRange}`),
+        fetch(`/api/v1/platform/ocr-audit?limit=50`),
+      ]);
+      
+      if (!analyticsResponse.ok) {
         throw new Error("Failed to fetch analytics");
       }
-      const result = await response.json();
-      setData(result);
+      const analyticsResult = await analyticsResponse.json();
+      setData(analyticsResult);
+      
+      if (ocrResponse.ok) {
+        const ocrResult = await ocrResponse.json();
+        if (ocrResult.success) {
+          setOcrData(ocrResult.data);
+        }
+      }
+      
       setLastRefresh(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch analytics");
@@ -533,6 +644,194 @@ export default function AnalyticsPage() {
               </div>
             )) : (
               <div className="col-span-4 text-center text-[var(--muted-foreground)] py-4">No errors recorded</div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* OCR Audit Dashboard */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5 text-[var(--cai-teal)]" />
+                OCR Audit Dashboard
+              </CardTitle>
+              <CardDescription>
+                Real-time OCR extraction monitoring, quality metrics, and accuracy tracking
+              </CardDescription>
+            </div>
+            <Select value={ocrMetricPeriod} onValueChange={(v) => setOcrMetricPeriod(v as "day" | "week" | "month")}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="day">Today</SelectItem>
+                <SelectItem value="week">This Week</SelectItem>
+                <SelectItem value="month">This Month</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* OCR Metrics Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            <div className="p-4 border rounded-lg text-center">
+              <FileText className="h-5 w-5 mx-auto text-[var(--cai-teal)] mb-2" />
+              <div className="text-2xl font-bold">{ocrData.summary.totalExtractions}</div>
+              <div className="text-xs text-[var(--muted-foreground)]">Total Extractions</div>
+            </div>
+            <div className="p-4 border rounded-lg text-center">
+              <CheckCircle2 className="h-5 w-5 mx-auto text-green-500 mb-2" />
+              <div className="text-2xl font-bold">{ocrData.summary.successRate.toFixed(1)}%</div>
+              <div className="text-xs text-[var(--muted-foreground)]">Success Rate</div>
+            </div>
+            <div className="p-4 border rounded-lg text-center">
+              <Target className="h-5 w-5 mx-auto text-blue-500 mb-2" />
+              <div className="text-2xl font-bold">{ocrData.summary.avgQualityScore.toFixed(0)}</div>
+              <div className="text-xs text-[var(--muted-foreground)]">Avg Quality</div>
+            </div>
+            <div className="p-4 border rounded-lg text-center">
+              <Clock className="h-5 w-5 mx-auto text-orange-500 mb-2" />
+              <div className="text-2xl font-bold">{(ocrData.summary.avgProcessingTime / 1000).toFixed(1)}s</div>
+              <div className="text-xs text-[var(--muted-foreground)]">Avg Time</div>
+            </div>
+            <div className="p-4 border rounded-lg text-center">
+              <AlertCircle className="h-5 w-5 mx-auto text-amber-500 mb-2" />
+              <div className="text-2xl font-bold">{ocrData.summary.truncationRate.toFixed(1)}%</div>
+              <div className="text-xs text-[var(--muted-foreground)]">Truncation</div>
+            </div>
+            <div className="p-4 border rounded-lg text-center">
+              <RotateCcw className="h-5 w-5 mx-auto text-purple-500 mb-2" />
+              <div className="text-2xl font-bold">{ocrData.summary.fallbackRate.toFixed(1)}%</div>
+              <div className="text-xs text-[var(--muted-foreground)]">Fallback</div>
+            </div>
+            <div className="p-4 border rounded-lg text-center">
+              <Users className="h-5 w-5 mx-auto text-red-500 mb-2" />
+              <div className="text-2xl font-bold">{ocrData.summary.reviewRate.toFixed(1)}%</div>
+              <div className="text-xs text-[var(--muted-foreground)]">Needs Review</div>
+            </div>
+          </div>
+
+          {/* Provider Performance */}
+          {ocrData.metrics[ocrMetricPeriod]?.providerBreakdown && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 border rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <span className="text-purple-600 text-xs font-bold">A</span>
+                  </div>
+                  <div>
+                    <div className="font-medium">Anthropic Claude</div>
+                    <div className="text-xs text-[var(--muted-foreground)]">Primary Provider</div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>{ocrData.metrics[ocrMetricPeriod].providerBreakdown.anthropic?.count || 0} requests</span>
+                  <span className="font-mono">
+                    {((ocrData.metrics[ocrMetricPeriod].providerBreakdown.anthropic?.avgTime || 0) / 1000).toFixed(1)}s avg
+                  </span>
+                </div>
+              </div>
+              <div className="p-4 border rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                    <span className="text-green-600 text-xs font-bold">O</span>
+                  </div>
+                  <div>
+                    <div className="font-medium">OpenAI GPT-4o</div>
+                    <div className="text-xs text-[var(--muted-foreground)]">Fallback Provider</div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>{ocrData.metrics[ocrMetricPeriod].providerBreakdown.openai?.count || 0} requests</span>
+                  <span className="font-mono">
+                    {((ocrData.metrics[ocrMetricPeriod].providerBreakdown.openai?.avgTime || 0) / 1000).toFixed(1)}s avg
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Recent Audit Logs Toggle */}
+          <div>
+            <Button
+              variant="outline"
+              onClick={() => setShowOcrLogs(!showOcrLogs)}
+              className="w-full flex items-center justify-between"
+            >
+              <span className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Recent OCR Audit Logs ({ocrData.entries.length})
+              </span>
+              {showOcrLogs ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+
+            {showOcrLogs && (
+              <div className="mt-4 space-y-2 max-h-[400px] overflow-y-auto">
+                {ocrData.entries.length > 0 ? (
+                  ocrData.entries.slice(0, 20).map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={cn(
+                        "p-3 border rounded-lg text-sm",
+                        entry.output.success ? "border-green-200 bg-green-50/50" : "border-red-200 bg-red-50/50"
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          {entry.output.success ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-500" />
+                          )}
+                          <span className="font-mono text-xs">{entry.requestId}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {entry.processing.provider}
+                          </Badge>
+                        </div>
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          {new Date(entry.timestamp).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-4 text-xs">
+                        <div>
+                          <span className="text-[var(--muted-foreground)]">Parts:</span>{" "}
+                          <span className="font-medium">{entry.output.partsExtracted}</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--muted-foreground)]">Quality:</span>{" "}
+                          <span className="font-medium">{entry.output.qualityScore}/100</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--muted-foreground)]">Time:</span>{" "}
+                          <span className="font-medium">{(entry.processing.processingTimeMs / 1000).toFixed(1)}s</span>
+                        </div>
+                        <div>
+                          <span className="text-[var(--muted-foreground)]">Retries:</span>{" "}
+                          <span className="font-medium">{entry.processing.retryCount}</span>
+                        </div>
+                      </div>
+                      {entry.verification.needsReview && (
+                        <div className="mt-2 flex items-center gap-1 text-amber-600">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span className="text-xs">Flagged for review ({entry.verification.reviewFlagsCount} flags)</span>
+                        </div>
+                      )}
+                      {entry.errors.length > 0 && (
+                        <div className="mt-2 text-xs text-red-600">
+                          Error: {entry.errors[0]}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center text-[var(--muted-foreground)] py-8">
+                    No OCR audit logs yet. Logs appear after file processing.
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </CardContent>
