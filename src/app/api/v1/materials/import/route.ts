@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
         .select("material_id")
         .eq("organization_id", orgId);
       
-      const existingIds = new Set(existingMaterials?.map(m => m.material_id) || []);
+      const existingIds = new Set(existingMaterials?.map((m: { material_id: string }) => m.material_id) || []);
 
       // Process materials
       for (const mat of validMaterials) {
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
         .select("edgeband_id")
         .eq("organization_id", orgId);
       
-      const existingIds = new Set(existingEdgebands?.map(e => e.edgeband_id) || []);
+      const existingIds = new Set(existingEdgebands?.map((e: { edgeband_id: string }) => e.edgeband_id) || []);
 
       // Process edgebands
       for (const eb of validEdgebands) {
