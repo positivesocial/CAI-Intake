@@ -209,12 +209,14 @@ function PartRow({
   part,
   isSelected,
   onSelect,
+  onToggle,
   onEditOps,
   materials,
 }: {
   part: CutPart;
   isSelected: boolean;
   onSelect: (e: React.MouseEvent) => void;
+  onToggle: () => void;
   onEditOps: () => void;
   materials: Array<{ value: string; label: string }>;
 }) {
@@ -233,8 +235,8 @@ function PartRow({
           <input
             type="checkbox"
             checked={isSelected}
-            onChange={() => {}}
-            className="rounded border-[var(--border)]"
+            onChange={onToggle}
+            className="rounded border-[var(--border)] cursor-pointer"
           />
         </label>
       </td>
@@ -306,12 +308,14 @@ function PartCardView({
   part,
   isSelected,
   onSelect,
+  onToggle,
   onEditOps,
   materials,
 }: {
   part: CutPart;
   isSelected: boolean;
   onSelect: () => void;
+  onToggle: () => void;
   onEditOps: () => void;
   materials: Array<{ value: string; label: string }>;
 }) {
@@ -329,8 +333,8 @@ function PartCardView({
           <input
             type="checkbox"
             checked={isSelected}
-            onChange={() => {}}
-            className="rounded border-[var(--border)]"
+            onChange={onToggle}
+            className="rounded border-[var(--border)] cursor-pointer"
           />
         </label>
         <span className="font-medium text-sm flex-1">
@@ -905,6 +909,7 @@ export function StreamlinedPartsTable() {
                         part={part}
                         isSelected={selectedPartIds.includes(part.part_id)}
                         onSelect={(e) => handlePartClick(part.part_id, e)}
+                        onToggle={() => togglePartSelection(part.part_id)}
                         onEditOps={() => setOpsEditingPart(part)}
                         materials={materialOptions}
                       />
@@ -922,6 +927,7 @@ export function StreamlinedPartsTable() {
                   part={part}
                   isSelected={selectedPartIds.includes(part.part_id)}
                   onSelect={() => togglePartSelection(part.part_id)}
+                  onToggle={() => togglePartSelection(part.part_id)}
                   onEditOps={() => setOpsEditingPart(part)}
                   materials={materialOptions}
                 />

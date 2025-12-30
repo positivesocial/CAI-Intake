@@ -30,6 +30,7 @@ import { Stepper, type Step } from "@/components/ui/stepper";
 import { KeyboardShortcutsDialog } from "@/components/ui/keyboard-shortcuts-dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAutoSaveDraft } from "@/hooks/use-auto-save-draft";
 
 const STEPS: Step[] = [
   { id: "setup", label: "Setup", icon: Settings },
@@ -59,6 +60,12 @@ export default function IntakePage() {
   const [showMobileStats, setShowMobileStats] = React.useState(false);
   const [isLoadingCutlist, setIsLoadingCutlist] = React.useState(false);
   const [loadedCutlistId, setLoadedCutlistId] = React.useState<string | null>(null);
+
+  // Auto-save draft when user leaves without saving
+  const { hasUnsavedChanges, saveNow, navigateWithSave } = useAutoSaveDraft({
+    enabled: !editId, // Only auto-save for new cutlists, not when editing existing
+    minParts: 1,
+  });
 
   // Reset cutlist when starting fresh (no editId)
   // Track if we've already reset for this session to avoid infinite resets
