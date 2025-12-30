@@ -1478,9 +1478,74 @@ async function processPDF(
     file.name.toLowerCase().includes("smart") ||
     file.name.toLowerCase().includes("cai");
   
-  // If not a blank template, try PDF-to-image fallback with AI vision
+  // If not a blank template, try native Claude PDF support FIRST (fastest!)
   if (!isLikelyBlankTemplate) {
-    logger.info("📥 [ParseFile] 🖼️ Text extraction failed, trying PDF-to-image fallback", {
+    // ============================================
+    // STRATEGY 1: Try Claude's NATIVE PDF support
+    // Claude can process PDFs directly without conversion!
+    // ============================================
+    logger.info("📥 [ParseFile] 📄 Trying Claude NATIVE PDF support", {
+      requestId,
+      fileName: file.name,
+      pdfSizeKB: Math.round(pdfBuffer.byteLength / 1024),
+    });
+    
+    try {
+      // Check if provider has native PDF support (Anthropic)
+      if (provider.parseDocument && typeof provider.parseDocument === "function") {
+        const nativePdfResult = await provider.parseDocument(
+          pdfBuffer,
+          undefined, // No extracted text needed - Claude reads PDF directly
+          parseOptions
+        );
+        
+        if (nativePdfResult.success && nativePdfResult.parts && nativePdfResult.parts.length > 0) {
+          logger.info("📥 [ParseFile] ✅ Claude NATIVE PDF succeeded!", {
+            requestId,
+            partsFound: nativePdfResult.parts.length,
+            processingTimeMs: Date.now() - pdfStartTime,
+          });
+          
+          return {
+            success: true,
+            parts: nativePdfResult.parts.map((part: { part_id?: string; label?: string; size?: { L: number; W: number }; qty?: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string; audit?: { confidence?: number } }) => ({
+              ...part,
+              part_id: part.part_id || `P-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+              size: part.size || { L: 0, W: 0 },
+              qty: part.qty || 1,
+              audit: {
+                source_method: "native_pdf",
+                confidence: part.audit?.confidence || nativePdfResult.totalConfidence || 0.8,
+                human_verified: false,
+              },
+            })),
+            totalConfidence: nativePdfResult.totalConfidence || 0.8,
+            rawResponse: nativePdfResult.rawResponse,
+            errors: [],
+            processingTimeMs: Date.now() - pdfStartTime,
+            templateId: detectedTemplateId,
+            templateParsed: !!detectedTemplateId,
+            qrDetectionResult,
+          };
+        } else {
+          logger.warn("📥 [ParseFile] ⚠️ Claude NATIVE PDF returned no parts, trying image fallback", {
+            requestId,
+            errors: nativePdfResult.errors,
+          });
+        }
+      }
+    } catch (nativePdfError) {
+      logger.warn("📥 [ParseFile] ⚠️ Claude NATIVE PDF failed, trying image fallback", {
+        requestId,
+        error: nativePdfError instanceof Error ? nativePdfError.message : String(nativePdfError),
+      });
+    }
+    
+    // ============================================
+    // STRATEGY 2: PDF-to-image fallback
+    // Convert PDF pages to images and parse with vision
+    // ============================================
+    logger.info("📥 [ParseFile] 🖼️ Trying PDF-to-image fallback", {
       requestId,
       fileName: file.name,
     });

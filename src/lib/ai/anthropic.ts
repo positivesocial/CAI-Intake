@@ -952,28 +952,222 @@ OUTPUT: Start with [ and end with ] - NO markdown, NO explanation. Just the JSON
     }
   }
 
+  /**
+   * Parse PDF document using Claude's NATIVE PDF support
+   * 
+   * Claude can now process PDFs directly without converting to images!
+   * This uses the "document" content type with media_type: "application/pdf"
+   * 
+   * Supported models: Claude Opus 4, Sonnet 4, Sonnet 3.7, Sonnet 3.5, Haiku 3.5
+   * Limits: 32MB max file size, 100 pages max
+   */
   async parseDocument(
     pdfData: ArrayBuffer,
     extractedText?: string,
     options?: ParseOptions
   ): Promise<AIParseResult> {
-    // If we have extracted text, use text parsing
-    if (extractedText) {
+    const startTime = Date.now();
+    const requestId = generateId();
+    
+    // If we have good extracted text, use text parsing (faster)
+    if (extractedText && extractedText.length > 500) {
+      logger.info("📄 [Anthropic] Using extracted text for PDF (faster)", {
+        requestId,
+        textLength: extractedText.length,
+      });
       return this.parseText(extractedText, options || {
         extractMetadata: true,
         confidence: "balanced",
       });
     }
 
-    // Claude supports PDF directly in some contexts
-    // For now, require text extraction
-    return {
-      success: false,
-      parts: [],
-      totalConfidence: 0,
-      errors: ["PDF parsing requires text extraction. Please extract text first or use image upload."],
-      processingTime: 0,
+    // Use Claude's NATIVE PDF support
+    logger.info("📄 [Anthropic] Using NATIVE PDF support (no text extraction needed)", {
+      requestId,
+      pdfSizeKB: Math.round(pdfData.byteLength / 1024),
+    });
+
+    // Ensure we have valid options
+    const safeOptions: ParseOptions = options || {
+      extractMetadata: true,
+      confidence: "balanced",
     };
+
+    // Create audit builder for enterprise tracking
+    const audit = createAuditBuilder(requestId);
+    audit.setProvider("anthropic", CLAUDE_MODEL);
+    audit.setStrategy("single-pass"); // Native PDF is single-pass processing
+    
+    try {
+      const client = this.getClient();
+      
+      // Acquire rate limit token before making request
+      await rateLimiters.anthropic.acquire();
+      
+      // Build prompt for PDF parsing
+      const prompt = safeOptions.deterministicPrompt 
+        ? safeOptions.deterministicPrompt
+        : buildParsePrompt({
+            extractMetadata: safeOptions.extractMetadata ?? true,
+            isImage: true, // PDF uses same vision-like analysis
+            useCompactFormat: true,
+            templateId: safeOptions.templateId,
+            templateConfig: safeOptions.templateConfig ? {
+              fieldLayout: safeOptions.templateConfig.fieldLayout,
+            } : undefined,
+          });
+
+      // Convert PDF to base64
+      const base64Data = Buffer.from(pdfData).toString("base64");
+      
+      // Set input metadata for audit
+      audit.setInput({
+        type: "pdf",
+        fileSizeKB: Math.round(pdfData.byteLength / 1024),
+      });
+
+      logger.info("🤖 [Anthropic] Starting NATIVE PDF API request", {
+        requestId,
+        model: CLAUDE_MODEL,
+        pdfSizeKB: Math.round(pdfData.byteLength / 1024),
+        timeoutMs: REQUEST_TIMEOUT_MS,
+      });
+      
+      // Use retry wrapper for resilience
+      const response = await withRetry(
+        async () => {
+          return await client.messages.create({
+            model: CLAUDE_MODEL,
+            max_tokens: MAX_TOKENS,
+            temperature: 0.3,
+            system: ANTHROPIC_SYSTEM_PROMPT,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "document",
+                    source: {
+                      type: "base64",
+                      media_type: "application/pdf",
+                      data: base64Data,
+                    },
+                  },
+                  {
+                    type: "text",
+                    text: `This is a cutlist or parts list PDF from a cabinet/furniture manufacturing business.
+
+CRITICAL INSTRUCTIONS:
+1. SCAN ALL PAGES - extract parts from EVERY page
+2. MULTI-COLUMN LAYOUTS: Check for columns side-by-side
+3. SECTION HEADERS: Look for "CARCASES", "DOORS", "PLYWOODS" etc.
+4. Extract EVERY row with dimensions
+
+USE COMPACT OUTPUT FORMAT:
+Each part = {"r":row,"l":length,"w":width,"q":qty,"m":"material","e":"edge_code","g":"groove_code","n":"notes"}
+- Edge codes: "2L2W"=all 4 edges, "2L"=long edges, "1L"=one long, ""=none
+- Groove codes: "GL"=length direction, "GW"=width direction, ""=none
+
+${prompt}
+
+OUTPUT: Raw JSON array starting with [ and ending with ] - NO markdown, NO explanation.`,
+                  },
+                ],
+              },
+            ],
+          });
+        },
+        {
+          maxRetries: 3,
+          baseDelayMs: 1000,
+          retryOn: isRetryableError,
+        }
+      );
+
+      const textContent = response.content.find(c => c.type === "text");
+      const rawResponse = textContent?.type === "text" ? textContent.text : "";
+      
+      // Record token usage for audit
+      if (response.usage) {
+        audit.setTokenUsage(response.usage.input_tokens, response.usage.output_tokens);
+      }
+      
+      logger.debug("📄 [Anthropic] Native PDF response", {
+        requestId,
+        rawResponsePreview: rawResponse.substring(0, 1000),
+        responseLength: rawResponse.length,
+        tokensUsed: response.usage,
+      });
+      
+      // Use enterprise validation
+      const validation = validateAIResponse(rawResponse);
+      
+      if (!validation.success && validation.parts.length === 0) {
+        logger.warn("📄 [Anthropic] Native PDF analysis returned no parseable parts", {
+          requestId,
+          rawResponsePreview: rawResponse.substring(0, 500),
+          errors: validation.errors,
+        });
+        
+        audit.setOutput({ success: false, partsExtracted: 0 });
+        audit.addError(validation.errors[0] || "No parts extracted from PDF");
+        audit.finalize();
+        
+        return {
+          success: false,
+          parts: [],
+          totalConfidence: 0,
+          rawResponse,
+          errors: validation.errors.length > 0 
+            ? validation.errors 
+            : ["Failed to parse PDF. The document may not contain a recognizable cutlist format."],
+          processingTime: Date.now() - startTime,
+        };
+      }
+
+      // Check for truncation
+      const truncation = detectTruncation(rawResponse);
+      if (truncation.isTruncated) {
+        logger.warn("⚠️ [Anthropic] PDF response may be truncated", {
+          requestId,
+          reason: truncation.reason,
+        });
+        audit.addWarning(`Truncation detected: ${truncation.reason}`);
+      }
+      
+      audit.setOutput({ success: true, partsExtracted: validation.parts.length });
+      audit.finalize();
+      
+      logger.info("✅ [Anthropic] Native PDF parsing complete", {
+        requestId,
+        partsFound: validation.parts.length,
+        processingTimeMs: Date.now() - startTime,
+      });
+
+      // Use processResults which handles normalization internally
+      // Cast to AIPartResponse[] as validation.parts is compatible
+      return this.processResults(validation.parts as AIPartResponse[], rawResponse, startTime, safeOptions);
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      
+      audit.addError(errorMessage);
+      audit.setOutput({ success: false, partsExtracted: 0 });
+      audit.finalize();
+      
+      logger.error("❌ [Anthropic] Native PDF parsing failed", {
+        requestId,
+        error: errorMessage,
+      });
+      
+      return {
+        success: false,
+        parts: [],
+        totalConfidence: 0,
+        errors: [errorMessage],
+        processingTime: Date.now() - startTime,
+      };
+    }
   }
 
   // ============================================================
