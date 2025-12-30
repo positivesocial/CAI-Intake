@@ -247,6 +247,15 @@ export function validateAIResponse(rawResponse: string): ValidationResult & { me
     for (let i = 0; i < Math.min(3, parsed.length); i++) {
       console.log(`📦 Object ${i}:`, JSON.stringify(parsed[i]).substring(0, 500));
     }
+    
+    // Log ALL edge codes for debugging SketchCut underline detection
+    const edgeSummary = parsed.map((p: Record<string, unknown>, i: number) => {
+      const row = p.r || i + 1;
+      const edge = p.e || p.edgeBanding || "";
+      const groove = p.g || p.grooving || "";
+      return `R${row}:e="${edge}",g="${groove}"`;
+    });
+    console.log("📦 ALL EDGE CODES:", edgeSummary.join(" | "));
     console.log("📦📦📦 ========== END FORMAT ANALYSIS ========== 📦📦📦\n\n");
     
     logger.info("📦 [Validation] Checking response format", {
