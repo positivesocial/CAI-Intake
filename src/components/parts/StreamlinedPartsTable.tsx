@@ -368,9 +368,7 @@ function PartRow({
           onValueChange={(v) => onUpdate({ material_id: v })}
         >
           <SelectTrigger className="h-7 text-xs w-full max-w-[100px] sm:max-w-[120px]">
-            <SelectValue>
-              {materials.find(m => m.value === part.material_id)?.label?.split(" (")[0] || part.material_id}
-            </SelectValue>
+            <SelectValue placeholder="Material" />
           </SelectTrigger>
           <SelectContent>
             {materials.map((m) => (
@@ -555,9 +553,7 @@ function PartCardView({
           onValueChange={(v) => onUpdate({ material_id: v })}
         >
           <SelectTrigger className="h-7 text-xs w-auto max-w-[100px]">
-            <SelectValue>
-              {materials.find(m => m.value === part.material_id)?.label?.split(" (")[0] || "Material"}
-            </SelectValue>
+            <SelectValue placeholder="Material" />
           </SelectTrigger>
           <SelectContent>
             {materials.map((m) => (
