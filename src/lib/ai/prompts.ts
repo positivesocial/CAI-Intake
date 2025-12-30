@@ -1133,16 +1133,29 @@ Before extracting parts, CHECK if this is a SketchCut PRO or similar format with
 | NO line under dimension | No edge on that side |
 
 ### ROW-BY-ROW EDGE DETECTION (DO THIS FOR EVERY ROW!)
-For EACH row:
-1. Look at Length value - is there a line underneath? → Add L edge code
-2. Look at Width value - is there a line underneath? → Add W edge code  
+For EACH row INDEPENDENTLY (don't copy from previous rows!):
+1. Look at the Length value cell - is there a decorative line underneath THE NUMBER (not table border)?
+2. Look at the Width value cell - is there a decorative line underneath THE NUMBER (not table border)?
 3. Combine into edge code: "1L", "2L", "1W", "2W", "1L1W", "2L2W", etc.
+4. If NO decorative underline exists, set e:""
 
-### EXAMPLE (SketchCut PRO):
-Row 1:  1890 (single underline), 300 (no underline) → e:"1L"
-Row 7:  1790 (single underline), 300 (no underline) → e:"1L"  
-Row 21: 770 (DOUBLE underline), 500 (DOUBLE underline) → e:"2L2W"
-Row 22: 864 (DOUBLE underline), 480 (DOUBLE underline) → e:"2L2W"
+### CRITICAL: DISTINGUISH UNDERLINES FROM TABLE BORDERS!
+- Table cell BORDERS are thin lines that form the grid around ALL cells
+- Edge banding UNDERLINES are extra lines drawn UNDER specific dimension numbers
+- If EVERY cell has the same line style, it's a table border (NOT edge banding)
+- Edge banding underlines appear ONLY under dimensions that need banding
+
+### EXAMPLE (SketchCut PRO - notice NOT all rows have underlines!):
+Row 1:  1890 (UNDERLINE ✓), 300 (no underline) → e:"1L"
+Row 4:  760 (no underline), 100 (no underline) → e:"" (NO edge banding!)
+Row 7:  1790 (UNDERLINE ✓), 300 (no underline) → e:"1L"
+Row 10: 525 (no underline), 100 (no underline) → e:"" (NO edge banding!)
+Row 21: 770 (DOUBLE ═══), 500 (DOUBLE ═══) → e:"2L2W"
+Row 25: 900 (SINGLE ___), 110 (DOUBLE ═══) → e:"1L2W"
+Row 26: 420 (SINGLE ___), 110 (no underline) → e:"1L"
+
+### WARNING: Check EVERY row to the end of the table!
+Rows 23-27 often get missed. Read them carefully!
 
 ### GROOVE FROM NAME COLUMN
 - "gl" or "GL" in Name column = Groove on Length → g:"GL"
