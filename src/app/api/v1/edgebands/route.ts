@@ -176,6 +176,7 @@ export async function POST(request: NextRequest) {
     const { data: edgeband, error } = await serviceClient
       .from("edgebands")
       .insert({
+        id: crypto.randomUUID(), // Generate UUID for primary key
         organization_id: userData.organization_id,
         edgeband_id: data.edgeband_id,
         name: data.name,

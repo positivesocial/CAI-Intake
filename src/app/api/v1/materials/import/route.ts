@@ -175,6 +175,7 @@ export async function POST(request: NextRequest) {
             await serviceClient
               .from("materials")
               .insert({
+                id: crypto.randomUUID(),
                 organization_id: orgId,
                 material_id: mat.material_id,
                 name: mat.name,
@@ -270,6 +271,7 @@ export async function POST(request: NextRequest) {
             await serviceClient
               .from("edgebands")
               .insert({
+                id: crypto.randomUUID(),
                 organization_id: orgId,
                 edgeband_id: eb.edgeband_id,
                 name: eb.name,

@@ -174,6 +174,7 @@ export async function POST(request: NextRequest) {
     const { data: material, error } = await serviceClient
       .from("materials")
       .insert({
+        id: crypto.randomUUID(), // Generate UUID for primary key
         organization_id: userData.organization_id,
         material_id: data.material_id,
         name: data.name,
