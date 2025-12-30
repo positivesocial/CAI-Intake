@@ -43,6 +43,7 @@ import {
   logTemplateParseAudit,
   AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
 } from "@/lib/templates/template-parsing-service";
+import { convertPdfToImages } from "@/lib/pdf/pdf-to-images";
 
 // Generate a unique request ID for tracking
 function generateRequestId(): string {
@@ -1552,8 +1553,9 @@ async function processPDF(
  * Convert PDF pages to images and parse them using AI vision
  * This is a fallback for scanned/image-based PDFs where text extraction fails
  * 
- * Uses Python OCR service which runs on Render with full system dependencies
- * for PDF rendering (poppler, cairo, etc.)
+ * Strategy:
+ * 1. Try LOCAL conversion first (using pdf-to-img/pdfjs-dist) - fast and reliable
+ * 2. Fall back to Python OCR service only if local fails
  */
 async function convertPdfToImagesAndParse(
   pdfBuffer: Buffer,
@@ -1573,49 +1575,101 @@ async function convertPdfToImagesAndParse(
 }> {
   const startTime = Date.now();
   
-  // Check if Python OCR service is available
-  if (!pythonOCR.isConfigured()) {
-    logger.warn("📥 [ParseFile] ⚠️ Python OCR not configured for PDF-to-image", {
+  // ============================================
+  // STEP 1: Try LOCAL PDF-to-image conversion first
+  // ============================================
+  logger.info("📥 [ParseFile] 🖼️ Trying LOCAL PDF-to-image conversion", {
+    requestId,
+    fileName,
+  });
+  
+  let images: string[] = [];
+  let conversionSource = "local";
+  
+  try {
+    const localResult = await convertPdfToImages(pdfBuffer, { scale: 2.0, maxPages: 20 });
+    
+    if (localResult.success && localResult.images.length > 0) {
+      images = localResult.images;
+      logger.info("📥 [ParseFile] ✅ Local PDF conversion succeeded", {
+        requestId,
+        pageCount: images.length,
+        processingTimeMs: Date.now() - startTime,
+      });
+    } else {
+      logger.warn("📥 [ParseFile] ⚠️ Local PDF conversion failed, trying Python OCR", {
+        requestId,
+        error: localResult.error,
+      });
+    }
+  } catch (localError) {
+    logger.warn("📥 [ParseFile] ⚠️ Local PDF conversion error, trying Python OCR", {
       requestId,
+      error: localError instanceof Error ? localError.message : String(localError),
     });
+  }
+  
+  // ============================================
+  // STEP 2: Fall back to Python OCR if local failed
+  // ============================================
+  if (images.length === 0 && pythonOCR.isConfigured()) {
+    conversionSource = "python_ocr";
+    
+    try {
+      logger.info("📥 [ParseFile] 🖼️ Requesting PDF-to-image from Python OCR", {
+        requestId,
+        fileName,
+      });
+      
+      const base64Pdf = pdfBuffer.toString("base64");
+      const ocrResult = await pythonOCR.extractFromPDFAsImages(base64Pdf, fileName);
+      
+      if (ocrResult?.success && ocrResult.images && ocrResult.images.length > 0) {
+        images = ocrResult.images;
+        logger.info("📥 [ParseFile] ✅ Python OCR extracted images from PDF", {
+          requestId,
+          imageCount: images.length,
+        });
+      } else {
+        logger.warn("📥 [ParseFile] ⚠️ Python OCR could not extract images", {
+          requestId,
+          error: ocrResult?.error,
+        });
+      }
+    } catch (pythonError) {
+      logger.warn("📥 [ParseFile] ⚠️ Python OCR failed", {
+        requestId,
+        error: pythonError instanceof Error ? pythonError.message : String(pythonError),
+      });
+    }
+  }
+  
+  // ============================================
+  // STEP 3: If no images, return error
+  // ============================================
+  if (images.length === 0) {
     return {
       success: false,
       parts: [],
       totalConfidence: 0,
-      errors: ["PDF-to-image conversion requires the Python OCR service. Please try uploading images (PNG/JPG) of each page instead."],
+      errors: [
+        "Could not convert PDF to images.",
+        "💡 Tip: Take photos of each page and upload them as images (PNG/JPG) for better results."
+      ],
       processingTimeMs: Date.now() - startTime,
     };
   }
   
+  logger.info("📥 [ParseFile] 🖼️ PDF converted to images successfully", {
+    requestId,
+    imageCount: images.length,
+    conversionSource,
+  });
+  
+  // ============================================
+  // STEP 4: Process images with AI vision
+  // ============================================
   try {
-    logger.info("📥 [ParseFile] 🖼️ Requesting PDF-to-image from Python OCR", {
-      requestId,
-      fileName,
-    });
-    
-    // Send PDF to Python OCR with image extraction mode
-    const base64Pdf = pdfBuffer.toString("base64");
-    const ocrResult = await pythonOCR.extractFromPDFAsImages(base64Pdf, fileName);
-    
-    if (!ocrResult || !ocrResult.success || !ocrResult.images || ocrResult.images.length === 0) {
-      logger.warn("📥 [ParseFile] ⚠️ Python OCR could not extract images from PDF", {
-        requestId,
-        error: ocrResult?.error,
-      });
-      return {
-        success: false,
-        parts: [],
-        totalConfidence: 0,
-        errors: ["Could not convert PDF to images. This may be a protected or corrupted PDF. Try uploading images (PNG/JPG) of each page instead."],
-        processingTimeMs: Date.now() - startTime,
-      };
-    }
-    
-    logger.info("📥 [ParseFile] 🖼️ Python OCR extracted images from PDF", {
-      requestId,
-      imageCount: ocrResult.images.length,
-    });
-    
     type PartWithAudit = { part_id: string; label?: string; size: { L: number; W: number }; qty: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string; audit: { source_method: string; confidence: number; human_verified: boolean; source_page?: number } };
     
     // Process pages in parallel with concurrency limit (2 at a time to avoid rate limits)
@@ -1623,8 +1677,8 @@ async function convertPdfToImagesAndParse(
     const pageResults: Array<{ pageNum: number; parts: PartWithAudit[]; confidence: number; error?: string }> = [];
     
     // Process in batches
-    for (let i = 0; i < ocrResult.images.length; i += CONCURRENCY_LIMIT) {
-      const batch = ocrResult.images.slice(i, i + CONCURRENCY_LIMIT);
+    for (let i = 0; i < images.length; i += CONCURRENCY_LIMIT) {
+      const batch = images.slice(i, i + CONCURRENCY_LIMIT);
       const batchStartIdx = i;
       
       const batchPromises = batch.map(async (imageBase64, idx) => {
