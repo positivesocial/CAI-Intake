@@ -20,17 +20,15 @@ import {
   RotateCcw,
   Lock,
   Copy,
-  Undo2,
-  Redo2,
   Settings2,
   LayoutGrid,
   LayoutList,
   ArrowLeftRight,
   ChevronDown,
-  ChevronUp,
   Check,
   Package,
   FolderOpen,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -205,21 +203,44 @@ function OpsIndicator({
 // PART ROW (Table mode)
 // ============================================================
 
+interface PartRowProps {
+  part: CutPart;
+  isSelected: boolean;
+  onSelect: (e: React.MouseEvent) => void;
+  onToggle: () => void;
+  onEditOps: () => void;
+  onUpdate: (updates: Partial<CutPart>) => void;
+  materials: Array<{ value: string; label: string }>;
+}
+
 function PartRow({
   part,
   isSelected,
   onSelect,
   onToggle,
   onEditOps,
+  onUpdate,
   materials,
-}: {
-  part: CutPart;
-  isSelected: boolean;
-  onSelect: (e: React.MouseEvent) => void;
-  onToggle: () => void;
-  onEditOps: () => void;
-  materials: Array<{ value: string; label: string }>;
-}) {
+}: PartRowProps) {
+  const [editingField, setEditingField] = React.useState<string | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (editingField && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingField]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      setEditingField(null);
+    } else if (e.key === "Escape") {
+      setEditingField(null);
+    }
+  };
+
   return (
     <tr
       onClick={onSelect}
@@ -229,59 +250,157 @@ function PartRow({
         !isSelected && "hover:bg-[var(--muted)]/50"
       )}
     >
-      {/* Checkbox */}
-      <td className="w-10 px-2 py-2" onClick={(e) => e.stopPropagation()}>
-        <label className="inline-flex p-1 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={onToggle}
-            className="rounded border-[var(--border)] cursor-pointer"
+      {/* Checkbox - clicking toggles selection */}
+      <td className="w-8 sm:w-10 px-1 sm:px-2 py-2" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={onToggle}
+          className={cn(
+            "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+            isSelected
+              ? "bg-[var(--cai-teal)] border-[var(--cai-teal)]"
+              : "border-[var(--border)] hover:border-[var(--cai-teal)]/50"
+          )}
+        >
+          {isSelected && <Check className="w-3 h-3 text-white" />}
+        </button>
+      </td>
+
+      {/* Label - editable */}
+      <td className="px-1 sm:px-2 py-2" onClick={(e) => e.stopPropagation()}>
+        {editingField === "label" ? (
+          <Input
+            ref={inputRef}
+            type="text"
+            value={part.label || ""}
+            onChange={(e) => onUpdate({ label: e.target.value || undefined })}
+            onBlur={() => setEditingField(null)}
+            onKeyDown={handleKeyDown}
+            className="h-7 px-2 text-sm w-full max-w-[120px]"
           />
-        </label>
-      </td>
-
-      {/* Label */}
-      <td className="px-2 py-2">
-        <span className="font-medium text-sm">
-          {part.label || part.part_id}
-        </span>
-      </td>
-
-      {/* Dimensions */}
-      <td className="px-2 py-2 text-center">
-        <span className="font-mono text-sm">
-          {part.size.L} × {part.size.W}
-        </span>
-      </td>
-
-      {/* Qty */}
-      <td className="px-2 py-2 text-center">
-        <span className="font-mono text-sm">{part.qty}</span>
-      </td>
-
-      {/* Material */}
-      <td className="px-2 py-2">
-        <Badge variant="outline" className="font-normal text-xs">
-          {materials.find(m => m.value === part.material_id)?.label?.split(" (")[0] || part.material_id}
-        </Badge>
-      </td>
-
-      {/* Rotation */}
-      <td className="px-2 py-2 text-center">
-        {part.allow_rotation ? (
-          <span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" title="Can rotate">
-            <RotateCcw className="h-3.5 w-3.5" />
-          </span>
         ) : (
-          <span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" title="Fixed orientation">
-            <Lock className="h-3.5 w-3.5" />
-          </span>
+          <button
+            type="button"
+            onClick={() => setEditingField("label")}
+            className="font-medium text-sm text-left hover:text-[var(--cai-teal)] transition-colors truncate max-w-[120px] block"
+          >
+            {part.label || part.part_id}
+          </button>
         )}
       </td>
 
-      {/* Group */}
-      <td className="px-2 py-2 text-center">
+      {/* Length - editable */}
+      <td className="px-1 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+        {editingField === "L" ? (
+          <Input
+            ref={inputRef}
+            type="number"
+            value={part.size.L}
+            onChange={(e) => onUpdate({ size: { ...part.size, L: parseFloat(e.target.value) || 0 } })}
+            onBlur={() => setEditingField(null)}
+            onKeyDown={handleKeyDown}
+            min={1}
+            className="h-7 px-1 text-sm font-mono text-center w-16"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingField("L")}
+            className="font-mono text-sm hover:text-[var(--cai-teal)] transition-colors"
+          >
+            {part.size.L}
+          </button>
+        )}
+      </td>
+
+      {/* Width - editable */}
+      <td className="px-1 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+        {editingField === "W" ? (
+          <Input
+            ref={inputRef}
+            type="number"
+            value={part.size.W}
+            onChange={(e) => onUpdate({ size: { ...part.size, W: parseFloat(e.target.value) || 0 } })}
+            onBlur={() => setEditingField(null)}
+            onKeyDown={handleKeyDown}
+            min={1}
+            className="h-7 px-1 text-sm font-mono text-center w-16"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingField("W")}
+            className="font-mono text-sm hover:text-[var(--cai-teal)] transition-colors"
+          >
+            {part.size.W}
+          </button>
+        )}
+      </td>
+
+      {/* Qty - editable */}
+      <td className="px-1 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+        {editingField === "qty" ? (
+          <Input
+            ref={inputRef}
+            type="number"
+            value={part.qty}
+            onChange={(e) => onUpdate({ qty: parseInt(e.target.value) || 1 })}
+            onBlur={() => setEditingField(null)}
+            onKeyDown={handleKeyDown}
+            min={1}
+            className="h-7 px-1 text-sm font-mono text-center w-12"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingField("qty")}
+            className="font-mono text-sm hover:text-[var(--cai-teal)] transition-colors"
+          >
+            {part.qty}
+          </button>
+        )}
+      </td>
+
+      {/* Material */}
+      <td className="px-1 sm:px-2 py-2" onClick={(e) => e.stopPropagation()}>
+        <Select
+          value={part.material_id}
+          onValueChange={(v) => onUpdate({ material_id: v })}
+        >
+          <SelectTrigger className="h-7 text-xs w-full max-w-[100px] sm:max-w-[120px]">
+            <SelectValue>
+              {materials.find(m => m.value === part.material_id)?.label?.split(" (")[0] || part.material_id}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {materials.map((m) => (
+              <SelectItem key={m.value} value={m.value}>
+                {m.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </td>
+
+      {/* Rotation - toggle */}
+      <td className="px-1 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={() => onUpdate({ allow_rotation: !part.allow_rotation })}
+          className={cn(
+            "w-7 h-7 rounded-md flex items-center justify-center transition-colors",
+            part.allow_rotation 
+              ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
+              : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400"
+          )}
+          title={part.allow_rotation ? "Can rotate (click to lock)" : "Locked (click to allow)"}
+        >
+          {part.allow_rotation ? <RotateCcw className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+        </button>
+      </td>
+
+      {/* Group - hidden on small screens */}
+      <td className="hidden md:table-cell px-2 py-2 text-center">
         {part.group_id ? (
           <Badge variant="outline" className="font-normal text-xs bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-400 dark:border-indigo-800">
             <FolderOpen className="h-3 w-3 mr-1" />
@@ -293,7 +412,7 @@ function PartRow({
       </td>
 
       {/* Operations */}
-      <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+      <td className="px-1 sm:px-2 py-2" onClick={(e) => e.stopPropagation()}>
         <OpsIndicator part={part} onClick={onEditOps} />
       </td>
     </tr>
@@ -304,71 +423,171 @@ function PartRow({
 // PART CARD (Mobile mode)
 // ============================================================
 
+interface PartCardViewProps {
+  part: CutPart;
+  isSelected: boolean;
+  onToggle: () => void;
+  onEditOps: () => void;
+  onUpdate: (updates: Partial<CutPart>) => void;
+  materials: Array<{ value: string; label: string }>;
+}
+
 function PartCardView({
   part,
   isSelected,
-  onSelect,
   onToggle,
   onEditOps,
+  onUpdate,
   materials,
-}: {
-  part: CutPart;
-  isSelected: boolean;
-  onSelect: () => void;
-  onToggle: () => void;
-  onEditOps: () => void;
-  materials: Array<{ value: string; label: string }>;
-}) {
+}: PartCardViewProps) {
+  const [editingField, setEditingField] = React.useState<string | null>(null);
+
   return (
     <div
-      onClick={onSelect}
       className={cn(
-        "rounded-lg border bg-[var(--card)] transition-all p-3 space-y-2 cursor-pointer",
+        "rounded-lg border bg-[var(--card)] transition-all p-3 space-y-3",
         isSelected && "ring-2 ring-[var(--cai-teal)] bg-[var(--cai-teal)]/5"
       )}
     >
-      {/* Top row: Checkbox + Label */}
+      {/* Top row: Checkbox + Label + Qty */}
       <div className="flex items-center gap-2">
-        <label className="inline-flex p-1 -m-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={onToggle}
-            className="rounded border-[var(--border)] cursor-pointer"
+        <button
+          type="button"
+          onClick={onToggle}
+          className={cn(
+            "w-5 h-5 rounded border-2 flex items-center justify-center transition-all flex-shrink-0",
+            isSelected
+              ? "bg-[var(--cai-teal)] border-[var(--cai-teal)]"
+              : "border-[var(--border)] hover:border-[var(--cai-teal)]/50"
+          )}
+        >
+          {isSelected && <Check className="w-3 h-3 text-white" />}
+        </button>
+        
+        {editingField === "label" ? (
+          <Input
+            type="text"
+            value={part.label || ""}
+            onChange={(e) => onUpdate({ label: e.target.value || undefined })}
+            onBlur={() => setEditingField(null)}
+            onKeyDown={(e) => e.key === "Enter" && setEditingField(null)}
+            autoFocus
+            className="h-7 px-2 text-sm flex-1"
           />
-        </label>
-        <span className="font-medium text-sm flex-1">
-          {part.label || part.part_id}
-        </span>
-        <Badge variant="secondary" className="text-xs">
-          ×{part.qty}
-        </Badge>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingField("label")}
+            className="font-medium text-sm flex-1 text-left hover:text-[var(--cai-teal)] transition-colors truncate"
+          >
+            {part.label || part.part_id}
+          </button>
+        )}
+        
+        {editingField === "qty" ? (
+          <Input
+            type="number"
+            value={part.qty}
+            onChange={(e) => onUpdate({ qty: parseInt(e.target.value) || 1 })}
+            onBlur={() => setEditingField(null)}
+            onKeyDown={(e) => e.key === "Enter" && setEditingField(null)}
+            autoFocus
+            min={1}
+            className="h-7 w-14 px-1 text-sm font-mono text-center"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingField("qty")}
+            className="text-sm font-mono bg-[var(--muted)] px-2 py-0.5 rounded hover:bg-[var(--cai-teal)]/10 transition-colors"
+          >
+            ×{part.qty}
+          </button>
+        )}
       </div>
 
-      {/* Dimensions + Material */}
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-lg font-semibold">
-          {part.size.L} × {part.size.W}
-        </span>
-        <Badge variant="outline" className="font-normal text-xs">
-          {materials.find(m => m.value === part.material_id)?.label?.split(" (")[0] || part.material_id}
-        </Badge>
+      {/* Dimensions - editable */}
+      <div className="flex items-center gap-2">
+        {editingField === "L" ? (
+          <Input
+            type="number"
+            value={part.size.L}
+            onChange={(e) => onUpdate({ size: { ...part.size, L: parseFloat(e.target.value) || 0 } })}
+            onBlur={() => setEditingField(null)}
+            onKeyDown={(e) => e.key === "Enter" && setEditingField(null)}
+            autoFocus
+            min={1}
+            className="h-8 w-20 px-2 text-lg font-mono font-semibold text-center"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingField("L")}
+            className="font-mono text-lg font-semibold hover:text-[var(--cai-teal)] transition-colors"
+          >
+            {part.size.L}
+          </button>
+        )}
+        <span className="text-[var(--muted-foreground)]">×</span>
+        {editingField === "W" ? (
+          <Input
+            type="number"
+            value={part.size.W}
+            onChange={(e) => onUpdate({ size: { ...part.size, W: parseFloat(e.target.value) || 0 } })}
+            onBlur={() => setEditingField(null)}
+            onKeyDown={(e) => e.key === "Enter" && setEditingField(null)}
+            autoFocus
+            min={1}
+            className="h-8 w-20 px-2 text-lg font-mono font-semibold text-center"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingField("W")}
+            className="font-mono text-lg font-semibold hover:text-[var(--cai-teal)] transition-colors"
+          >
+            {part.size.W}
+          </button>
+        )}
+        <div className="flex-1" />
+        <Select
+          value={part.material_id}
+          onValueChange={(v) => onUpdate({ material_id: v })}
+        >
+          <SelectTrigger className="h-7 text-xs w-auto max-w-[100px]">
+            <SelectValue>
+              {materials.find(m => m.value === part.material_id)?.label?.split(" (")[0] || "Material"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {materials.map((m) => (
+              <SelectItem key={m.value} value={m.value}>
+                {m.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Ops + Rotation indicator */}
       <div className="flex items-center justify-between">
-        <div onClick={(e) => e.stopPropagation()}>
-          <OpsIndicator part={part} onClick={onEditOps} />
-        </div>
-        {part.allow_rotation ? (
-          <span className="text-xs text-[var(--cai-teal)] flex items-center gap-1">
-            <RotateCcw className="h-3 w-3" /> Rotatable
-          </span>
-        ) : (
-          <span className="text-xs text-[var(--muted-foreground)] flex items-center gap-1">
-            <Lock className="h-3 w-3" /> Fixed
-          </span>
-        )}
+        <OpsIndicator part={part} onClick={onEditOps} />
+        <button
+          type="button"
+          onClick={() => onUpdate({ allow_rotation: !part.allow_rotation })}
+          className={cn(
+            "text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors",
+            part.allow_rotation 
+              ? "text-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/10"
+              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+          )}
+        >
+          {part.allow_rotation ? (
+            <><RotateCcw className="h-3 w-3" /> Rotatable</>
+          ) : (
+            <><Lock className="h-3 w-3" /> Fixed</>
+          )}
+        </button>
       </div>
     </div>
   );
@@ -395,10 +614,6 @@ export function StreamlinedPartsTable() {
     copySelectedParts,
     pasteParts,
     clipboard,
-    undo,
-    redo,
-    canUndo,
-    canRedo,
   } = useIntakeStore();
 
   const [viewMode, setViewMode] = React.useState<"table" | "cards">("table");
@@ -625,7 +840,6 @@ export function StreamlinedPartsTable() {
 
   // Calculate totals
   const totalPieces = parts.reduce((sum, p) => sum + p.qty, 0);
-  const totalArea = parts.reduce((sum, p) => sum + p.qty * p.size.L * p.size.W, 0);
   const hasSelection = selectedPartIds.length > 0;
   const allSelected = parts.length > 0 && selectedPartIds.length === parts.length;
   const someSelected = selectedPartIds.length > 0 && selectedPartIds.length < parts.length;
@@ -664,27 +878,17 @@ export function StreamlinedPartsTable() {
             </div>
 
             {/* Toolbar */}
-            <div className="flex items-center gap-2">
-              {/* Undo/Redo */}
-              <div className="flex items-center gap-0.5 border-r border-[var(--border)] pr-2 mr-1">
-                <Button variant="ghost" size="sm" onClick={undo} disabled={!canUndo()} className="h-8 px-2" title="Undo">
-                  <Undo2 className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={redo} disabled={!canRedo()} className="h-8 px-2" title="Redo">
-                  <Redo2 className="h-4 w-4" />
-                </Button>
-              </div>
-
+            <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
               {/* Selection Actions */}
               {hasSelection ? (
                 <>
                   {/* Material Bulk Action */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-2">
-                        <Package className="h-4 w-4 mr-1" />
-                        Material
-                        <ChevronDown className="h-3 w-3 ml-1" />
+                      <Button variant="ghost" size="sm" className="h-8 px-1.5 sm:px-2">
+                        <Package className="h-4 w-4" />
+                        <span className="hidden sm:inline ml-1">Material</span>
+                        <ChevronDown className="h-3 w-3 ml-0.5" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
@@ -701,10 +905,10 @@ export function StreamlinedPartsTable() {
                   {/* Rotation Bulk Action */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-2">
-                        <RotateCcw className="h-4 w-4 mr-1" />
-                        Rotation
-                        <ChevronDown className="h-3 w-3 ml-1" />
+                      <Button variant="ghost" size="sm" className="h-8 px-1.5 sm:px-2">
+                        <RotateCcw className="h-4 w-4" />
+                        <span className="hidden sm:inline ml-1">Rotation</span>
+                        <ChevronDown className="h-3 w-3 ml-0.5" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">
@@ -719,13 +923,13 @@ export function StreamlinedPartsTable() {
                     </DropdownMenuContent>
                   </DropdownMenu>
 
-                  {/* Group Bulk Action */}
+                  {/* Group Bulk Action - hidden on small screens */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-2">
-                        <FolderOpen className="h-4 w-4 mr-1" />
-                        Group
-                        <ChevronDown className="h-3 w-3 ml-1" />
+                      <Button variant="ghost" size="sm" className="h-8 px-1.5 sm:px-2 hidden sm:flex">
+                        <FolderOpen className="h-4 w-4" />
+                        <span className="hidden md:inline ml-1">Group</span>
+                        <ChevronDown className="h-3 w-3 ml-0.5" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
@@ -759,14 +963,16 @@ export function StreamlinedPartsTable() {
                           variant="ghost" 
                           size="sm" 
                           onClick={() => setShowBulkOpsPanel(true)} 
-                          className="h-8 px-2 text-[var(--cai-teal)]"
+                          className="h-8 px-1.5 sm:px-2 text-[var(--cai-teal)]"
                         >
-                          <Settings2 className="h-4 w-4 mr-1" /> Bulk Ops
+                          <Settings2 className="h-4 w-4" />
+                          <span className="hidden sm:inline ml-1">Ops</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Apply operations to all selected parts</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -774,41 +980,51 @@ export function StreamlinedPartsTable() {
                           variant="ghost" 
                           size="sm" 
                           onClick={handleSwapSelectedDimensions} 
-                          className="h-8 px-2"
+                          className="h-8 px-1.5 sm:px-2"
                         >
-                          <ArrowLeftRight className="h-4 w-4 mr-1" /> Swap L↔W
+                          <ArrowLeftRight className="h-4 w-4" />
+                          <span className="hidden md:inline ml-1">L↔W</span>
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Swap Length and Width for selected parts</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <div className="w-px h-6 bg-[var(--border)] mx-1" />
-                  <Button variant="ghost" size="sm" onClick={copySelectedParts} className="h-8 px-2">
-                    <Copy className="h-4 w-4 mr-1" /> Copy
+                  
+                  <div className="hidden sm:block w-px h-6 bg-[var(--border)] mx-0.5" />
+                  
+                  <Button variant="ghost" size="sm" onClick={copySelectedParts} className="h-8 px-1.5 sm:px-2 hidden md:flex">
+                    <Copy className="h-4 w-4" />
+                    <span className="hidden lg:inline ml-1">Copy</span>
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={duplicateSelectedParts} className="h-8 px-2">
-                    <Layers className="h-4 w-4 mr-1" /> Duplicate
+                  <Button variant="ghost" size="sm" onClick={duplicateSelectedParts} className="h-8 px-1.5 sm:px-2 hidden md:flex">
+                    <Layers className="h-4 w-4" />
+                    <span className="hidden lg:inline ml-1">Duplicate</span>
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={removeSelectedParts}
-                    className="h-8 px-2 text-red-600 hover:bg-red-50"
+                    className="h-8 px-1.5 sm:px-2 text-red-600 hover:bg-red-50"
                   >
-                    <Trash2 className="h-4 w-4 mr-1" /> Delete
+                    <Trash2 className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-1">Delete</span>
                   </Button>
-                  <div className="w-px h-6 bg-[var(--border)] mx-1" />
-                  <Button variant="ghost" size="sm" onClick={clearSelection} className="h-8 px-2">
-                    Clear
+                  
+                  <div className="w-px h-6 bg-[var(--border)] mx-0.5" />
+                  
+                  <Button variant="ghost" size="sm" onClick={clearSelection} className="h-8 px-1.5 sm:px-2">
+                    <span className="sm:hidden">×</span>
+                    <span className="hidden sm:inline">Clear</span>
                   </Button>
                 </>
               ) : (
                 <>
-                  <Button variant="ghost" size="sm" onClick={selectAllParts} className="h-8 px-2">
-                    <Check className="h-4 w-4 mr-1" /> Select All
+                  <Button variant="ghost" size="sm" onClick={selectAllParts} className="h-8 px-1.5 sm:px-2">
+                    <Check className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-1">Select All</span>
                   </Button>
                   {clipboard.length > 0 && (
-                    <Button variant="ghost" size="sm" onClick={pasteParts} className="h-8 px-2">
+                    <Button variant="ghost" size="sm" onClick={pasteParts} className="h-8 px-1.5 sm:px-2">
                       Paste ({clipboard.length})
                     </Button>
                   )}
@@ -816,7 +1032,7 @@ export function StreamlinedPartsTable() {
               )}
 
               {/* View toggle */}
-              <div className="flex items-center border rounded-md overflow-hidden ml-2">
+              <div className="flex items-center border rounded-md overflow-hidden ml-1 sm:ml-2">
                 <button
                   type="button"
                   onClick={() => setViewMode("table")}
@@ -840,10 +1056,6 @@ export function StreamlinedPartsTable() {
                   <LayoutGrid className="h-4 w-4" />
                 </button>
               </div>
-
-              <span className="hidden md:block text-sm text-[var(--muted-foreground)] border-l border-[var(--border)] pl-2 ml-1">
-                {(totalArea / 1_000_000).toFixed(2)} m²
-              </span>
             </div>
           </div>
         </CardHeader>
@@ -853,51 +1065,64 @@ export function StreamlinedPartsTable() {
             /* TABLE VIEW */
             <div className="rounded-lg border border-[var(--border)] overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[600px]">
+                <table className="w-full min-w-[500px]">
                   <thead>
                     <tr className="bg-[var(--muted)]">
-                      <th className="w-10 px-2 py-2">
-                        <label className="inline-flex p-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={allSelected}
-                            ref={(el) => { if (el) el.indeterminate = someSelected; }}
-                            onChange={(e) => e.target.checked ? selectAllParts() : clearSelection()}
-                            className="rounded border-[var(--border)]"
-                          />
-                        </label>
+                      <th className="w-8 sm:w-10 px-1 sm:px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={allSelected || someSelected ? clearSelection : selectAllParts}
+                          className={cn(
+                            "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                            allSelected
+                              ? "bg-[var(--cai-teal)] border-[var(--cai-teal)]"
+                              : someSelected
+                              ? "bg-[var(--cai-teal)]/50 border-[var(--cai-teal)]"
+                              : "border-[var(--border)] hover:border-[var(--cai-teal)]/50"
+                          )}
+                        >
+                          {allSelected && <Check className="w-3 h-3 text-white" />}
+                          {someSelected && !allSelected && <div className="w-2 h-0.5 bg-white" />}
+                        </button>
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-medium">
+                      <th className="px-1 sm:px-2 py-2 text-left text-xs font-medium">
                         <Button variant="ghost" size="sm" className="h-7 px-1" onClick={() => handleSort("label")}>
                           Label
-                          <ArrowUpDown className={cn("ml-1 h-3 w-3", sortField === "label" && "text-[var(--cai-teal)]")} />
+                          <ArrowUpDown className={cn("ml-1 h-3 w-3 hidden sm:inline", sortField === "label" && "text-[var(--cai-teal)]")} />
                         </Button>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-medium">
-                        <Button variant="ghost" size="sm" className="h-7 px-1" onClick={() => handleSort("L")}>
-                          Dimensions
-                          <ArrowUpDown className={cn("ml-1 h-3 w-3", (sortField === "L" || sortField === "W") && "text-[var(--cai-teal)]")} />
+                      <th className="px-1 py-2 text-center text-xs font-medium">
+                        <Button variant="ghost" size="sm" className="h-7 px-0.5" onClick={() => handleSort("L")}>
+                          L
+                          <ArrowUpDown className={cn("ml-0.5 h-3 w-3 hidden sm:inline", sortField === "L" && "text-[var(--cai-teal)]")} />
                         </Button>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-medium">
-                        <Button variant="ghost" size="sm" className="h-7 px-1" onClick={() => handleSort("qty")}>
+                      <th className="px-1 py-2 text-center text-xs font-medium">
+                        <Button variant="ghost" size="sm" className="h-7 px-0.5" onClick={() => handleSort("W")}>
+                          W
+                          <ArrowUpDown className={cn("ml-0.5 h-3 w-3 hidden sm:inline", sortField === "W" && "text-[var(--cai-teal)]")} />
+                        </Button>
+                      </th>
+                      <th className="px-1 py-2 text-center text-xs font-medium">
+                        <Button variant="ghost" size="sm" className="h-7 px-0.5" onClick={() => handleSort("qty")}>
                           Qty
-                          <ArrowUpDown className={cn("ml-1 h-3 w-3", sortField === "qty" && "text-[var(--cai-teal)]")} />
+                          <ArrowUpDown className={cn("ml-0.5 h-3 w-3 hidden sm:inline", sortField === "qty" && "text-[var(--cai-teal)]")} />
                         </Button>
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-medium">
-                        <Button variant="ghost" size="sm" className="h-7 px-1" onClick={() => handleSort("material_id")}>
-                          Material
-                          <ArrowUpDown className={cn("ml-1 h-3 w-3", sortField === "material_id" && "text-[var(--cai-teal)]")} />
+                      <th className="px-1 sm:px-2 py-2 text-left text-xs font-medium">
+                        <Button variant="ghost" size="sm" className="h-7 px-0.5" onClick={() => handleSort("material_id")}>
+                          <span className="hidden sm:inline">Material</span>
+                          <span className="sm:hidden">Mat</span>
+                          <ArrowUpDown className={cn("ml-0.5 h-3 w-3 hidden sm:inline", sortField === "material_id" && "text-[var(--cai-teal)]")} />
                         </Button>
                       </th>
-                      <th className="w-12 px-2 py-2 text-center text-xs font-medium" title="Can Rotate">
+                      <th className="w-10 px-1 py-2 text-center text-xs font-medium" title="Can Rotate">
                         Rot
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-medium" title="Group/Assembly">
+                      <th className="hidden md:table-cell px-2 py-2 text-center text-xs font-medium" title="Group/Assembly">
                         Group
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-medium text-teal-600">
+                      <th className="px-1 sm:px-2 py-2 text-center text-xs font-medium text-teal-600">
                         Ops
                       </th>
                     </tr>
@@ -911,6 +1136,7 @@ export function StreamlinedPartsTable() {
                         onSelect={(e) => handlePartClick(part.part_id, e)}
                         onToggle={() => togglePartSelection(part.part_id)}
                         onEditOps={() => setOpsEditingPart(part)}
+                        onUpdate={(updates) => updatePart(part.part_id, { ...part, ...updates })}
                         materials={materialOptions}
                       />
                     ))}
@@ -920,15 +1146,15 @@ export function StreamlinedPartsTable() {
             </div>
           ) : (
             /* CARD VIEW */
-            <div className="p-4 space-y-3">
+            <div className="p-3 sm:p-4 grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {sortedParts.map((part) => (
                 <PartCardView
                   key={part.part_id}
                   part={part}
                   isSelected={selectedPartIds.includes(part.part_id)}
-                  onSelect={() => togglePartSelection(part.part_id)}
                   onToggle={() => togglePartSelection(part.part_id)}
                   onEditOps={() => setOpsEditingPart(part)}
+                  onUpdate={(updates) => updatePart(part.part_id, { ...part, ...updates })}
                   materials={materialOptions}
                 />
               ))}

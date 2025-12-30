@@ -561,7 +561,7 @@ function InboxPartRow({
       tabIndex={0}
     >
       {/* Checkbox */}
-      <td className="w-10 px-2 py-2">
+      <td className="w-8 sm:w-10 px-1 sm:px-2 py-2">
         <button
           type="button"
           onClick={(e) => {
@@ -579,18 +579,18 @@ function InboxPartRow({
         </button>
       </td>
 
-      {/* Row number */}
-      <td className="w-8 px-1 py-2 text-center text-xs text-[var(--muted-foreground)]">
+      {/* Row number - hidden on mobile */}
+      <td className="hidden sm:table-cell w-8 px-1 py-2 text-center text-xs text-[var(--muted-foreground)]">
         {rowIndex + 1}
       </td>
 
-      {/* Preview */}
-      <td className="w-[70px] px-2 py-2">
+      {/* Preview - hidden on small/medium screens */}
+      <td className="hidden md:table-cell w-[60px] px-1 py-2">
         <InboxPartPreview part={part} />
       </td>
 
       {/* Label */}
-      <td className="px-2 py-2 min-w-[120px]">
+      <td className="px-1 sm:px-2 py-2 min-w-[80px] sm:min-w-[100px]">
         <EditableCell
           value={part.label || ""}
           onChange={(v) => onUpdate({ label: v || undefined })}
@@ -598,11 +598,11 @@ function InboxPartRow({
           onStartEdit={() => setEditingField("label")}
           onEndEdit={() => setEditingField(null)}
           placeholder="Part name"
-          className="w-full max-w-[140px]"
+          className="w-full max-w-[100px] sm:max-w-[120px]"
         />
         {part._originalText && (
-          <div className="mt-0.5 px-2">
-            <p className="text-[10px] text-[var(--muted-foreground)] truncate max-w-[140px]">
+          <div className="hidden sm:block mt-0.5 px-2">
+            <p className="text-[10px] text-[var(--muted-foreground)] truncate max-w-[120px]">
               {part._originalText}
             </p>
             <CorrectionDiff part={part} compact />
@@ -611,7 +611,7 @@ function InboxPartRow({
       </td>
 
       {/* Dimensions L */}
-      <td className="px-1 py-2 w-[70px]">
+      <td className="px-1 py-2 w-[55px] sm:w-[65px]">
         <EditableCell
           value={part.size.L}
           onChange={(v) => onUpdate({ size: { ...part.size, L: parseFloat(v) || 0 } })}
@@ -620,33 +620,27 @@ function InboxPartRow({
           onStartEdit={() => setEditingField("L")}
           onEndEdit={() => setEditingField(null)}
           min={1}
-          className="w-[60px]"
+          className="w-[50px] sm:w-[55px]"
         />
       </td>
 
       {/* Swap button */}
-      <td className="w-6 px-0 py-2">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSwapDimensions();
-                }}
-                className="p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
-              >
-                <ArrowLeftRight className="h-3 w-3" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Swap L ↔ W (S)</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+      <td className="w-5 sm:w-6 px-0 py-2">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSwapDimensions();
+          }}
+          className="p-0.5 sm:p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+          title="Swap L ↔ W"
+        >
+          <ArrowLeftRight className="h-3 w-3" />
+        </button>
       </td>
 
       {/* Dimensions W */}
-      <td className="px-1 py-2 w-[70px]">
+      <td className="px-1 py-2 w-[55px] sm:w-[65px]">
         <EditableCell
           value={part.size.W}
           onChange={(v) => onUpdate({ size: { ...part.size, W: parseFloat(v) || 0 } })}
@@ -655,13 +649,13 @@ function InboxPartRow({
           onStartEdit={() => setEditingField("W")}
           onEndEdit={() => setEditingField(null)}
           min={1}
-          className="w-[60px]"
+          className="w-[50px] sm:w-[55px]"
         />
       </td>
 
       {/* Quantity */}
-      <td className="px-1 py-2 w-[60px]">
-        <div className="flex items-center gap-1">
+      <td className="px-1 py-2 w-[45px] sm:w-[55px]">
+        <div className="flex items-center gap-0.5">
           <EditableCell
             value={part.qty}
             onChange={(v) => onUpdate({ qty: parseInt(v) || 1 })}
@@ -670,37 +664,31 @@ function InboxPartRow({
             onStartEdit={() => setEditingField("qty")}
             onEndEdit={() => setEditingField(null)}
             min={1}
-            className="w-[40px]"
+            className="w-[35px] sm:w-[40px]"
           />
           {part.qty > 1 && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSplitQuantity();
-                    }}
-                    className="p-0.5 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
-                  >
-                    <Layers className="h-3 w-3" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Split into separate parts</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSplitQuantity();
+              }}
+              className="hidden sm:block p-0.5 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+              title="Split into separate parts"
+            >
+              <Layers className="h-3 w-3" />
+            </button>
           )}
         </div>
       </td>
 
       {/* Material */}
-      <td className="px-2 py-2 min-w-[120px]">
+      <td className="px-1 sm:px-2 py-2 min-w-[80px] sm:min-w-[100px]">
         <Select
           value={part.material_id}
           onValueChange={(v) => onUpdate({ material_id: v })}
         >
-          <SelectTrigger className="h-7 text-xs w-full max-w-[130px]">
+          <SelectTrigger className="h-7 text-xs w-full max-w-[80px] sm:max-w-[110px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -714,12 +702,12 @@ function InboxPartRow({
       </td>
 
       {/* Rotation Toggle */}
-      <td className="px-1 py-2 text-center w-[50px]">
+      <td className="px-1 py-2 text-center w-[40px] sm:w-[50px]">
         <button
           type="button"
           onClick={() => onUpdate({ allow_rotation: !part.allow_rotation })}
           className={cn(
-            "w-7 h-7 rounded-md flex items-center justify-center text-xs font-medium transition-colors",
+            "w-6 h-6 sm:w-7 sm:h-7 rounded-md flex items-center justify-center text-xs font-medium transition-colors",
             part.allow_rotation !== false
               ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
               : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400"
@@ -731,15 +719,15 @@ function InboxPartRow({
       </td>
 
       {/* Operations - Click to edit */}
-      <td className="px-2 py-2 min-w-[100px]" onClick={(e) => e.stopPropagation()}>
+      <td className="px-1 sm:px-2 py-2 min-w-[80px] sm:min-w-[100px]" onClick={(e) => e.stopPropagation()}>
         <OpsIndicatorButton
           ops={part.ops}
           onClick={onEditOps}
         />
       </td>
 
-      {/* Confidence */}
-      <td className="px-2 py-2 text-center w-[100px]">
+      {/* Confidence - hidden on small screens */}
+      <td className="hidden lg:table-cell px-2 py-2 text-center w-[80px]">
         <div className="flex flex-col items-center gap-1">
           <ConfidenceBadge confidence={part.audit?.confidence} />
           <ConfidenceSummary fieldConfidence={fieldConfidence} compact />
@@ -747,60 +735,48 @@ function InboxPartRow({
       </td>
 
       {/* Actions */}
-      <td className="px-2 py-2 w-[100px]">
-        <div className="flex items-center justify-end gap-1">
+      <td className="px-1 sm:px-2 py-2 w-[80px] sm:w-[100px]">
+        <div className="flex items-center justify-end gap-0.5 sm:gap-1">
           {!isRejected ? (
             <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAccept();
-                      }}
-                    >
-                      <Check className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Accept (Enter)</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReject();
-                      }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Reject (Del)</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 sm:h-7 sm:w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAccept();
+                }}
+                title="Accept"
+              >
+                <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 sm:h-7 sm:w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReject();
+                }}
+                title="Reject"
+              >
+                <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7">
-                    <ChevronDown className="h-3.5 w-3.5" />
+                  <Button variant="ghost" size="icon" className="h-6 w-6 sm:h-7 sm:w-7">
+                    <ChevronDown className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={onDuplicate}>
                     <Copy className="h-4 w-4 mr-2" />
-                    Duplicate (D)
+                    Duplicate
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={onSwapDimensions}>
                     <ArrowLeftRight className="h-4 w-4 mr-2" />
-                    Swap L ↔ W (S)
+                    Swap L ↔ W
                   </DropdownMenuItem>
                   {part.qty > 1 && (
                     <DropdownMenuItem onClick={onSplitQuantity}>
@@ -817,25 +793,19 @@ function InboxPartRow({
               </DropdownMenu>
             </>
           ) : (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onUpdate({ _status: "pending" });
-                    }}
-                  >
-                    <RotateCcw className="h-3 w-3 mr-1" />
-                    Restore
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Restore to pending</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 sm:h-7 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUpdate({ _status: "pending" });
+              }}
+              title="Restore to pending"
+            >
+              <RotateCcw className="h-3 w-3 mr-1" />
+              <span className="hidden sm:inline">Restore</span>
+            </Button>
           )}
         </div>
       </td>
@@ -1670,19 +1640,20 @@ export function IntakeInbox() {
 
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="pb-3 border-b border-[var(--border)]">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Inbox className="h-5 w-5" />
-              Intake Inbox
+      <CardHeader className="pb-2 sm:pb-3 border-b border-[var(--border)]">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <Inbox className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span className="hidden sm:inline">Intake Inbox</span>
+              <span className="sm:hidden">Inbox</span>
             </CardTitle>
-            <Badge variant="secondary">{pendingCount} pending</Badge>
+            <Badge variant="secondary" className="text-xs">{pendingCount} pending</Badge>
             {counts.rejected > 0 && (
-              <Badge variant="error">{counts.rejected} rejected</Badge>
+              <Badge variant="error" className="text-xs">{counts.rejected} rej.</Badge>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             {/* Compare Mode Toggle - only show if we have source files */}
             {hasSourceFiles && (
               <>
@@ -1692,31 +1663,40 @@ export function IntakeInbox() {
                   onClick={() => setCompareMode(!compareMode)}
                   title="Toggle Compare Mode to view source files alongside parts"
                   className={cn(
-                    "gap-1.5",
+                    "h-8 px-2 gap-1",
                     compareMode && "bg-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/90"
                   )}
                 >
                   <SplitSquareVertical className="h-4 w-4" />
-                  <span className="hidden sm:inline">Compare</span>
+                  <span className="hidden md:inline">Compare</span>
                 </Button>
-                <div className="w-px h-6 bg-[var(--border)]" />
+                <div className="hidden sm:block w-px h-6 bg-[var(--border)]" />
               </>
             )}
-            <FilterBar filter={filter} onFilterChange={setFilter} counts={counts} />
-            <div className="w-px h-6 bg-[var(--border)]" />
-            <Button variant="ghost" size="sm" onClick={clearInbox}>
-              Clear All
+            <div className="hidden sm:block">
+              <FilterBar filter={filter} onFilterChange={setFilter} counts={counts} />
+            </div>
+            <div className="hidden sm:block w-px h-6 bg-[var(--border)]" />
+            <Button variant="ghost" size="sm" onClick={clearInbox} className="h-8 px-2 text-xs sm:text-sm">
+              <span className="hidden sm:inline">Clear All</span>
+              <span className="sm:hidden">Clear</span>
             </Button>
             <Button
               variant="primary"
               size="sm"
               onClick={acceptAllInboxParts}
               disabled={pendingCount === 0}
+              className="h-8 px-2 sm:px-3"
             >
               <Check className="h-4 w-4" />
-              Accept All ({pendingCount})
+              <span className="hidden sm:inline ml-1">Accept All ({pendingCount})</span>
+              <span className="sm:hidden ml-1">All</span>
             </Button>
           </div>
+        </div>
+        {/* Mobile filter bar */}
+        <div className="sm:hidden mt-2">
+          <FilterBar filter={filter} onFilterChange={setFilter} counts={counts} />
         </div>
       </CardHeader>
 
@@ -1806,22 +1786,22 @@ export function IntakeInbox() {
             "overflow-x-auto flex-1 min-h-0",
             compareMode && "overflow-y-auto"
           )} onKeyDown={handleTableKeyDown}>
-            <table className="w-full min-w-[800px]">
+            <table className="w-full min-w-[600px]">
               <thead className="bg-[var(--muted)]/50 border-b border-[var(--border)] sticky top-0 z-10">
                 <tr>
-                  <th className="w-10 px-2 py-2"></th>
-                  <th className="w-8 px-1 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">#</th>
-                  <th className="w-[70px] px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Preview</th>
-                  <th className="px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Label</th>
-                  <th className="w-[70px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">L</th>
-                  <th className="w-6"></th>
-                  <th className="w-[70px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">W</th>
-                  <th className="w-[60px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Qty</th>
-                  <th className="px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Material</th>
-                  <th className="w-[50px] px-1 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]" title="Can Rotate">Rot</th>
-                  <th className="min-w-[100px] px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Ops</th>
-                  <th className="w-[100px] px-2 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">Conf.</th>
-                  <th className="w-[100px] px-2 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Actions</th>
+                  <th className="w-8 sm:w-10 px-1 sm:px-2 py-2"></th>
+                  <th className="hidden sm:table-cell w-8 px-1 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">#</th>
+                  <th className="hidden md:table-cell w-[60px] px-1 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Preview</th>
+                  <th className="px-1 sm:px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Label</th>
+                  <th className="w-[55px] sm:w-[65px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">L</th>
+                  <th className="w-5 sm:w-6"></th>
+                  <th className="w-[55px] sm:w-[65px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">W</th>
+                  <th className="w-[45px] sm:w-[55px] px-1 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Qty</th>
+                  <th className="px-1 sm:px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]"><span className="hidden sm:inline">Material</span><span className="sm:hidden">Mat</span></th>
+                  <th className="w-[40px] sm:w-[50px] px-1 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]" title="Can Rotate">Rot</th>
+                  <th className="min-w-[80px] sm:min-w-[100px] px-1 sm:px-2 py-2 text-left text-xs font-medium text-[var(--muted-foreground)]">Ops</th>
+                  <th className="hidden lg:table-cell w-[80px] px-2 py-2 text-center text-xs font-medium text-[var(--muted-foreground)]">Conf.</th>
+                  <th className="w-[80px] sm:w-[100px] px-1 sm:px-2 py-2 text-right text-xs font-medium text-[var(--muted-foreground)]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
@@ -1848,8 +1828,8 @@ export function IntakeInbox() {
             </table>
           </div>
 
-          {/* Footer with keyboard shortcuts */}
-          <div className="px-4 py-2 border-t border-[var(--border)] bg-[var(--muted)]/30 flex-shrink-0">
+          {/* Footer with keyboard shortcuts - hidden on mobile */}
+          <div className="hidden sm:block px-4 py-2 border-t border-[var(--border)] bg-[var(--muted)]/30 flex-shrink-0">
             <KeyboardHelp />
           </div>
         </div>
