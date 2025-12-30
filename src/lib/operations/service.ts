@@ -438,7 +438,7 @@ export async function updateDrillingOperation(
   if (input.code !== undefined) updateData.code = input.code;
   if (input.name !== undefined) updateData.name = input.name;
   if (input.description !== undefined) updateData.description = input.description;
-  if (input.typeId !== undefined) updateData.operationType = { connect: { id: input.typeId } };
+  if (input.typeId !== undefined) updateData.typeId = input.typeId;
   if (input.holes !== undefined) updateData.holes = input.holes as unknown as Prisma.InputJsonValue;
   if (input.refEdge !== undefined) updateData.refEdge = input.refEdge;
   if (input.refCorner !== undefined) updateData.refCorner = input.refCorner;
@@ -563,7 +563,7 @@ export async function updateCncOperation(
   if (input.code !== undefined) updateData.code = input.code;
   if (input.name !== undefined) updateData.name = input.name;
   if (input.description !== undefined) updateData.description = input.description;
-  if (input.typeId !== undefined) updateData.operationType = { connect: { id: input.typeId } };
+  if (input.typeId !== undefined) updateData.typeId = input.typeId;
   if (input.opType !== undefined) updateData.opType = input.opType;
   if (input.parametricConfig !== undefined) {
     updateData.parametricConfig = input.parametricConfig 
@@ -821,7 +821,6 @@ function mapGrooveOperation(op: any): GrooveOperation {
     name: op.name,
     description: op.description ?? undefined,
     typeId: op.typeId ?? undefined,
-    type: op.operationType ? mapOperationType(op.operationType) : undefined,
     widthMm: op.widthMm,
     depthMm: op.depthMm,
     offsetFromEdgeMm: op.offsetFromEdgeMm,
@@ -842,7 +841,6 @@ function mapDrillingOperation(op: any): DrillingOperation {
     name: op.name,
     description: op.description ?? undefined,
     typeId: op.typeId ?? undefined,
-    type: op.operationType ? mapOperationType(op.operationType) : undefined,
     holes: (op.holes || []) as HoleDefinition[],
     refEdge: op.refEdge as EdgeSide | undefined,
     refCorner: op.refCorner ?? undefined,
@@ -864,7 +862,6 @@ function mapCncOperation(op: any): CncOperation {
     name: op.name,
     description: op.description ?? undefined,
     typeId: op.typeId ?? undefined,
-    type: op.operationType ? mapOperationType(op.operationType) : undefined,
     opType: op.opType,
     parametricConfig: op.parametricConfig ?? undefined,
     shapeId: op.shapeId ?? undefined,
