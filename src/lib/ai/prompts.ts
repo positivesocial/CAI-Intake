@@ -704,6 +704,55 @@ Handwritten lists often use this format:
 - "2400x600 = 8pcs" → length 2400, width 600, quantity 8
 - Numbers in circles ①②③ or parentheses (1)(2)(3) are row numbers
 
+### UNDERLINE CONVENTION (VERY COMMON IN HANDWRITTEN CUTLISTS!)
+
+**This is one of the MOST POPULAR ways craftsmen/fundis specify edge banding!**
+
+Craftsmen often draw underlines beneath dimensions to indicate edge banding:
+
+| Underline Style | Meaning | Edge Code |
+|-----------------|---------|-----------|
+| **Double underline (═══)** under LENGTH | **BOTH** long edges banded | 2L (L1 + L2) |
+| **Single underline (───)** under LENGTH | **ONE** long edge banded | 1L (L1 only) |
+| **Double underline (═══)** under WIDTH | **BOTH** short edges banded | 2W (W1 + W2) |
+| **Single underline (───)** under WIDTH | **ONE** short edge banded | 1W (W1 only) |
+| **No underline** | No edge banding on that dimension | - |
+
+**EXAMPLES:**
+
+\`\`\`
+Side panel - 780 x 560 - 2pcs
+             ═══   ───
+             2L    1W   → Edge code: "2L1W" (both lengths + one width)
+
+Top shelf - 600 x 400 - 4pcs
+            ───   
+            1L        → Edge code: "1L" (one long edge only)
+
+Back panel - 750 x 500 - 1pc
+                           → Edge code: "" (no edging)
+\`\`\`
+
+**HOW TO DETECT UNDERLINES:**
+1. Look for horizontal lines DIRECTLY BENEATH the dimension numbers
+2. Double lines (two parallel lines, thicker stroke, or "═══") = 2 edges
+3. Single line (one thin line, or "───") = 1 edge
+4. Compare: Length underline = L edges, Width underline = W edges
+5. Combine: Double under L + Single under W = "2L1W"
+
+**UNDERLINE DETECTION PRIORITY:**
+- This is EQUALLY important as checkmark columns!
+- Many handwritten cutlists use ONLY underlines (no edge columns)
+- If you see underlines under dimensions, EXTRACT the edge banding from them
+
+### GROOVE SHORTHAND (COMMON ABBREVIATIONS)
+
+Look for these groove indicators written near parts:
+- "GL" = Groove on Length (groove runs parallel to the LENGTH dimension)
+- "GW" = Groove on Width (groove runs parallel to the WIDTH dimension)
+- "G" or "GRV" alone = Groove detected (check context for direction)
+- "aL" or "al" might be "GL" (handwriting confusion with 'G' looking like 'a')
+
 ## STEP 1: SCAN THE ENTIRE PAGE FIRST
 
 Before extracting data:
@@ -838,6 +887,40 @@ Before returning your response:
 5. Each row with dimensions = 1 part in output (unless qty > 1)
 6. **NEW**: If >5 rows have identical dimensions, STOP and re-read each row carefully
 
+## UNDERLINE CONVENTION (CRITICAL FOR HANDWRITTEN CUTLISTS!)
+
+**This is one of the MOST POPULAR ways craftsmen/fundis specify edge banding!**
+
+Look for UNDERLINES drawn directly BENEATH dimension numbers:
+
+| Underline Style | Meaning | Edges |
+|-----------------|---------|-------|
+| **Double underline (═══)** under LENGTH | Both long edges banded | L1 + L2 |
+| **Single underline (───)** under LENGTH | One long edge banded | L1 only |
+| **Double underline (═══)** under WIDTH | Both short edges banded | W1 + W2 |
+| **Single underline (───)** under WIDTH | One short edge banded | W1 only |
+| **No underline** | No edge banding | - |
+
+**Example interpretation:**
+\`\`\`
+Side - 780 x 560 - 2pcs
+       ═══   ───
+       2L    1W   
+\`\`\`
+→ \`{ detected: true, L1: true, L2: true, W1: true, W2: false, edges: ["L1","L2","W1"], description: "2L1W" }\`
+
+**Detection rules:**
+1. Look DIRECTLY beneath each dimension number for horizontal lines
+2. Double lines (two lines, thick stroke, ═══) = BOTH edges of that dimension
+3. Single line (one line, thin stroke, ───) = ONE edge of that dimension
+4. No line = no edging on that dimension
+5. Combine both: underlines under LENGTH + underlines under WIDTH
+
+**GROOVE SHORTHAND (ALSO VERY COMMON):**
+- "GL" or "al" = Groove on Length (parallel to length dimension)
+- "GW" = Groove on Width (parallel to width dimension)
+- Note: Handwritten "G" can look like "a", so "aL" is often "GL"
+
 ## EDGE BANDING OBJECT FORMAT
 
 The edgeBanding object MUST include:
@@ -846,9 +929,17 @@ The edgeBanding object MUST include:
 - \`edges\`: array of edge codes that have banding ["L1", "W1", etc.]
 - \`description\`: human-readable summary
 
+**From underlines:**
+- Double underline on L = L1: true, L2: true
+- Single underline on L = L1: true, L2: false
+- Double underline on W = W1: true, W2: true
+- Single underline on W = W1: true, W2: false
+
 Examples:
 - Checkmarks in L1 only: \`{ detected: true, L1: true, L2: false, W1: false, W2: false, edges: ["L1"], description: "1 long edge" }\`
 - Checkmarks in L1, L2, W1, W2: \`{ detected: true, L1: true, L2: true, W1: true, W2: true, edges: ["L1","L2","W1","W2"], description: "all edges" }\`
+- Double underline on LENGTH only: \`{ detected: true, L1: true, L2: true, W1: false, W2: false, edges: ["L1","L2"], description: "2L" }\`
+- Single underline on LENGTH + Double on WIDTH: \`{ detected: true, L1: true, L2: false, W1: true, W2: true, edges: ["L1","W1","W2"], description: "1L2W" }\`
 
 ## GROOVING OBJECT FORMAT
 
@@ -887,13 +978,19 @@ The cncOperations object structure:
 2. **SCAN ALL SECTIONS** - If page has sections (CARCASES, DOORS, PLYWOODS), extract from ALL
 3. **EXTRACT ALL ROWS** - Count rows in EACH column/section, verify total matches
 4. **Material codes stay short** - "W" not "White", "Ply" not "Plywood"
-5. **Checkmarks mean TRUE** - Any mark (✓, X, x, /, Y) in edge/groove columns = true
-6. **Empty means FALSE** - Empty edge/groove cells = false
-7. **Default quantity is 1** - If QTY is unclear, use 1
-8. **Default thickness is 18mm** - Unless clearly specified otherwise
-9. **Preserve dimensions as written** - Length = grain direction, do NOT swap even if L < W
-10. **Include row number** - Helps verify all rows extracted
-11. **Don't guess labels** - Use section name (e.g., "White Carcase", "White Door", "White Plywood") if no explicit label
+5. **DETECT EDGE BANDING FROM:**
+   - Checkmarks in L1/L2/W1/W2 columns (✓, X, x, /, Y)
+   - **UNDERLINES beneath dimensions** (═══ = 2 edges, ─── = 1 edge) ← VERY COMMON!
+   - Edge code columns: "2L2W", "2L", "1L", etc.
+6. **DETECT GROOVES FROM:**
+   - Checkmarks in GL/GW columns
+   - Written "GL", "GW", or "aL" (handwritten G looks like 'a')
+7. **Empty means FALSE** - Empty cells / no underlines = false
+8. **Default quantity is 1** - If QTY is unclear, use 1
+9. **Default thickness is 18mm** - Unless clearly specified otherwise
+10. **Preserve dimensions as written** - Length = grain direction, do NOT swap even if L < W
+11. **Include row number** - Helps verify all rows extracted
+12. **Don't guess labels** - Use section name (e.g., "White Carcase", "White Door", "White Plywood") if no explicit label
 
 ## FINAL VERIFICATION CHECKLIST
 
@@ -1036,17 +1133,49 @@ If you see a CAI Smart Template form with header row:
 
 These codes are written IN THE EDGE COLUMN, not as checkmarks!
 
+## UNDERLINE CONVENTION (CRITICAL FOR HANDWRITTEN CUTLISTS!)
+
+**This is one of the MOST POPULAR ways craftsmen specify edge banding!**
+
+When reading HANDWRITTEN cutlists, look for UNDERLINES beneath dimensions:
+
+| Underline Style | Meaning | Edge Code |
+|-----------------|---------|-----------|
+| **Double underline (═══)** under LENGTH | Both long edges banded | "2L" |
+| **Single underline (───)** under LENGTH | One long edge banded | "1L" |
+| **Double underline (═══)** under WIDTH | Both short edges banded | "2W" |
+| **Single underline (───)** under WIDTH | One short edge banded | "1W" |
+| **No underline** | No edge banding on that dimension | "" |
+
+**Example:**
+\`\`\`
+Side - 780 x 560 - 2pcs
+       ═══   ───
+       2L    1W   → e: "2L1W"
+\`\`\`
+
+**How to detect:**
+1. Look DIRECTLY BENEATH each dimension number
+2. Double lines (═══, ==, thick line) = 2 edges of that dimension
+3. Single line (───, -, thin line) = 1 edge of that dimension
+4. Combine L and W underlines: "2L" + "1W" = "2L1W"
+
+**GROOVE SHORTHAND:**
+- "GL" = Groove on Length direction
+- "GW" = Groove on Width direction
+- "aL" might be "GL" (handwriting - 'G' can look like 'a')
+
 ## RULES
 
 1. **EXTRACT EVERYTHING** - Every row with dimensions = 1 object in output
 2. **USE COMPACT FORMAT** - Keep each object on ~1 line, use abbreviations
 3. **MATERIAL FROM SECTION** - Use section header OR first row material for subsequent rows
-4. **READ EDGE COLUMN CAREFULLY** - This is CRITICAL!
-   - Look at the "Edge" or "Edge (code)" column for EVERY row
-   - Copy the exact code written: "2L2W", "2L", "1L", etc.
+4. **READ EDGE COLUMN OR UNDERLINES** - This is CRITICAL!
+   - Template forms: Look at the "Edge" column for codes like "2L2W", "2L", "1L"
+   - Handwritten lists: Look for UNDERLINES beneath dimensions
    - If checkmarks: L1+L2=2L, W1+W2=2W, all 4=2L2W
-   - Empty edge cell = "" in output
-5. **READ GROOVE COLUMN** - Look for "GL", "GW" or checkmarks
+   - Empty edge cell / no underline = "" in output
+5. **READ GROOVE COLUMN** - Look for "GL", "GW", "G", or checkmarks
 6. **NO VERBOSE OBJECTS** - Don't use {detected: true, L1: true...}, use simple codes
 7. **START WITH [, END WITH ]** - Valid JSON array only
 8. **NO EXPLANATIONS** - Just the JSON array

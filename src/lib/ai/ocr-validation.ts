@@ -602,13 +602,35 @@ function extractPartsLeniently(data: unknown): z.infer<typeof AIPartSchema>[] {
             notes,
           };
           
-          // Handle compact edge banding codes (e.g., "2L2W", "2L", "1L1W")
+          // Handle compact edge banding codes (e.g., "2L2W", "2L", "1L", "1L1W", "2L1W")
           if (edgeCode && edgeCode.length > 0) {
-            const upperCode = edgeCode.toUpperCase();
-            const L1 = upperCode.includes("2L") || upperCode.includes("2L2W") || upperCode.includes("4E") || upperCode === "ALL";
-            const L2 = L1;
-            const W1 = upperCode.includes("2W") || upperCode.includes("2L2W") || upperCode.includes("4E") || upperCode === "ALL" || upperCode.includes("1W");
-            const W2 = upperCode.includes("2W") || upperCode.includes("2L2W") || upperCode.includes("4E") || upperCode === "ALL";
+            const upperCode = edgeCode.toUpperCase().replace(/\s+/g, "");
+            
+            // Parse edge code properly:
+            // - "2L" = both L1 and L2
+            // - "1L" = only L1
+            // - "2W" = both W1 and W2
+            // - "1W" = only W1
+            // - "2L2W" or "4E" or "ALL" = all 4 edges
+            // - "1L1W" = L1 and W1 only
+            // - "2L1W" = L1, L2, W1
+            // - "1L2W" = L1, W1, W2
+            
+            const isAllEdges = upperCode === "ALL" || upperCode === "4E" || upperCode === "2L2W";
+            
+            // Count L edges
+            const lMatch = upperCode.match(/(\d)L/);
+            const lCount = lMatch ? parseInt(lMatch[1]) : (isAllEdges ? 2 : 0);
+            
+            // Count W edges
+            const wMatch = upperCode.match(/(\d)W/);
+            const wCount = wMatch ? parseInt(wMatch[1]) : (isAllEdges ? 2 : 0);
+            
+            const L1 = lCount >= 1;
+            const L2 = lCount >= 2;
+            const W1 = wCount >= 1;
+            const W2 = wCount >= 2;
+            
             const edges: string[] = [];
             if (L1) edges.push("L1");
             if (L2) edges.push("L2");
@@ -623,11 +645,18 @@ function extractPartsLeniently(data: unknown): z.infer<typeof AIPartSchema>[] {
             };
           }
           
-          // Handle compact groove codes (e.g., "GL", "GW", "GL+GW")
+          // Handle compact groove codes (e.g., "GL", "GW", "GL+GW", "aL" for GL)
           if (grooveCode && grooveCode.length > 0) {
-            const upperGroove = grooveCode.toUpperCase();
-            const GL = upperGroove.includes("GL") || upperGroove.includes("L");
-            const GW = upperGroove.includes("GW") || upperGroove.includes("W");
+            // Normalize: "aL" is often handwritten "GL" (G looks like a)
+            const normalizedGroove = grooveCode
+              .toUpperCase()
+              .replace(/^AL$/i, "GL")  // "aL" → "GL"
+              .replace(/^AW$/i, "GW"); // "aW" → "GW" (less common)
+            
+            const GL = normalizedGroove.includes("GL") || 
+                       normalizedGroove.includes("L") && !normalizedGroove.includes("W") && normalizedGroove.length <= 2;
+            const GW = normalizedGroove.includes("GW") || 
+                       normalizedGroove.includes("W") && !normalizedGroove.includes("L") && normalizedGroove.length <= 2;
             
             partData.grooving = {
               detected: GL || GW,
