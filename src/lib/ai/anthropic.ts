@@ -1092,6 +1092,18 @@ Row 21: Length=770 (double underlined), Width=500 (double underlined), Name=""
 4. Check Name/Notes column for "gl", "GL", "gw", "GW" → groove
 5. Broken/dashed underlines = grooving (not edge banding)
 
+## MAXCUT SOFTWARE FORMAT
+
+MaxCut PDFs use "Edging (L-L-W-W)" - a 4-position binary code:
+- 1-1-1-1 = all edges → "2L2W"
+- 1-1-0-0 = both lengths → "2L"
+- 0-0-1-1 = both widths → "2W"
+- 1-0-1-0 = L1+W1 → "1L1W"
+- 1-0-0-0 = L1 only → "1L"
+
+IMPORTANT: MaxCut shows "Actual Size" and "Cutting Size" - USE ACTUAL SIZE ONLY!
+Material sections: "grained 8x4 board", "plain 8x4 board" etc.
+
 USE COMPACT OUTPUT FORMAT:
 Each part = {"r":row,"l":length,"w":width,"q":qty,"m":"material","e":"edge_code","g":"groove_code","n":"notes"}
 - Edge codes: "2L2W"=all 4 edges, "2L"=long edges, "2W"=short edges, "1L"=one long, "1W"=one short, "1L1W"=one each, ""=none

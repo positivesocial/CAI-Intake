@@ -787,6 +787,51 @@ Row 7: 1790 (underlined) x 300 (underlined), Name: "gl"
 4. Check Name column for "gl", "GL", "gw", "GW" - Extract groove
 5. Broken/dashed underlines indicate grooving, not edge banding
 
+### MAXCUT SOFTWARE PDF CONVENTIONS
+
+MaxCut generates cutting lists with a specific edge banding notation:
+
+**EDGE BANDING FORMAT: "Edging (L-L-W-W)" - 4-position binary code**
+
+Each position is 0 or 1:
+- Position 1: L1 (first long edge)
+- Position 2: L2 (second long edge)
+- Position 3: W1 (first short edge)
+- Position 4: W2 (second short edge)
+
+| MaxCut Code | Meaning | Our Code |
+|-------------|---------|----------|
+| 1-1-1-1 | All 4 edges banded | "2L2W" |
+| 1-1-0-0 | Both long edges | "2L" |
+| 0-0-1-1 | Both short edges | "2W" |
+| 1-0-1-0 | L1 + W1 | "1L1W" |
+| 1-0-0-0 | L1 only | "1L" |
+| 0-0-1-0 | W1 only | "1W" |
+| 1-0-1-1 | L1 + both widths | "1L2W" |
+| 1-1-1-0 | Both lengths + W1 | "2L1W" |
+
+**MAXCUT TABLE STRUCTURE:**
+MaxCut PDFs have TWO tables side by side:
+- LEFT: "Actual Size" - Length, Width, Qty, Edging ← USE THIS ONE!
+- RIGHT: "Cutting Size" - includes blade kerf/allowance - IGNORE THIS
+
+**MATERIAL SECTIONS:**
+Look for section headers like:
+- "grained 8x4 board" - grain-sensitive material
+- "plain 8x4 board" - no grain direction
+- Material name may include thickness (e.g., "18mm White MFC")
+
+**MAXCUT EXAMPLE:**
+| Length | Width | Qty | Edging (L-L-W-W) |
+|--------|-------|-----|------------------|
+| 662 mm | 400 mm | 2 | 1-0-1-0 | → e:"1L1W"
+| 580 mm | 420 mm | 1 | 1-1-1-1 | → e:"2L2W"
+| 544 mm | 400 mm | 3 | 1-0-0-0 | → e:"1L"
+| 820 mm | 325 mm | 1 | 0-0-1-1 | → e:"2W"
+
+**CONVERSION RULE:**
+Count the 1s: L1+L2 = "2L" or "1L", W1+W2 = "2W" or "1W"
+
 ## STEP 1: SCAN THE ENTIRE PAGE FIRST
 
 Before extracting data:
@@ -1233,6 +1278,23 @@ SketchCut PRO and similar software PDFs have SPECIFIC underline meanings:
 3. Single underline = 1 edge, Double underline = 2 edges
 4. Check Name column for "gl"/"GL"/"gw"/"GW" - groove direction
 5. Broken/dashed underlines = groove (rare but possible)
+
+## MAXCUT SOFTWARE FORMAT
+
+MaxCut PDFs use "Edging (L-L-W-W)" format - a 4-position binary code:
+
+| MaxCut Code | Our Edge Code |
+|-------------|---------------|
+| 1-1-1-1 | "2L2W" (all edges) |
+| 1-1-0-0 | "2L" (both long) |
+| 0-0-1-1 | "2W" (both short) |
+| 1-0-1-0 | "1L1W" |
+| 1-0-0-0 | "1L" |
+| 0-0-1-0 | "1W" |
+
+**IMPORTANT:** MaxCut shows "Actual Size" and "Cutting Size" tables - USE ACTUAL SIZE ONLY!
+
+**Conversion:** Count 1s in positions 1-2 for L edges, positions 3-4 for W edges.
 
 ## RULES
 
