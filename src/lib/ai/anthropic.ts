@@ -1063,9 +1063,38 @@ CRITICAL INSTRUCTIONS:
 3. SECTION HEADERS: Look for "CARCASES", "DOORS", "PLYWOODS" etc.
 4. Extract EVERY row with dimensions
 
+## SKETCHCUT PRO / PRINTED PDF UNDERLINE CONVENTIONS (IMPORTANT!)
+
+SketchCut PRO and similar software use UNDERLINES beneath dimensions:
+
+**UNDERLINE MEANINGS:**
+- **Solid continuous underline (_______)** under dimension = EDGE BANDING
+- **Broken/dashed underline (- - - -)** under dimension = GROOVING
+- **Single underline** = ONE edge (1L or 1W)
+- **Double underline** = BOTH edges (2L or 2W)
+
+**NAME COLUMN GROOVE INDICATORS:**
+- "gl" or "GL" in Name column = Groove on Length (GL)
+- "gw" or "GW" in Name column = Groove on Width (GW)
+- Parts can have BOTH edge banding (underlines) AND groove (Name column text)
+
+**EXAMPLE FROM SKETCHCUT:**
+Row 1: Length=1890 (underlined), Width=300 (underlined), Name="gl"
+→ e:"1L1W" (edges from underlines), g:"GL" (groove from Name)
+
+Row 21: Length=770 (double underlined), Width=500 (double underlined), Name=""
+→ e:"2L2W" (all 4 edges), g:"" (no groove)
+
+**DETECTION STEPS:**
+1. Check if Length has underline(s) → L edge banding
+2. Check if Width has underline(s) → W edge banding
+3. Single underline = 1 edge, Double = 2 edges
+4. Check Name/Notes column for "gl", "GL", "gw", "GW" → groove
+5. Broken/dashed underlines = grooving (not edge banding)
+
 USE COMPACT OUTPUT FORMAT:
 Each part = {"r":row,"l":length,"w":width,"q":qty,"m":"material","e":"edge_code","g":"groove_code","n":"notes"}
-- Edge codes: "2L2W"=all 4 edges, "2L"=long edges, "1L"=one long, ""=none
+- Edge codes: "2L2W"=all 4 edges, "2L"=long edges, "2W"=short edges, "1L"=one long, "1W"=one short, "1L1W"=one each, ""=none
 - Groove codes: "GL"=length direction, "GW"=width direction, ""=none
 
 ${prompt}

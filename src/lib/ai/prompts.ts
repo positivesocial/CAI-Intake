@@ -748,10 +748,44 @@ Back panel - 750 x 500 - 1pc
 ### GROOVE SHORTHAND (COMMON ABBREVIATIONS)
 
 Look for these groove indicators written near parts:
-- "GL" = Groove on Length (groove runs parallel to the LENGTH dimension)
-- "GW" = Groove on Width (groove runs parallel to the WIDTH dimension)
+- "GL" or "gl" = Groove on Length (groove runs parallel to the LENGTH dimension)
+- "GW" or "gw" = Groove on Width (groove runs parallel to the WIDTH dimension)
 - "G" or "GRV" alone = Groove detected (check context for direction)
 - "aL" or "al" might be "GL" (handwriting confusion with 'G' looking like 'a')
+
+### SKETCHCUT PRO / PRINTED PDF CONVENTIONS (IMPORTANT!)
+
+SketchCut PRO and similar software PDFs use a specific underline convention:
+
+**UNDERLINE TYPES:**
+| Underline Style | Meaning | Example |
+|-----------------|---------|---------|
+| Solid continuous line (_______) under dimension | EDGE BANDING | 760 with solid underline |
+| Broken/dashed line (- - - -) under dimension | GROOVING | 300 with dashed underline |
+| Single solid underline | ONE edge banded | 1L or 1W |
+| Double solid underline (═══) | BOTH edges banded | 2L or 2W |
+
+**NAME COLUMN OPERATIONS:**
+- "gl" or "GL" in Name column = Groove on Length (VERY COMMON!)
+- "gw" or "GW" = Groove on Width
+- Parts can have BOTH edge banding (underline) AND groove (Name column)
+
+**SKETCHCUT EXAMPLE:**
+Row 1: 1890 (underlined) x 300 (underlined), Name: "gl"
+       Edge: 1L1W (both underlined), Groove: GL (from Name)
+       
+Row 21: 770 (double underlined) x 500 (double underlined), No Name
+        Edge: 2L2W (all 4 edges), No groove
+
+Row 7: 1790 (underlined) x 300 (underlined), Name: "gl"  
+       Edge: 1L1W, Groove: GL
+
+**KEY RECOGNITION TIPS FOR SKETCHCUT:**
+1. Check if Length dimension has underline(s) - Extract L edge banding
+2. Check if Width dimension has underline(s) - Extract W edge banding
+3. Single underline = 1 edge, Double underline = 2 edges
+4. Check Name column for "gl", "GL", "gw", "GW" - Extract groove
+5. Broken/dashed underlines indicate grooving, not edge banding
 
 ## STEP 1: SCAN THE ENTIRE PAGE FIRST
 
@@ -1161,9 +1195,44 @@ Side - 780 x 560 - 2pcs
 4. Combine L and W underlines: "2L" + "1W" = "2L1W"
 
 **GROOVE SHORTHAND:**
-- "GL" = Groove on Length direction
-- "GW" = Groove on Width direction
+- "GL" or "gl" = Groove on Length direction
+- "GW" or "gw" = Groove on Width direction
 - "aL" might be "GL" (handwriting - 'G' can look like 'a')
+
+## SKETCHCUT PRO / PRINTED PDF CONVENTIONS
+
+SketchCut PRO and similar software PDFs have SPECIFIC underline meanings:
+
+**UNDERLINE TYPES IN SKETCHCUT:**
+| Line Style | Meaning |
+|------------|---------|
+| **Solid continuous line (_______)** under dimension | EDGE BANDING on that dimension |
+| **Broken/dashed line (- - - -)** under dimension | GROOVING on that dimension |
+| **Single solid underline** | ONE edge banded (1L or 1W) |
+| **Double solid underline** | BOTH edges banded (2L or 2W) |
+
+**NAME COLUMN = GROOVE INDICATOR:**
+- "gl" or "GL" in Name/Notes column = Groove on Length (COMMON!)
+- "gw" or "GW" = Groove on Width
+- Parts can have BOTH edge underlines AND groove text!
+
+**SKETCHCUT EXAMPLE:**
+
+#  | Length | Width | Amount | Rotation | Name
+1. | 1890   | 300   | 24     | Yes      | gl
+     (underlined) (underlined)                         
+   e:"1L1W" (both underlined), g:"GL" (from Name column)
+
+21.| 770    | 500   | 2      | Yes      |
+     (double)   (double)
+   e:"2L2W" (double underlines), g:"" (no groove)
+
+**DETECTION PRIORITY FOR SKETCHCUT:**
+1. Check Length column for underline(s) - L edge banding
+2. Check Width column for underline(s) - W edge banding
+3. Single underline = 1 edge, Double underline = 2 edges
+4. Check Name column for "gl"/"GL"/"gw"/"GW" - groove direction
+5. Broken/dashed underlines = groove (rare but possible)
 
 ## RULES
 
