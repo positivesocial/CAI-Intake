@@ -29,7 +29,7 @@ export function useAutoSaveDraft(options: UseAutoSaveDraftOptions = {}) {
     inboxParts,
     currentCutlist,
     savedCutlistId,
-    saveDraft,
+    saveCutlistAsDraft,
     isSaving,
   } = useIntakeStore();
   
@@ -53,7 +53,7 @@ export function useAutoSaveDraft(options: UseAutoSaveDraftOptions = {}) {
     savingRef.current = true;
     
     try {
-      const result = await saveDraft();
+      const result = await saveCutlistAsDraft();
       
       if (result.success) {
         console.log("[AutoSave] Draft saved successfully:", result.cutlistId);
@@ -68,7 +68,7 @@ export function useAutoSaveDraft(options: UseAutoSaveDraftOptions = {}) {
     } finally {
       savingRef.current = false;
     }
-  }, [saveDraft, isSaving, totalParts, minParts]);
+  }, [saveCutlistAsDraft, isSaving, totalParts, minParts]);
   
   // Handle beforeunload (browser close/refresh)
   useEffect(() => {
