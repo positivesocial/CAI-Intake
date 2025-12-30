@@ -245,7 +245,6 @@ export async function getGrooveOperations(
         ...(organizationId ? [{ organizationId }] : []),
       ],
     },
-    include: { operationType: true },
     orderBy: [{ usageCount: "desc" }, { code: "asc" }],
   });
 
@@ -266,7 +265,6 @@ export async function findGrooveByCode(
         organizationId,
         isActive: true,
       },
-      include: { operationType: true },
     });
     if (orgOp) return mapGrooveOperation(orgOp);
   }
@@ -277,7 +275,6 @@ export async function findGrooveByCode(
       organizationId: null,
       isActive: true,
     },
-    include: { operationType: true },
   });
 
   return sysOp ? mapGrooveOperation(sysOp) : null;
@@ -303,7 +300,6 @@ export async function createGrooveOperation(
       isActive: input.isActive ?? true,
       organizationId,
     },
-    include: { operationType: true },
   });
 
   return mapGrooveOperation(op);
@@ -329,7 +325,6 @@ export async function updateGrooveOperation(
       ...(input.edge !== undefined && { edge: input.edge }),
       ...(input.isActive !== undefined && { isActive: input.isActive }),
     },
-    include: { operationType: true },
   });
 
   return mapGrooveOperation(op);
@@ -370,7 +365,6 @@ export async function getDrillingOperations(
         ...(organizationId ? [{ organizationId }] : []),
       ],
     },
-    include: { operationType: true },
     orderBy: [{ usageCount: "desc" }, { code: "asc" }],
   });
 
@@ -391,7 +385,6 @@ export async function findDrillingByCode(
         organizationId,
         isActive: true,
       },
-      include: { operationType: true },
     });
     if (orgOp) return mapDrillingOperation(orgOp);
   }
@@ -402,7 +395,6 @@ export async function findDrillingByCode(
       organizationId: null,
       isActive: true,
     },
-    include: { operationType: true },
   });
 
   return sysOp ? mapDrillingOperation(sysOp) : null;
@@ -429,7 +421,6 @@ export async function createDrillingOperation(
       isActive: input.isActive ?? true,
       organizationId,
     },
-    include: { operationType: true },
   });
 
   return mapDrillingOperation(op);
@@ -458,7 +449,6 @@ export async function updateDrillingOperation(
   const op = await prisma.drillingOperation.update({
     where: { id },
     data: updateData,
-    include: { operationType: true },
   });
 
   return mapDrillingOperation(op);
@@ -499,7 +489,6 @@ export async function getCncOperations(
         ...(organizationId ? [{ organizationId }] : []),
       ],
     },
-    include: { operationType: true },
     orderBy: [{ usageCount: "desc" }, { code: "asc" }],
   });
 
@@ -520,7 +509,6 @@ export async function findCncByCode(
         organizationId,
         isActive: true,
       },
-      include: { operationType: true },
     });
     if (orgOp) return mapCncOperation(orgOp);
   }
@@ -531,7 +519,6 @@ export async function findCncByCode(
       organizationId: null,
       isActive: true,
     },
-    include: { operationType: true },
   });
 
   return sysOp ? mapCncOperation(sysOp) : null;
@@ -559,7 +546,6 @@ export async function createCncOperation(
       isActive: input.isActive ?? true,
       organizationId,
     },
-    include: { operationType: true },
   });
 
   return mapCncOperation(op);
@@ -593,7 +579,6 @@ export async function updateCncOperation(
   const op = await prisma.cncOperation.update({
     where: { id },
     data: updateData,
-    include: { operationType: true },
   });
 
   return mapCncOperation(op);
