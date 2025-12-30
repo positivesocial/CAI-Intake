@@ -482,27 +482,38 @@ export class AnthropicProvider implements AIProvider {
         textLength: text.length,
       });
       
-      // Select few-shot examples for better accuracy
-      try {
-        fewShotExamples = await selectFewShotExamples(
-          text,
-          options.organizationId,
-          {
-            maxExamples: 3,
-            needsEdgeExamples: options.extractMetadata,
-            needsGrooveExamples: options.extractMetadata,
+      // OPTIMIZATION: Skip few-shot examples for very small documents (< 20 rows)
+      // Few-shot examples add latency and are mainly useful for complex documents
+      const skipFewShot = estimatedRows < 20 || text.length < 1000;
+      
+      if (!skipFewShot) {
+        // Select few-shot examples for better accuracy on larger docs
+        try {
+          fewShotExamples = await selectFewShotExamples(
+            text,
+            options.organizationId,
+            {
+              maxExamples: 2, // Reduced from 3 to 2 for speed
+              needsEdgeExamples: options.extractMetadata,
+              needsGrooveExamples: options.extractMetadata,
+            }
+          );
+          
+          if (fewShotExamples.length > 0) {
+            logger.info("🎯 [Anthropic] Selected few-shot examples", {
+              count: fewShotExamples.length,
+              exampleIds: fewShotExamples.map(e => e.id),
+            });
           }
-        );
-        
-        if (fewShotExamples.length > 0) {
-          logger.info("🎯 [Anthropic] Selected few-shot examples", {
-            count: fewShotExamples.length,
-            exampleIds: fewShotExamples.map(e => e.id),
+        } catch (fewShotError) {
+          logger.warn("⚠️ [Anthropic] Failed to load few-shot examples, continuing without", {
+            error: fewShotError instanceof Error ? fewShotError.message : "Unknown error",
           });
         }
-      } catch (fewShotError) {
-        logger.warn("⚠️ [Anthropic] Failed to load few-shot examples, continuing without", {
-          error: fewShotError instanceof Error ? fewShotError.message : "Unknown error",
+      } else {
+        logger.debug("⚡ [Anthropic] Skipping few-shot examples for small document", {
+          estimatedRows,
+          textLength: text.length,
         });
       }
       
@@ -511,21 +522,33 @@ export class AnthropicProvider implements AIProvider {
         ? formatExamplesForPrompt(fewShotExamples) 
         : undefined;
       
-      const prompt = buildEnhancedParsePrompt({
-        extractMetadata: options.extractMetadata,
-        isMessyData: options.isMessyData ?? this.looksMessy(text),
-        isPastedText: options.isPastedText ?? true,
-        templateId: options.templateId,
-        templateConfig: options.templateConfig ? {
-          fieldLayout: options.templateConfig.fieldLayout,
-        } : undefined,
-        fewShotExamples: fewShotPromptText,
-        includeDetailedEdgeGuide: options.extractMetadata,
-      });
+      // OPTIMIZATION: Use simpler prompt for very small documents
+      const prompt = skipFewShot 
+        ? buildParsePrompt({
+            extractMetadata: options.extractMetadata,
+            isMessyData: options.isMessyData ?? this.looksMessy(text),
+            isPastedText: options.isPastedText ?? true,
+            templateId: options.templateId,
+            templateConfig: options.templateConfig ? {
+              fieldLayout: options.templateConfig.fieldLayout,
+            } : undefined,
+          })
+        : buildEnhancedParsePrompt({
+            extractMetadata: options.extractMetadata,
+            isMessyData: options.isMessyData ?? this.looksMessy(text),
+            isPastedText: options.isPastedText ?? true,
+            templateId: options.templateId,
+            templateConfig: options.templateConfig ? {
+              fieldLayout: options.templateConfig.fieldLayout,
+            } : undefined,
+            fewShotExamples: fewShotPromptText,
+            includeDetailedEdgeGuide: options.extractMetadata,
+          });
 
       const response = await client.messages.create({
         model: CLAUDE_MODEL,
         max_tokens: MAX_TOKENS,
+        temperature: 0.2, // Low temperature for consistent parsing
         system: ANTHROPIC_SYSTEM_PROMPT,
         messages: [
           {

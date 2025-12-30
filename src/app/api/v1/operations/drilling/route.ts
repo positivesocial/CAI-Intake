@@ -11,6 +11,10 @@ import {
   createDrillingOperation,
 } from "@/lib/operations/service";
 
+// Cache operations for 5 minutes (300 seconds)
+const CACHE_MAX_AGE = 300;
+const CACHE_STALE_WHILE_REVALIDATE = 600;
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -31,7 +35,15 @@ export async function GET(request: NextRequest) {
       userData?.organization_id ?? undefined
     );
 
-    return NextResponse.json({ operations });
+    // Return with cache headers for better performance
+    return NextResponse.json(
+      { operations },
+      {
+        headers: {
+          "Cache-Control": `private, max-age=${CACHE_MAX_AGE}, stale-while-revalidate=${CACHE_STALE_WHILE_REVALIDATE}`,
+        },
+      }
+    );
   } catch (error) {
     console.error("Error fetching drilling operations:", error);
     return NextResponse.json(

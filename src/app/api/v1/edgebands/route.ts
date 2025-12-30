@@ -108,10 +108,19 @@ export async function GET(request: NextRequest) {
       updated_at: e.updated_at,
     })) ?? [];
 
-    return NextResponse.json({
-      edgebands: transformedEdgebands,
-      count: transformedEdgebands.length,
-    });
+    // Return with cache headers for better performance
+    return NextResponse.json(
+      {
+        edgebands: transformedEdgebands,
+        count: transformedEdgebands.length,
+      },
+      {
+        headers: {
+          // Cache for 5 minutes, allow stale for 10 minutes
+          "Cache-Control": "private, max-age=300, stale-while-revalidate=600",
+        },
+      }
+    );
 
   } catch (error) {
     logger.error("Edgebands GET error", error);
