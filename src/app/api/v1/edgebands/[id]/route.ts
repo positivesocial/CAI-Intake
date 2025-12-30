@@ -185,8 +185,13 @@ export async function PUT(
           { status: 409 }
         );
       }
+      logger.warn("Edgeband update: not found", { 
+        id, 
+        organizationId: userData.organization_id,
+        error: error?.message 
+      });
       return NextResponse.json(
-        { error: "Edgeband not found or update failed" },
+        { error: "Edgeband not found or update failed", id },
         { status: 404 }
       );
     }
