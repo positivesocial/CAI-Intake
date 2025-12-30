@@ -171,10 +171,11 @@ export async function POST(request: NextRequest) {
     const data = parseResult.data;
 
     // Create material - include all DB columns
+    const now = new Date().toISOString();
     const { data: material, error } = await serviceClient
       .from("materials")
       .insert({
-        id: crypto.randomUUID(), // Generate UUID for primary key
+        id: crypto.randomUUID(),
         organization_id: userData.organization_id,
         material_id: data.material_id,
         name: data.name,
@@ -187,6 +188,8 @@ export async function POST(request: NextRequest) {
         sku: data.sku,
         supplier: data.supplier,
         meta: data.meta || data.metadata || null,
+        created_at: now,
+        updated_at: now,
       })
       .select()
       .single();

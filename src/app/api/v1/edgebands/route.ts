@@ -173,10 +173,11 @@ export async function POST(request: NextRequest) {
     const data = parseResult.data;
 
     // Create edgeband - only include actual DB columns
+    const now = new Date().toISOString();
     const { data: edgeband, error } = await serviceClient
       .from("edgebands")
       .insert({
-        id: crypto.randomUUID(), // Generate UUID for primary key
+        id: crypto.randomUUID(),
         organization_id: userData.organization_id,
         edgeband_id: data.edgeband_id,
         name: data.name,
@@ -190,6 +191,8 @@ export async function POST(request: NextRequest) {
         overhang_mm: data.overhang_mm,
         supplier: data.supplier,
         meta: data.meta,
+        created_at: now,
+        updated_at: now,
       })
       .select()
       .single();

@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
               .eq("material_id", mat.material_id);
           } else {
             // Insert new
+            const now = new Date().toISOString();
             await serviceClient
               .from("materials")
               .insert({
@@ -187,6 +188,8 @@ export async function POST(request: NextRequest) {
                 default_sheet: mat.default_sheet,
                 sku: mat.sku,
                 supplier: mat.supplier,
+                created_at: now,
+                updated_at: now,
               });
           }
           results.success++;
@@ -268,6 +271,7 @@ export async function POST(request: NextRequest) {
               .eq("organization_id", orgId)
               .eq("edgeband_id", eb.edgeband_id);
           } else {
+            const now = new Date().toISOString();
             await serviceClient
               .from("edgebands")
               .insert({
@@ -284,6 +288,8 @@ export async function POST(request: NextRequest) {
                 waste_factor_pct: eb.waste_factor_pct,
                 overhang_mm: eb.overhang_mm,
                 supplier: eb.supplier,
+                created_at: now,
+                updated_at: now,
               });
           }
           results.success++;
