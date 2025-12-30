@@ -1237,17 +1237,6 @@ export function IntakeInbox() {
   
   // Check if we have source files to compare against
   const hasSourceFiles = sourceFilePreviews.length > 0;
-  
-  // Handle ops change from UnifiedOpsPanel
-  const handleOpsChange = React.useCallback((newOpsData: OperationsData) => {
-    if (!opsEditingPart) return;
-    const newOps = operationsDataToPartOps(newOpsData, defaultEdgebandId);
-    updatePartWithCorrection(opsEditingPart.part_id, { 
-      ops: Object.keys(newOps).length > 0 ? newOps : undefined 
-    });
-    // Update the editing part state to reflect changes
-    setOpsEditingPart(prev => prev ? { ...prev, ops: Object.keys(newOps).length > 0 ? newOps : undefined } : null);
-  }, [opsEditingPart, defaultEdgebandId, updatePartWithCorrection]);
 
   // Filter counts
   const counts = React.useMemo(() => ({
@@ -1312,6 +1301,17 @@ export function IntakeInbox() {
     },
     [inboxParts, updateInboxPart, currentCutlist]
   );
+
+  // Handle ops change from UnifiedOpsPanel
+  const handleOpsChange = React.useCallback((newOpsData: OperationsData) => {
+    if (!opsEditingPart) return;
+    const newOps = operationsDataToPartOps(newOpsData, defaultEdgebandId);
+    updatePartWithCorrection(opsEditingPart.part_id, { 
+      ops: Object.keys(newOps).length > 0 ? newOps : undefined 
+    });
+    // Update the editing part state to reflect changes
+    setOpsEditingPart(prev => prev ? { ...prev, ops: Object.keys(newOps).length > 0 ? newOps : undefined } : null);
+  }, [opsEditingPart, defaultEdgebandId, updatePartWithCorrection]);
 
   // Keyboard navigation for the table
   const handleTableKeyDown = (e: React.KeyboardEvent) => {
