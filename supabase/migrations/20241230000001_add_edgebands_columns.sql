@@ -1,6 +1,15 @@
 -- Add missing columns to edgebands table
 -- These columns are expected by the API but were missing from the schema
 
+-- Add material column
+ALTER TABLE edgebands ADD COLUMN IF NOT EXISTS material TEXT;
+
+-- Add width_mm column
+ALTER TABLE edgebands ADD COLUMN IF NOT EXISTS width_mm NUMERIC DEFAULT 22;
+
+-- Add color_match_material_id column
+ALTER TABLE edgebands ADD COLUMN IF NOT EXISTS color_match_material_id TEXT;
+
 -- Add color_code column
 ALTER TABLE edgebands ADD COLUMN IF NOT EXISTS color_code TEXT;
 
