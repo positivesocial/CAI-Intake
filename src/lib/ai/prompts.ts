@@ -661,6 +661,21 @@ Your task is to extract ALL parts from this manufacturing document. This is stan
 
 You are an expert OCR system specialized in reading handwritten and printed cutlists for cabinet making and woodworking.
 
+## ⚠️ PRIORITY CHECK: EDGE BANDING FROM UNDERLINES
+
+**MANY PRINTED CUTLISTS (SketchCut PRO, etc.) USE UNDERLINES TO INDICATE EDGE BANDING!**
+
+Before extracting, CHECK each dimension for underlines:
+- Single line (___) under LENGTH → "1L" (one long edge banded)
+- Double line (═══) under LENGTH → "2L" (both long edges banded)
+- Single line (___) under WIDTH → "1W" (one short edge banded)
+- Double line (═══) under WIDTH → "2W" (both short edges banded)
+- Combine both: "1L1W", "2L1W", "2L2W", etc.
+
+**These underlines are NOT table borders - they are EDGE BANDING INDICATORS!**
+
+Also check for "gl"/"GL" in the Name column → Groove on Length direction.
+
 ## CRITICAL INSTRUCTION: EXTRACT EVERY SINGLE ITEM
 
 ### PRINTED TEMPLATES (NUMBERED ROWS)
@@ -1097,6 +1112,41 @@ Before returning your response, verify:
 
 export const COMPACT_IMAGE_PROMPT = `## CONTEXT: MANUFACTURING BUSINESS SOFTWARE
 You are extracting ALL parts from a cutlist image for cabinet/furniture manufacturing.
+
+## ⚠️ CRITICAL: EDGE BANDING FROM UNDERLINES (CHECK FIRST!)
+
+**MANY CUTLISTS USE UNDERLINES TO INDICATE EDGE BANDING - YOU MUST DETECT THEM!**
+
+Before extracting parts, CHECK if this is a SketchCut PRO or similar format with UNDERLINES:
+- Look at the LENGTH column - does any number have a LINE UNDERNEATH it?
+- Look at the WIDTH column - does any number have a LINE UNDERNEATH it?
+- These underlines are NOT table borders - they indicate EDGE BANDING!
+
+### UNDERLINE = EDGE BANDING (ALWAYS!)
+| What You See | Edge Code |
+|--------------|-----------|
+| Single line (___) under LENGTH number | "1L" |
+| Double line (═══) under LENGTH number | "2L" |
+| Single line (___) under WIDTH number | "1W" |
+| Double line (═══) under WIDTH number | "2W" |
+| Lines under BOTH Length AND Width | Combine: "1L1W", "2L1W", "2L2W", etc. |
+| NO line under dimension | No edge on that side |
+
+### ROW-BY-ROW EDGE DETECTION (DO THIS FOR EVERY ROW!)
+For EACH row:
+1. Look at Length value - is there a line underneath? → Add L edge code
+2. Look at Width value - is there a line underneath? → Add W edge code  
+3. Combine into edge code: "1L", "2L", "1W", "2W", "1L1W", "2L2W", etc.
+
+### EXAMPLE (SketchCut PRO):
+Row 1:  1890 (single underline), 300 (no underline) → e:"1L"
+Row 7:  1790 (single underline), 300 (no underline) → e:"1L"  
+Row 21: 770 (DOUBLE underline), 500 (DOUBLE underline) → e:"2L2W"
+Row 22: 864 (DOUBLE underline), 480 (DOUBLE underline) → e:"2L2W"
+
+### GROOVE FROM NAME COLUMN
+- "gl" or "GL" in Name column = Groove on Length → g:"GL"
+- "gw" or "GW" in Name column = Groove on Width → g:"GW"
 
 ## CRITICAL: EXTRACT EVERY SINGLE ITEM FROM EVERY SECTION
 
