@@ -208,17 +208,23 @@ export default function BulkTrainingUpload() {
   // Open verify dialog
   const handleReview = (result: ProcessResult) => {
     setSelectedResult(result);
-    setEditedParts(JSON.stringify(result.parsedParts.map(p => ({
-      label: p.label,
-      length: p.size.L,
-      width: p.size.W,
-      quantity: p.qty,
-      thickness: p.thickness_mm,
-      material: p.material_id,
-      edge: p.ops?.edgeBanding ? formatEdgeCode(p.ops.edgeBanding) : undefined,
-      groove: p.ops?.grooves?.length ? "GL" : undefined,
-      notes: p.notes,
-    })), null, 2));
+    // Safely map parts - handle both formats (size.L/W or direct length/width)
+    const mappedParts = result.parsedParts.map(p => {
+      // Handle different part formats from the API
+      const part = p as CutPart & { length?: number; width?: number };
+      return {
+        label: part.label || part.part_id || "Part",
+        length: part.size?.L ?? part.length ?? 0,
+        width: part.size?.W ?? part.width ?? 0,
+        quantity: part.qty ?? 1,
+        thickness: part.thickness_mm ?? 18,
+        material: part.material_id,
+        edge: part.ops?.edgeBanding ? formatEdgeCode(part.ops.edgeBanding) : undefined,
+        groove: part.ops?.grooves?.length ? "GL" : undefined,
+        notes: part.notes,
+      };
+    });
+    setEditedParts(JSON.stringify(mappedParts, null, 2));
     setShowVerifyDialog(true);
   };
 
