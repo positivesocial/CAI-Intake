@@ -28,6 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useIntakeStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { StepNavigation } from "@/components/ui/stepper";
+import { notifyCutlistSaved, notifyDraftSaved } from "@/lib/notifications";
 import { downloadCutlistPDF } from "@/lib/exports/pdf-export";
 import { OptimizerModal } from "@/components/optimizer/OptimizerModal";
 
@@ -122,6 +123,12 @@ export function ExportStep() {
       setSaveError(result.error || "Failed to save");
     } else {
       setExportStatus("Cutlist saved successfully!");
+      // Show notification
+      notifyCutlistSaved(
+        currentCutlist.name || "Untitled Cutlist",
+        result.cutlistId || savedCutlistId || "",
+        totalParts
+      );
       setTimeout(() => setExportStatus(null), 3000);
     }
   };
@@ -133,6 +140,8 @@ export function ExportStep() {
       setSaveError(result.error || "Failed to save draft");
     } else {
       setExportStatus("Draft saved!");
+      // Show notification
+      notifyDraftSaved(currentCutlist.name || "Untitled");
       setTimeout(() => setExportStatus(null), 3000);
     }
   };

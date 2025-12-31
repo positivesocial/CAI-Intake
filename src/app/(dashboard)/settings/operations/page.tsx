@@ -61,6 +61,7 @@ import {
   TOOL_TYPE_LABELS,
   ToolType,
 } from "@/lib/operations/types";
+import { notifyOperationCreated, notifyOperationUpdated, notifyOperationDeleted } from "@/lib/notifications";
 
 type OperationCategory = "edgeband" | "groove" | "drilling" | "cnc" | "types";
 
@@ -160,7 +161,7 @@ export default function OperationsSettingsPage() {
     setShowModal(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, opName?: string) => {
     if (!confirm("Are you sure you want to delete this operation?")) return;
 
     try {
@@ -176,6 +177,11 @@ export default function OperationsSettingsPage() {
       }
 
       await fetchData();
+      
+      // Show notification for operations (not types)
+      if (activeTab !== "types" && opName) {
+        notifyOperationDeleted(activeTab as "groove" | "drilling" | "cnc" | "edgeband", opName);
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete");
     }
@@ -363,7 +369,7 @@ export default function OperationsSettingsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDelete(op.id)}
+                            onClick={() => handleDelete(op.id, op.name || op.code)}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
@@ -443,7 +449,7 @@ export default function OperationsSettingsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDelete(op.id)}
+                            onClick={() => handleDelete(op.id, op.name || op.code)}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
@@ -523,7 +529,7 @@ export default function OperationsSettingsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDelete(op.id)}
+                            onClick={() => handleDelete(op.id, op.name || op.code)}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
@@ -599,7 +605,7 @@ export default function OperationsSettingsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDelete(op.id)}
+                            onClick={() => handleDelete(op.id, op.name || op.code)}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
@@ -758,6 +764,16 @@ export default function OperationsSettingsPage() {
 
                 await fetchData();
                 setShowModal(false);
+                
+                // Show notification for operations (not types)
+                if (activeTab !== "types") {
+                  const opName = (data as { name?: string; code?: string }).name || (data as { code?: string }).code || "Operation";
+                  if (modalMode === "create") {
+                    notifyOperationCreated(activeTab as "groove" | "drilling" | "cnc" | "edgeband", opName);
+                  } else {
+                    notifyOperationUpdated(activeTab as "groove" | "drilling" | "cnc" | "edgeband", opName);
+                  }
+                }
               } catch (err) {
                 alert(err instanceof Error ? err.message : "Failed to save");
               } finally {
