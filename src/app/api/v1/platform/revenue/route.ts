@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
     // Get recent subscription changes (from audit_logs if available, otherwise mock)
     const recentTransactions = await prisma.organization.findMany({
       where: {
-        plan: { not: null },
+        plan: { not: "free" }, // Only paid plans
         createdAt: { gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) },
       },
       select: {
@@ -98,8 +98,8 @@ export async function GET(request: NextRequest) {
     const transactions = recentTransactions.map((org) => ({
       id: org.id,
       organizationName: org.name,
-      planName: org.plan || "Free",
-      amount: planPrices[org.plan?.toLowerCase() || "free"] || 0,
+      planName: org.plan,
+      amount: planPrices[org.plan.toLowerCase()] || 0,
       type: "subscription" as const,
       date: org.createdAt.toISOString().split("T")[0],
     }));
