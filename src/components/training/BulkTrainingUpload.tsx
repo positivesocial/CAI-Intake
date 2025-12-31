@@ -230,6 +230,14 @@ export default function BulkTrainingUpload() {
           edgeCode = formatEdgeCode(edgeBanding);
         } else if (edgeBanding.summary?.code) {
           edgeCode = edgeBanding.summary.code;
+        } else if (edgeBanding.edges) {
+          // CutPart format: ops.edging.edges = { L1: { apply: true }, ... }
+          const edges = edgeBanding.edges;
+          const L = (edges.L1?.apply ? 1 : 0) + (edges.L2?.apply ? 1 : 0);
+          const W = (edges.W1?.apply ? 1 : 0) + (edges.W2?.apply ? 1 : 0);
+          if (L > 0 || W > 0) {
+            edgeCode = (L > 0 ? `${L}L` : "") + (W > 0 ? `${W}W` : "");
+          }
         }
       }
       
