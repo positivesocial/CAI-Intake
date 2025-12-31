@@ -780,6 +780,7 @@ export async function POST(request: NextRequest) {
     });
     
     let uploadedFileId: string | undefined;
+    let userOrgId: string | undefined; // Track org ID for usage logging
     const storageStartTime = Date.now();
     
     try {
@@ -791,6 +792,8 @@ export async function POST(request: NextRequest) {
         .select("organization_id")
         .eq("id", user.id)
         .single();
+      
+      userOrgId = userData?.organization_id;
       
       if (userData?.organization_id) {
         // Prepare file data for upload (read buffer once)
@@ -921,9 +924,9 @@ export async function POST(request: NextRequest) {
     });
 
     // Log AI usage for analytics (non-blocking)
-    if (userData?.organization_id) {
+    if (userOrgId) {
       logAIUsage({
-        organizationId: userData.organization_id,
+        organizationId: userOrgId,
         userId: user.id,
         provider: provider.name.toLowerCase().includes("anthropic") ? "anthropic" : "openai",
         model: provider.name.toLowerCase().includes("anthropic") ? "claude-3-5-sonnet-latest" : "gpt-4o",
