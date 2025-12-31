@@ -27,32 +27,7 @@ import { createClient } from "@supabase/supabase-js";
 import { AnthropicProvider, type StreamingProgress } from "@/lib/ai/anthropic";
 import { resolveOperationsForParts } from "@/lib/operations/resolver";
 import { 
-  detectTemplateQR,
-
-// ============================================================
-// SERVERLESS FUNCTION CONFIGURATION
-// ============================================================
-
-/**
- * Maximum execution time for this API route.
- * OCR/AI parsing can take 30-120 seconds for complex documents.
- * 
- * Vercel Limits:
- * - Hobby: 10 seconds (too short for OCR)
- * - Pro: 60 seconds
- * - Enterprise: 900 seconds
- * 
- * Set to 120 for Pro/Enterprise plans. Will fail on Hobby.
- */
-export const maxDuration = 120;
-
-/**
- * Force dynamic rendering (no static generation)
- */
-export const dynamic = "force-dynamic";
-
-// ============================================================
-// IMPORTS (continued) 
+  detectTemplateQR, 
   getOrgTemplateConfig, 
   buildDeterministicParsePrompt,
   detectTemplateFromText,
@@ -69,6 +44,28 @@ import {
   AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
 } from "@/lib/templates/template-parsing-service";
 import { convertPdfToImages } from "@/lib/pdf/pdf-to-images";
+
+// ============================================================
+// SERVERLESS FUNCTION CONFIGURATION
+// ============================================================
+
+/**
+ * Maximum execution time for this API route.
+ * OCR/AI parsing can take 30-120 seconds for complex documents.
+ * 
+ * Vercel Limits:
+ * - Hobby: 10 seconds (too short for OCR)
+ * - Pro: 60 seconds
+ * - Enterprise: 900 seconds
+ */
+export const maxDuration = 120;
+
+/** Force dynamic rendering (no static generation) */
+export const dynamic = "force-dynamic";
+
+// ============================================================
+// HELPERS
+// ============================================================
 
 // Generate a unique request ID for tracking
 function generateRequestId(): string {
