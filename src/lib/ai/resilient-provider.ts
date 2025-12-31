@@ -575,7 +575,7 @@ export class ResilientAIProvider implements AIProvider {
       try {
         return await this.withTimeout(
           this.fallback.parseText(extractedText, safeOptions),
-          this.options.fallbackTimeout!
+          this.options.primaryTimeout! // Use same timeout for fallback
         );
       } catch (error) {
         logger.warn("📄 [Resilient] OpenAI text parsing fallback failed", {
