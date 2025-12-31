@@ -48,7 +48,7 @@ const DEFAULT_ORG_SETTINGS = {
   enable_cnc_holes: false,
   enable_cnc_routing: false,
 
-  // Branding
+  // Branding - stored in org but managed via /settings/branding
   primary_color: "#0D9488",
 
   // Integrations
@@ -434,39 +434,34 @@ export default function OrganizationSettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Branding */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Palette className="h-5 w-5" />
-                Branding
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1.5">
-                  Primary Color
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={settings.primary_color}
-                    onChange={(e) => updateSetting("primary_color", e.target.value)}
-                    className="w-12 h-12 rounded-lg cursor-pointer border-0"
+          {/* Branding - Link to dedicated page */}
+          <Link href="/settings/branding">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Palette className="h-5 w-5" />
+                  Branding
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div
+                    className="w-12 h-12 rounded-lg"
+                    style={{ backgroundColor: settings.primary_color }}
                   />
-                  <Input
-                    value={settings.primary_color}
-                    onChange={(e) => updateSetting("primary_color", e.target.value)}
-                    placeholder="#0D9488"
-                    className="flex-1"
-                  />
+                  <div className="flex-1">
+                    <p className="text-sm text-[var(--muted-foreground)]">
+                      Configure logo, colors, PDF templates, and more
+                    </p>
+                    <p className="text-sm font-medium text-[var(--cai-teal)] mt-1 flex items-center gap-1">
+                      Go to Branding Settings
+                      <ArrowLeft className="h-4 w-4 rotate-180" />
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  Used in exported PDFs and templates
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
 
           {/* Integrations */}
           <Card>

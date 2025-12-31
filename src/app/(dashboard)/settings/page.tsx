@@ -1126,7 +1126,7 @@ export default function SettingsPage() {
                         </h3>
                         <p className="text-[var(--muted-foreground)]">
                           Configure {user?.organization?.name || "your organization"}{" "}
-                          settings, branding, and capabilities
+                          settings, defaults, and capabilities
                         </p>
                       </div>
                       <ChevronRight className="h-6 w-6 text-[var(--muted-foreground)]" />
