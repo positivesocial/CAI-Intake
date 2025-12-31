@@ -30,6 +30,9 @@ import {
   Code2,
   CreditCard,
   Brain,
+  Loader2,
+  Trash2,
+  Upload,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -47,6 +50,7 @@ import { useAuthStore } from "@/lib/auth/store";
 import { useIntakeStore } from "@/lib/store";
 import { ROLE_DISPLAY_NAMES } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const SETTINGS_SECTIONS = [
   {
@@ -149,6 +153,10 @@ export default function SettingsPage() {
     setMounted(true);
   }, []);
 
+  // Avatar upload states
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
+  
   // Form states
   const [profileForm, setProfileForm] = React.useState({
     name: user?.name || "",
@@ -157,12 +165,133 @@ export default function SettingsPage() {
     jobTitle: user?.jobTitle || "",
   });
 
+  // Sync form with user data when it changes
+  React.useEffect(() => {
+    if (user) {
+      setProfileForm({
+        name: user.name || "",
+        email: user.email || "",
+        phone: user.phone || "",
+        jobTitle: user.jobTitle || "",
+      });
+    }
+  }, [user]);
+
   const handleProfileSave = async () => {
     setIsSaving(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    updateUser(profileForm);
-    setIsSaving(false);
+    try {
+      const response = await fetch("/api/v1/auth/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: profileForm.name,
+          phone: profileForm.phone,
+          jobTitle: profileForm.jobTitle,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update profile");
+      }
+
+      const data = await response.json();
+      
+      // Update local state
+      updateUser({
+        name: data.user.name,
+        phone: data.user.phone,
+        jobTitle: data.user.jobTitle,
+      });
+      
+      // Refresh user data from auth store
+      setUser(data.user);
+      
+      toast.success("Profile updated successfully");
+    } catch (error) {
+      console.error("Profile save error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to update profile");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Please upload a JPG, PNG, GIF, or WebP image");
+      return;
+    }
+
+    // Validate file size (2MB max)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image must be smaller than 2MB");
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/v1/auth/avatar", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to upload avatar");
+      }
+
+      const data = await response.json();
+      
+      // Update local state with new avatar
+      updateUser({ avatar: data.avatar });
+      
+      toast.success("Avatar updated successfully");
+    } catch (error) {
+      console.error("Avatar upload error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to upload avatar");
+    } finally {
+      setIsUploadingAvatar(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    if (!user?.avatar) return;
+
+    setIsUploadingAvatar(true);
+    try {
+      const response = await fetch("/api/v1/auth/avatar", {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to remove avatar");
+      }
+
+      // Update local state
+      updateUser({ avatar: null });
+      
+      toast.success("Avatar removed successfully");
+    } catch (error) {
+      console.error("Avatar remove error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to remove avatar");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
   };
 
   const visibleSections = SETTINGS_SECTIONS.filter((s) => {
@@ -282,8 +411,13 @@ export default function SettingsPage() {
                 <CardContent className="space-y-6">
                   {/* Avatar */}
                   <div className="flex items-center gap-4">
-                    <div className="w-24 h-24 rounded-full bg-[var(--muted)] flex items-center justify-center relative group cursor-pointer">
-                      {user?.avatar ? (
+                    <div 
+                      className="w-24 h-24 rounded-full bg-[var(--muted)] flex items-center justify-center relative group cursor-pointer"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {isUploadingAvatar ? (
+                        <Loader2 className="h-8 w-8 animate-spin text-[var(--muted-foreground)]" />
+                      ) : user?.avatar ? (
                         <img
                           src={user.avatar}
                           alt=""
@@ -294,16 +428,55 @@ export default function SettingsPage() {
                           {user?.name?.charAt(0) || "U"}
                         </span>
                       )}
-                      <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Camera className="h-6 w-6 text-white" />
-                      </div>
+                      {!isUploadingAvatar && (
+                        <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Camera className="h-6 w-6 text-white" />
+                        </div>
+                      )}
                     </div>
                     <div>
-                      <Button variant="outline" size="sm">
-                        Change Photo
-                      </Button>
+                      {/* Hidden file input */}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        className="hidden"
+                        onChange={handleAvatarUpload}
+                        disabled={isUploadingAvatar}
+                      />
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isUploadingAvatar}
+                        >
+                          {isUploadingAvatar ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-4 w-4 mr-2" />
+                              Change Photo
+                            </>
+                          )}
+                        </Button>
+                        {user?.avatar && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={handleAvatarRemove}
+                            disabled={isUploadingAvatar}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                       <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                        JPG, PNG or GIF. Max 2MB.
+                        JPG, PNG, GIF or WebP. Max 2MB.
                       </p>
                     </div>
                   </div>
