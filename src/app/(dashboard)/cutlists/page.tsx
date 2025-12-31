@@ -44,7 +44,7 @@ interface Cutlist {
   customerName?: string;
   jobRef?: string;
   clientRef?: string;
-  status: "draft" | "processing" | "optimized" | "completed";
+  status: "draft" | "processing" | "optimized" | "completed" | "exported";
   partsCount: number;
   totalPieces: number;
   totalArea: number;
@@ -166,6 +166,7 @@ export default function CutlistsPage() {
       processing: { icon: Clock, label: "Processing", variant: "default" as const },
       optimized: { icon: CheckCircle2, label: "Optimized", variant: "success" as const },
       completed: { icon: CheckCircle2, label: "Completed", variant: "success" as const },
+      exported: { icon: CheckCircle2, label: "Exported", variant: "teal" as const },
     };
     
     const { icon: Icon, label, variant } = config[status];

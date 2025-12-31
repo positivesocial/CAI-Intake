@@ -239,6 +239,7 @@ export interface IntakeState {
   saveCutlist: (markAsCompleted?: boolean) => Promise<{ success: boolean; cutlistId?: string; error?: string }>;
   saveCutlistAsDraft: () => Promise<{ success: boolean; cutlistId?: string; error?: string }>;
   markCutlistComplete: () => Promise<{ success: boolean; error?: string }>;
+  markCutlistExported: (exportFormat?: string) => Promise<{ success: boolean; error?: string }>;
   loadCutlist: (cutlistId: string) => Promise<{ success: boolean; error?: string }>;
   loadCutlistForEditing: (cutlist: {
     id: string;
@@ -1173,6 +1174,36 @@ export const useIntakeStore = create<IntakeState>()(
           return { success: true };
         } catch (error) {
           console.error("Mark complete error:", error);
+          return { success: false, error: "Network error" };
+        }
+      },
+
+      markCutlistExported: async (exportFormat?: string) => {
+        const { savedCutlistId } = get();
+        
+        if (!savedCutlistId) {
+          return { success: false, error: "No cutlist to mark as exported" };
+        }
+
+        try {
+          const response = await fetch(`/api/v1/cutlists/${savedCutlistId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              status: "exported",
+              // Optionally track which export format was used
+              meta: exportFormat ? { last_export_format: exportFormat, exported_at: new Date().toISOString() } : undefined,
+            }),
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            return { success: false, error: data.error || "Failed to mark cutlist as exported" };
+          }
+
+          return { success: true };
+        } catch (error) {
+          console.error("Mark exported error:", error);
           return { success: false, error: "Network error" };
         }
       },

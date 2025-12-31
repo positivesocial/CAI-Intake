@@ -53,10 +53,16 @@ const CreateCutlistSchema = z.object({
 });
 
 // List query params
+// Status values:
+// - draft: Saved before completing export step or user left workflow early
+// - completed: Saved at export step (manual save or "All Done" button)
+// - exported: Saved AND an export method was used (PDF, CSV, optimizer, etc.)
+// - pending/processing: Legacy statuses for background jobs
+// - archived: Soft-deleted
 const ListQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
-  status: z.enum(["draft", "pending", "processing", "completed", "archived"]).optional(),
+  status: z.enum(["draft", "pending", "processing", "completed", "exported", "archived"]).optional(),
   search: z.string().optional(),
   sort: z.string().optional(),
   order: z.enum(["asc", "desc"]).optional().default("desc"),

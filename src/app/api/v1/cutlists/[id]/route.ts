@@ -23,7 +23,7 @@ const UpdateCutlistSchema = z.object({
   customer_name: z.string().max(255).optional().nullable(),
   job_ref: z.string().max(100).optional(),
   client_ref: z.string().max(100).optional(),
-  status: z.enum(["draft", "pending", "processing", "completed", "archived"]).optional(),
+  status: z.enum(["draft", "pending", "processing", "completed", "exported", "archived"]).optional(),
   capabilities: z.object({
     core_parts: z.boolean().optional(),
     edging: z.boolean().optional(),

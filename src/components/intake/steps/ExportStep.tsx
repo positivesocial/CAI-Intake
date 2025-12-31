@@ -81,6 +81,7 @@ export function ExportStep() {
     saveCutlist,
     saveCutlistAsDraft,
     markCutlistComplete,
+    markCutlistExported,
     isSaving,
     lastSavedAt,
     savedCutlistId,
@@ -115,10 +116,11 @@ export function ExportStep() {
   ) / 1_000_000;
   const materialsCount = new Set(currentCutlist.parts.map((p) => p.material_id)).size;
 
-  // Handle save to database
+  // Handle save to database - at export step, this marks as "completed"
   const handleSave = async () => {
     setSaveError(null);
-    const result = await saveCutlist();
+    // Pass true to mark as completed since we're at the export step
+    const result = await saveCutlist(true);
     if (!result.success) {
       setSaveError(result.error || "Failed to save");
     } else {
@@ -278,8 +280,9 @@ export function ExportStep() {
         }
       }
       
-      // Mark cutlist as completed after successful export
-      await markCutlistComplete();
+      // Mark cutlist as "exported" since an export action was performed
+      // This distinguishes from "completed" (just saved) vs "exported" (actually used export feature)
+      await markCutlistExported(optionId);
       
     } catch (error) {
       console.error("Export error:", error);
@@ -316,23 +319,21 @@ export function ExportStep() {
     }
   };
 
-  // Handle "Done" button - auto-save as draft if not saved
+  // Handle "Done" button - saves as "completed" since we're finishing the workflow
   const handleDone = async () => {
     setSaveError(null);
     
-    // If there are parts but cutlist hasn't been saved yet, auto-save as draft
-    if (totalParts > 0 && !savedCutlistId) {
-      setExportStatus("Auto-saving as draft...");
-      const result = await saveCutlistAsDraft();
+    if (totalParts > 0) {
+      // At the export step, clicking "Done" should save/update as "completed"
+      // (not "draft" - that's for early exits)
+      setExportStatus("Saving cutlist...");
+      const result = await saveCutlist(true); // true = mark as completed
       if (!result.success) {
-        setSaveError(result.error || "Failed to auto-save. Please save manually before leaving.");
+        setSaveError(result.error || "Failed to save. Please try again.");
         setExportStatus(null);
         return;
       }
-      setExportStatus("Draft saved! Redirecting...");
-    } else if (savedCutlistId) {
-      // If already saved, mark as complete
-      await markCutlistComplete();
+      setExportStatus("Saved! Redirecting...");
     }
     
     // Small delay to show the status, then redirect
