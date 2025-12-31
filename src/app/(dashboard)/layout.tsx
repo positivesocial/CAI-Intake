@@ -151,7 +151,7 @@ export default function DashboardLayout({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isCollapsed, toggleCollapsed]);
 
-  // Redirect to login if not authenticated
+  // Redirect to login if not authenticated, or to platform if super admin
   React.useEffect(() => {
     if (!mounted) return;
     
@@ -159,11 +159,18 @@ export default function DashboardLayout({
     const timer = setTimeout(() => {
       if (!isAuthenticated) {
         router.push(`/login?redirectTo=${encodeURIComponent(pathname)}`);
+        return;
+      }
+      
+      // Super admins should use the platform dashboard, not the org dashboard
+      // They don't have an organization, so redirect them to platform
+      if (isSuperAdmin() && !user?.organizationId) {
+        router.push("/platform/dashboard");
       }
     }, 500);
     
     return () => clearTimeout(timer);
-  }, [mounted, isAuthenticated, router, pathname]);
+  }, [mounted, isAuthenticated, router, pathname, isSuperAdmin, user?.organizationId]);
 
   const handleLogout = async () => {
     await logout();

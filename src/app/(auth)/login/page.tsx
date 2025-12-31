@@ -13,7 +13,7 @@ import { useAuthStore } from "@/lib/auth/store";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") ?? "/dashboard";
+  const explicitRedirect = searchParams.get("redirectTo");
   
   const { 
     loginWithEmail, 
@@ -22,6 +22,7 @@ function LoginForm() {
     isLoading: authLoading,
     error: authError,
     setError: setAuthError,
+    user,
   } = useAuthStore();
   
   const [email, setEmail] = React.useState("");
@@ -41,7 +42,18 @@ function LoginForm() {
     const result = await loginWithEmail(email, password);
     
     if (result.success) {
-      router.push(redirectTo);
+      // Get the user from store after login to check if super admin
+      const currentUser = useAuthStore.getState().user;
+      
+      // Determine redirect path
+      let redirectPath = explicitRedirect ?? "/dashboard";
+      
+      // Super admins go to platform dashboard (unless explicitly redirected elsewhere)
+      if (currentUser?.isSuperAdmin && !explicitRedirect) {
+        redirectPath = "/platform/dashboard";
+      }
+      
+      router.push(redirectPath);
       router.refresh();
     }
     
