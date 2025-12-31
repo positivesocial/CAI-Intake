@@ -834,6 +834,121 @@ function mapDbLogToEntry(data: Record<string, unknown>): AccuracyLogEntry {
 }
 
 // ============================================================
+// CORRECTION-BASED ACCURACY LOGGING
+// ============================================================
+
+/**
+ * Log accuracy based on user corrections during a parsing session.
+ * This is called when a cutlist is saved or when the user finalizes edits.
+ * 
+ * @param originalParts - The parts as originally parsed by AI
+ * @param correctedParts - The parts after user corrections
+ * @param metadata - Additional context about the parsing session
+ */
+export async function logAccuracyFromCorrections(
+  originalParts: CutPart[],
+  correctedParts: CutPart[],
+  metadata: {
+    organizationId?: string;
+    parseJobId?: string;
+    provider?: "claude" | "gpt" | "python_ocr" | "pdf-parse";
+    sourceType?: "pdf" | "image" | "text";
+    fewShotExamplesUsed?: number;
+    patternsApplied?: number;
+    clientTemplateUsed?: boolean;
+    clientName?: string;
+  }
+): Promise<AccuracyLogEntry | null> {
+  // If no original parts, nothing to compare
+  if (originalParts.length === 0) {
+    return null;
+  }
+
+  try {
+    // Calculate accuracy by comparing original (AI output) to corrected (ground truth)
+    const metrics = calculateAccuracyMetrics(originalParts, correctedParts);
+
+    // Determine document difficulty based on correction rate
+    let documentDifficulty: "easy" | "medium" | "hard" = "medium";
+    if (metrics.accuracy >= 0.9) {
+      documentDifficulty = "easy";
+    } else if (metrics.accuracy < 0.7) {
+      documentDifficulty = "hard";
+    }
+
+    // Log to database
+    const entry = await logParsingAccuracy({
+      organizationId: metadata.organizationId,
+      parseJobId: metadata.parseJobId,
+      provider: metadata.provider || "claude",
+      sourceType: metadata.sourceType,
+      totalParts: correctedParts.length,
+      correctParts: metrics.correctParts,
+      accuracy: metrics.accuracy,
+      dimensionAccuracy: metrics.dimensionAccuracy,
+      materialAccuracy: metrics.materialAccuracy,
+      edgingAccuracy: metrics.edgingAccuracy,
+      groovingAccuracy: metrics.groovingAccuracy,
+      quantityAccuracy: metrics.quantityAccuracy,
+      labelAccuracy: metrics.labelAccuracy,
+      fewShotExamplesUsed: metadata.fewShotExamplesUsed || 0,
+      patternsApplied: metadata.patternsApplied || 0,
+      clientTemplateUsed: metadata.clientTemplateUsed || false,
+      documentDifficulty,
+      clientName: metadata.clientName,
+    });
+
+    if (entry) {
+      console.log(`📊 [Accuracy] Logged parsing accuracy: ${(metrics.accuracy * 100).toFixed(1)}%`, {
+        totalParts: correctedParts.length,
+        correctParts: metrics.correctParts,
+        dimensions: `${(metrics.dimensionAccuracy * 100).toFixed(0)}%`,
+        materials: `${(metrics.materialAccuracy * 100).toFixed(0)}%`,
+        edging: `${(metrics.edgingAccuracy * 100).toFixed(0)}%`,
+      });
+    }
+
+    return entry;
+  } catch (error) {
+    console.error("Failed to log accuracy from corrections:", error);
+    return null;
+  }
+}
+
+/**
+ * Calculate accuracy from a list of corrections (without full parts)
+ * Used when we only have the correction records, not full part objects
+ */
+export function calculateAccuracyFromCorrections(
+  corrections: Array<{ correctionType: string; fieldPath?: string }>
+): { 
+  correctionCount: number; 
+  byField: Record<string, number>;
+} {
+  const byField: Record<string, number> = {
+    dimension: 0,
+    material: 0,
+    edge_banding: 0,
+    groove: 0,
+    quantity: 0,
+    label: 0,
+    rotation: 0,
+  };
+
+  for (const correction of corrections) {
+    const type = correction.correctionType;
+    if (type in byField) {
+      byField[type]++;
+    }
+  }
+
+  return {
+    correctionCount: corrections.length,
+    byField,
+  };
+}
+
+// ============================================================
 // EXPORTS
 // ============================================================
 

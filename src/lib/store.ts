@@ -143,6 +143,22 @@ export interface IntakeState {
   // Source file previews for Compare Mode (during intake)
   sourceFilePreviews: SourceFilePreview[];
 
+  // Original parsed parts for accuracy tracking
+  // These are the parts as originally parsed by AI, before user corrections
+  originalParsedParts: CutPart[];
+  
+  // Parsing metadata for accuracy logging
+  parsingMetadata: {
+    provider?: "claude" | "gpt" | "python_ocr" | "pdf-parse";
+    sourceType?: "pdf" | "image" | "text";
+    sourceFileName?: string;
+    fewShotExamplesUsed?: number;
+    patternsApplied?: number;
+    clientTemplateUsed?: boolean;
+    clientName?: string;
+    parseJobId?: string;
+  };
+
   // Active intake mode
   activeMode: IntakeMode;
 
@@ -190,7 +206,17 @@ export interface IntakeState {
   updateSelectedParts: (updates: Partial<CutPart>) => void;
 
   // Inbox management
-  addToInbox: (parts: ParsedPartWithStatus[]) => void;
+  addToInbox: (parts: ParsedPartWithStatus[], metadata?: {
+    provider?: "claude" | "gpt" | "python_ocr" | "pdf-parse";
+    sourceType?: "pdf" | "image" | "text";
+    sourceFileName?: string;
+    fewShotExamplesUsed?: number;
+    patternsApplied?: number;
+    clientTemplateUsed?: boolean;
+    clientName?: string;
+    parseJobId?: string;
+  }) => void;
+  setParsingMetadata: (metadata: IntakeState["parsingMetadata"]) => void;
   acceptInboxPart: (partId: string) => void;
   acceptAllInboxParts: () => void;
   rejectInboxPart: (partId: string) => void;
@@ -324,6 +350,47 @@ const defaultAISettings: AISettings = {
 // Step order for navigation
 const STEP_ORDER: StepId[] = ["setup", "intake", "review", "export"];
 
+/**
+ * Log parsing accuracy to the server (non-blocking)
+ * This is called after a successful cutlist save to track AI parsing accuracy.
+ */
+async function logAccuracyToServer(state: Pick<IntakeState, "originalParsedParts" | "currentCutlist" | "parsingMetadata">): Promise<void> {
+  try {
+    // Skip if no original parts (manual entry, not AI parsed)
+    if (state.originalParsedParts.length === 0) {
+      return;
+    }
+
+    // Call the accuracy logging API
+    const response = await fetch("/api/v1/training/log-accuracy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        originalParts: state.originalParsedParts,
+        correctedParts: state.currentCutlist.parts,
+        provider: state.parsingMetadata.provider,
+        sourceType: state.parsingMetadata.sourceType,
+        sourceFileName: state.parsingMetadata.sourceFileName,
+        fewShotExamplesUsed: state.parsingMetadata.fewShotExamplesUsed,
+        patternsApplied: state.parsingMetadata.patternsApplied,
+        clientTemplateUsed: state.parsingMetadata.clientTemplateUsed,
+        clientName: state.parsingMetadata.clientName,
+        parseJobId: state.parsingMetadata.parseJobId,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.logged) {
+        console.log(`📊 [Accuracy] Logged: ${(data.accuracy * 100).toFixed(1)}% accuracy for ${state.originalParsedParts.length} parts`);
+      }
+    }
+  } catch (error) {
+    // Non-blocking - don't fail the save if accuracy logging fails
+    console.warn("Failed to log accuracy:", error);
+  }
+}
+
 const getInitialState = () => ({
   currentCutlist: {
     doc_id: generateId("DOC"),
@@ -337,6 +404,8 @@ const getInitialState = () => ({
   inboxParts: [],
   uploadBatches: [] as UploadBatch[],
   sourceFilePreviews: [] as SourceFilePreview[],
+  originalParsedParts: [] as CutPart[],
+  parsingMetadata: {} as IntakeState["parsingMetadata"],
   activeMode: "manual" as IntakeMode,
   currentStep: "setup" as StepId,
   isAdvancedMode: false,
@@ -567,9 +636,23 @@ export const useIntakeStore = create<IntakeState>()(
       },
 
       // Inbox management
-      addToInbox: (parts) =>
+      addToInbox: (parts, metadata) =>
+        set((state) => {
+          // Extract clean parts (without status) for accuracy tracking
+          const cleanParts = parts.map(({ _status, _originalText, ...part }) => part);
+          
+          return {
+            inboxParts: [...state.inboxParts, ...parts],
+            // Store original parsed parts for accuracy tracking
+            originalParsedParts: [...state.originalParsedParts, ...cleanParts],
+            // Update parsing metadata if provided
+            ...(metadata && { parsingMetadata: { ...state.parsingMetadata, ...metadata } }),
+          };
+        }),
+
+      setParsingMetadata: (metadata) =>
         set((state) => ({
-          inboxParts: [...state.inboxParts, ...parts],
+          parsingMetadata: { ...state.parsingMetadata, ...metadata },
         })),
 
       acceptInboxPart: (partId) => {
@@ -1014,9 +1097,14 @@ export const useIntakeStore = create<IntakeState>()(
               });
             }
 
+            // Log accuracy (non-blocking)
+            logAccuracyToServer(state);
+
             set({ 
               isSaving: false, 
-              lastSavedAt: new Date().toISOString() 
+              lastSavedAt: new Date().toISOString(),
+              // Clear original parts after logging (they've been compared)
+              originalParsedParts: [],
             });
             return { success: true, cutlistId: savedCutlistId };
           }
@@ -1053,11 +1141,17 @@ export const useIntakeStore = create<IntakeState>()(
           }
 
           const data = await response.json();
+
+          // Log accuracy (non-blocking)
+          logAccuracyToServer(state);
+
           set({ 
             isSaving: false, 
             savedCutlistId: data.cutlist.id,
             lastSavedAt: new Date().toISOString(),
             pendingFileIds: [], // Clear pending files after successful save
+            // Clear original parts after logging (they've been compared)
+            originalParsedParts: [],
           });
           return { success: true, cutlistId: data.cutlist.id };
         } catch (error) {
