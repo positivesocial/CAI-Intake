@@ -42,8 +42,9 @@ Before deploying, ensure you have:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key for AI parsing | `sk-...` |
-| `OCR_SERVICE_URL` | URL of Python OCR service | `https://ocr.example.com` |
+| `ANTHROPIC_API_KEY` | Anthropic API key (primary AI) | `sk-ant-...` |
+| `OPENAI_API_KEY` | OpenAI API key (fallback AI) | `sk-...` |
+| `PYTHON_OCR_SERVICE_URL` | URL of Python OCR service | `https://cabinetai-ocr.onrender.com` |
 
 ### Payments (Stripe)
 
@@ -365,5 +366,5 @@ For high traffic:
 
 ---
 
-*Last updated: December 2024*
+*Last updated: December 2025*
 

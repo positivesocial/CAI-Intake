@@ -1158,6 +1158,26 @@ file = client.exports.create(
 
 ## Changelog
 
+### v1.2.0 (December 2025)
+
+- Claude Native PDF support for direct PDF parsing
+- Silent auto-training from user corrections
+- Template-aware few-shot selection (SketchCut, MaxCut, CutList Plus)
+- Confidence-based flagging for low-confidence parts
+- Python OCR warm-up system to prevent cold starts
+- Improved resilient AI provider with proper PDF fallback
+- Dashboard optimization with two-phase loading
+- Platform stats API optimization
+
+### v1.1.0 (June 2025)
+
+- Added gallery view for cutlist comparison
+- Added draggable/zoomable source preview
+- Added operations selection improvements
+- Added cutlist status management (draft, completed, exported)
+- Materials import/export functionality
+- Sidebar UI improvements
+
 ### v1.0.0 (December 2024)
 
 - Initial stable API release
@@ -1182,4 +1202,4 @@ file = client.exports.create(
 
 ---
 
-*API Version: v1.0.0 | Last updated: December 2024*
+*API Version: v1.2.0 | Last updated: December 2025*

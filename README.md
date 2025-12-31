@@ -17,10 +17,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-Proprietary-red" alt="License">
   <img src="https://img.shields.io/badge/Next.js-16.1-black" alt="Next.js">
   <img src="https://img.shields.io/badge/TypeScript-5.0-blue" alt="TypeScript">
+  <img src="https://img.shields.io/badge/AI-Claude%20%2B%20GPT-purple" alt="AI">
 </p>
 
 ---
@@ -87,9 +88,11 @@ CAI Intake provides **6 intelligent input modes** that all converge into a singl
 
 - **Auto-Detection**: Automatically detects parser mode based on input format
 - **Pattern-Based**: Fast, deterministic parsing for structured data
-- **AI-Powered**: Intelligent extraction from unstructured text
-- **Multi-Stage OCR**: Text extraction → Python OCR → Vision fallback
-- **Learning System**: Improves accuracy through corrections and training
+- **AI-Powered**: Intelligent extraction from unstructured text (Claude + GPT)
+- **Multi-Stage OCR**: Text extraction → Python OCR → Claude Native PDF → Vision fallback
+- **Learning System**: Improves accuracy through corrections, few-shot learning, and silent training
+- **Template Detection**: Auto-detects SketchCut PRO, MaxCut, CutList Plus, and CAI templates
+- **Confidence Flagging**: Highlights low-confidence parts for review
 
 ### Canonical Schema Features
 
@@ -190,7 +193,7 @@ Use **Quick Demo Login** buttons on the login page for instant access.
 | ORM | Prisma |
 | Validation | Zod |
 | State | Zustand (persisted) |
-| AI | OpenAI GPT-4, Anthropic Claude |
+| AI | Anthropic Claude (primary), OpenAI GPT (fallback) |
 | OCR | Python (Tesseract) + Vision fallback |
 
 ### Project Structure
@@ -337,8 +340,12 @@ main (production)
 - [x] Phase 8: Super Admin Platform
 - [x] Phase 9: Learning System (few-shot, corrections, patterns)
 - [x] Phase 10: Notification System
-- [ ] Phase 11: CAI 2D Optimizer Integration
-- [ ] Phase 12: Mobile App
+- [x] Phase 11: Claude Native PDF Support
+- [x] Phase 12: Silent Auto-Training from Corrections
+- [x] Phase 13: Template-Aware Few-Shot Selection
+- [x] Phase 14: Confidence-Based Flagging
+- [ ] Phase 15: CAI 2D Optimizer Integration
+- [ ] Phase 16: Mobile App
 
 ## Export Formats
 

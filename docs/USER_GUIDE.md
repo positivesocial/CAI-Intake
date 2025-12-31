@@ -159,15 +159,24 @@ Process PDFs, images, and scanned documents:
 **Supported formats:** PDF, PNG, JPG, JPEG, WEBP, HEIC
 
 **How it works:**
-- Text-based PDFs: Direct text extraction
-- Scanned PDFs: Python OCR for text extraction
-- Low-quality scans: AI Vision fallback (image analysis)
-- Automatic format detection and parsing
+- Text-based PDFs: Python OCR text extraction (fastest)
+- Digital PDFs: Claude Native PDF support (direct analysis)
+- Scanned PDFs: Multi-stage fallback (Python OCR → Claude → GPT)
+- Images: AI Vision analysis with template detection
+- Automatic format and template detection
+
+**Template Detection:**
+The system automatically recognizes:
+- **SketchCut PRO**: Underlines for edge banding, "gl/GL" for grooves
+- **MaxCut**: L-L-W-W binary edge format, actual vs cutting size
+- **CutList Plus**: Standard column layouts
+- **CAI Templates**: QR codes and predefined structures
 
 **Tips:**
 - Higher quality images = better accuracy
 - Clear, typed text works best
 - Handwritten notes may need more review
+- Use Gallery View to compare source with parsed parts
 
 ### 4. Voice Dictation
 
@@ -549,27 +558,37 @@ Click the bell icon in the header to view notifications:
 
 ## Learning System
 
-CAI Intake continuously improves parsing accuracy through:
+CAI Intake continuously improves parsing accuracy through intelligent learning:
 
 ### How It Learns
 
-1. **Few-Shot Examples**: AI uses successful parsing examples to improve
-2. **Pattern Recognition**: System learns your organization's notation
-3. **Material Mapping**: Auto-maps your material names to database
-4. **Correction Recording**: User edits teach the system new patterns
+1. **Few-Shot Examples**: AI uses successful parsing examples to improve accuracy
+2. **Pattern Recognition**: System learns your organization's notation (edge codes, material names)
+3. **Material Mapping**: Auto-maps your material names to your database
+4. **Silent Auto-Training**: Corrections are automatically saved as training examples in the background
+5. **Template Detection**: Recognizes SketchCut PRO, MaxCut, CutList Plus, and CAI templates
+
+### Confidence Flagging
+
+Parts with low parsing confidence are automatically flagged:
+- **High Confidence** (green): Dimensions, material, and operations all clear
+- **Medium Confidence** (yellow): Some fields may need verification
+- **Low Confidence** (red): Review recommended before saving
 
 ### Training (Super Admin)
 
 Super admins can access the Training Dashboard:
 - View accuracy metrics over time
-- Add new training examples
-- Review weak areas
+- Add new training examples (upload or paste)
+- Review weak areas and low-confidence patterns
 - Manage material mappings
+- Test parser against training data
 
 ### For Best Results
 
-- Review and correct parsed parts before saving
+- Review and correct parsed parts before saving (corrections improve AI)
 - Use consistent notation across your organization
+- Parts with confidence flags should be verified
 - Report parsing errors for continuous improvement
 
 ---
@@ -637,4 +656,4 @@ Need help? We're here for you:
 
 ---
 
-*Last updated: December 2024 | Version 1.0.0*
+*Last updated: December 2025 | Version 1.2.0*

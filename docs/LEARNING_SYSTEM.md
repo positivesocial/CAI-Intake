@@ -92,9 +92,10 @@ The few-shot learning module provides example-based learning for the AI parser.
 - **Training Examples**: Curated input→output pairs stored in database
 - **Smart Selection**: Selects the most relevant examples based on:
   - Text structure similarity (headers, column count, row count)
-  - Feature matching (edge notation, groove notation)
+  - Feature matching (edge notation, groove notation, drilling, CNC)
   - Success rate history
   - Client/category matching
+  - **Template matching** (NEW)
 - **Usage Tracking**: Records whether examples led to successful parses
 
 **Selection Algorithm:**
@@ -107,9 +108,21 @@ score += structureSimilarity;         // Headers, columns (0-20)
 score += featureMatching;             // Edge/groove patterns (0-20)
 score += clientMatch * 15;            // Client name match (0-15)
 score += categoryMatch * 5;           // Category match (0-5)
+score += exactTemplateMatch * 40;     // Exact template match (0-40) NEW
+score += partialTemplateMatch * 25;   // Partial template match (0-25) NEW
 ```
 
-### 2. Correction Recording (`src/lib/learning/corrections.ts`)
+**Template Detection (NEW):**
+The system detects known templates from text and filenames:
+- **SketchCut PRO**: Underline patterns, "gl/GL" notation
+- **MaxCut**: L-L-W-W binary format, "actual size"
+- **CutList Plus**: Standard headers, column patterns
+- **CAI Template**: QR code format
+- **Handwritten**: "handwritten", "fundi" keywords
+
+### 2. Correction Recording & Silent Auto-Training
+
+#### Correction Recording (`src/lib/learning/corrections.ts`)
 
 Captures user corrections and extracts learnable patterns.
 
@@ -124,12 +137,27 @@ Captures user corrections and extracts learnable patterns.
 | `groove` | Groove notation changes | ✅ |
 | `rotation` | Allow rotation changes | ❌ |
 
-**Auto-Learning Process:**
-1. User corrects a field
-2. System analyzes the correction against source text
-3. If pattern is detected (e.g., "X" → "L1"), auto-learn is triggered
-4. Pattern is stored in `parser_patterns` table
-5. Pattern is used in future parsing
+#### Silent Auto-Training (`src/components/training/AutoTrainingPrompt.tsx`)
+
+**NEW:** User corrections are automatically saved as training examples in the background, without user prompts:
+
+1. User makes corrections in the Parts Inbox
+2. System detects significant corrections (score >= 15 points)
+3. After 5 seconds of inactivity, corrections are silently saved
+4. Training examples are created with medium difficulty
+5. No user interaction required
+
+**Significance Scoring:**
+- Dimension change: +10 points
+- Material change: +8 points
+- Edge/groove change: +6 points each
+- Quantity change: +4 points
+- Multiple corrections multiplied
+
+**Benefits:**
+- Zero friction for users
+- Continuous improvement without manual training
+- Every correction improves future parsing
 
 ### 3. Pattern Learning (`src/lib/learning/patterns.ts`)
 
@@ -210,6 +238,30 @@ dimensionAccuracy = dimensionCorrect / totalMatched;
 materialAccuracy = materialCorrect / totalMatched;
 // ... etc
 ```
+
+### 7. Confidence Flagging (`src/components/training/ConfidenceFlag.tsx`) - NEW
+
+Visual indicators for parsing confidence, helping users identify parts that need review.
+
+**Confidence Levels:**
+| Level | Color | Threshold | Meaning |
+|-------|-------|-----------|---------|
+| High | Green | ≥0.85 | All fields parsed confidently |
+| Medium | Yellow | 0.6-0.84 | Some fields may need verification |
+| Low | Red | <0.6 | Review recommended |
+
+**Features:**
+- Per-part confidence badges
+- Field-by-field breakdown on hover
+- Low-confidence parts summary banner
+- Quick "Correct" / "Fix Needed" feedback buttons
+
+**Confidence Factors:**
+- Dimension parsing clarity
+- Material match confidence
+- Edge/groove notation recognition
+- Label extraction quality
+- Source text structure
 
 ---
 
@@ -501,9 +553,12 @@ CREATE TABLE parsing_accuracy_logs (
 - Accuracy logging and analytics
 - Superadmin training dashboard
 - Bulk training upload
+- **Silent auto-training from corrections** (NEW)
+- **Template-aware few-shot selection** (NEW)
+- **Confidence-based flagging** (NEW)
+- Template detection (SketchCut PRO, MaxCut, CutList Plus, CAI Templates)
 
 ### ⚠️ Partially Implemented
-- Auto-learning from corrections (basic patterns only)
 - Client template auto-creation from corrections
 - Dimension format learning
 - Column order learning
@@ -513,7 +568,6 @@ CREATE TABLE parsing_accuracy_logs (
 - Reinforcement learning from user feedback
 - Cross-organization knowledge transfer
 - Embedding-based similarity search
-- Automatic training example generation
 - A/B testing for pattern effectiveness
 
 ---
