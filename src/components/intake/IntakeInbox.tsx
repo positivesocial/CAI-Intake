@@ -66,7 +66,7 @@ import { calculateFieldConfidence, ConfidenceSummary } from "./FieldConfidence";
 import { ValidationPanel } from "./ValidationPanel";
 import { DuplicateDetector } from "./DuplicateDetector";
 import { SourceFilesPanel, type SourceFile } from "./SourceFilesPanel";
-import { AutoTrainingPrompt, useAutoTraining } from "@/components/training/AutoTrainingPrompt";
+import { useSilentTraining } from "@/components/training/AutoTrainingPrompt";
 import { LowConfidenceSummary } from "@/components/training/ConfidenceFlag";
 
 // ============================================================
@@ -1234,8 +1234,17 @@ export function IntakeInbox() {
   const [compareMode, setCompareMode] = React.useState(false);
   const [opsEditingPart, setOpsEditingPart] = React.useState<ParsedPartWithStatus | null>(null);
   
-  // Auto-training integration - track original parts for correction detection
-  const { trackOriginalParts, trackCorrection, getPromptProps, hasCorrections } = useAutoTraining();
+  // Silent auto-training - learns from corrections in background with zero friction
+  const { trackOriginalParts, trackCorrection } = useSilentTraining({
+    sourceFileName: sourceFilePreviews[0]?.filename,
+    sourceType: sourceFilePreviews[0]?.type?.startsWith("image") 
+      ? "image" 
+      : sourceFilePreviews[0]?.type === "application/pdf"
+        ? "pdf" 
+        : "image",
+    detectedTemplate: currentCutlist.metadata?.templateType as string | undefined,
+    showToast: false, // Fully silent - no notifications
+  });
   const [originalPartsTracked, setOriginalPartsTracked] = React.useState(false);
   
   // Track original parts when inbox first populates
@@ -1896,16 +1905,7 @@ export function IntakeInbox() {
         </div>
       )}
       
-      {/* Auto Training Prompt - appears after significant corrections */}
-      {hasCorrections && (
-        <AutoTrainingPrompt
-          {...getPromptProps()}
-          onTrainingSaved={() => {
-            // Reset tracking after save
-            setOriginalPartsTracked(false);
-          }}
-        />
-      )}
+      {/* Silent training happens automatically in background - no UI needed */}
     </Card>
   );
 }
