@@ -6,6 +6,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { Decimal } from "@prisma/client/runtime/library";
 
@@ -177,7 +178,7 @@ export async function logAIUsage(params: UsageLogParams): Promise<void> {
         durationMs: params.durationMs || 0,
         success: params.success ?? true,
         errorMessage: params.errorMessage,
-        metadata: params.metadata,
+        metadata: params.metadata as Prisma.InputJsonValue | undefined,
       },
     });
 
