@@ -14,7 +14,6 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth/store";
 import { PlatformHeader } from "@/components/platform/PlatformHeader";
-import { Shield, RefreshCw } from "lucide-react";
 import {
   BarChart3,
   TrendingUp,
@@ -43,6 +42,7 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
