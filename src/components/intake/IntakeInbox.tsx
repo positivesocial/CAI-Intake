@@ -1236,10 +1236,10 @@ export function IntakeInbox() {
   
   // Silent auto-training - learns from corrections in background with zero friction
   const { trackOriginalParts, trackCorrection } = useSilentTraining({
-    sourceFileName: sourceFilePreviews[0]?.filename,
-    sourceType: sourceFilePreviews[0]?.type?.startsWith("image") 
+    sourceFileName: sourceFilePreviews[0]?.name,
+    sourceType: sourceFilePreviews[0]?.mimeType?.startsWith("image") 
       ? "image" 
-      : sourceFilePreviews[0]?.type === "application/pdf"
+      : sourceFilePreviews[0]?.mimeType === "application/pdf"
         ? "pdf" 
         : "image",
     detectedTemplate: currentCutlist.metadata?.templateType as string | undefined,
@@ -1251,10 +1251,10 @@ export function IntakeInbox() {
   React.useEffect(() => {
     if (inboxParts.length > 0 && !originalPartsTracked) {
       trackOriginalParts(inboxParts, {
-        fileName: sourceFilePreviews[0]?.filename,
-        fileType: sourceFilePreviews[0]?.type?.startsWith("image") 
+        fileName: sourceFilePreviews[0]?.name,
+        fileType: sourceFilePreviews[0]?.mimeType?.startsWith("image") 
           ? "image" 
-          : sourceFilePreviews[0]?.type === "application/pdf"
+          : sourceFilePreviews[0]?.mimeType === "application/pdf"
             ? "pdf" 
             : "image",
         template: currentCutlist.metadata?.templateType as string | undefined,
