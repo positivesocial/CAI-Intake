@@ -186,7 +186,7 @@ export async function GET(request: NextRequest) {
     if (clientName) where.clientName = { contains: clientName, mode: "insensitive" };
     if (difficulty) where.difficulty = difficulty;
 
-    // Fetch examples
+    // Fetch examples with organization info
     const [examples, total] = await Promise.all([
       prisma.trainingExample.findMany({
         where,
@@ -216,6 +216,11 @@ export async function GET(request: NextRequest) {
           lastUsedAt: true,
           createdAt: true,
           organizationId: true,
+          organization: {
+            select: {
+              name: true,
+            },
+          },
         },
       }),
       prisma.trainingExample.count({ where }),
@@ -232,6 +237,7 @@ export async function GET(request: NextRequest) {
       category: ex.category,
       difficulty: ex.difficulty,
       clientName: ex.clientName,
+      organizationName: ex.organization?.name || (ex.organizationId ? "Organization" : "Global"),
       features: {
         hasHeaders: ex.hasHeaders,
         columnCount: ex.columnCount,

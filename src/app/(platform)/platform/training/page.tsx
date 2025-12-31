@@ -235,27 +235,30 @@ export default function PlatformTrainingPage() {
 
         const recentExamples: TrainingExample[] = (examplesData?.examples || []).map((e: {
           id: string;
-          organization?: { name: string };
-          source_type?: string;
           sourceType?: string;
-          expected_output?: { parts?: unknown[] };
-          expectedOutput?: { parts?: unknown[] };
-          accuracy?: number;
-          created_at?: string;
+          sourceFileName?: string;
+          partsCount?: number;
+          correctParts?: unknown[];
+          clientName?: string;
+          organizationName?: string;
+          category?: string;
+          difficulty?: string;
+          isGlobal?: boolean;
+          stats?: {
+            usageCount?: number;
+            successCount?: number;
+            successRate?: number | null;
+          };
           createdAt?: string;
-          auto_created?: boolean;
-          autoCreated?: boolean;
-          template_type?: string;
-          templateType?: string;
         }) => ({
           id: e.id,
-          organizationName: e.organization?.name || "Unknown",
-          sourceType: e.source_type || e.sourceType || "unknown",
-          partsCount: e.expected_output?.parts?.length || e.expectedOutput?.parts?.length || 0,
-          accuracy: e.accuracy || 0,
-          createdAt: e.created_at || e.createdAt || "",
-          isAutoTrained: e.auto_created || e.autoCreated || false,
-          templateType: e.template_type || e.templateType,
+          organizationName: e.organizationName || e.clientName || "Global",
+          sourceType: e.sourceType || "unknown",
+          partsCount: e.partsCount ?? (Array.isArray(e.correctParts) ? e.correctParts.length : 0),
+          accuracy: (e.stats?.successRate ?? 0) * 100,
+          createdAt: e.createdAt || "",
+          isAutoTrained: !e.isGlobal, // Org-specific examples are typically auto-trained
+          templateType: e.category,
         }));
 
         const ocrAudit = {
