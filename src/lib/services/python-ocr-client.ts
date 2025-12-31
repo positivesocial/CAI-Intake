@@ -138,6 +138,10 @@ export class PythonOCRClient {
   private healthCache: { healthy: boolean; timestamp: number } | null = null;
   private healthCacheSuccessTTL = 60000; // 60 seconds for successful health check
   private healthCacheFailureTTL = 5000;  // 5 seconds for failed health check
+  private lastWarmUpTime: number = 0;
+  private warmUpIntervalMs = 10 * 60 * 1000; // 10 minutes
+  private isWarmingUp: boolean = false;
+  private warmUpPromise: Promise<boolean> | null = null;
 
   constructor(
     baseUrl: string = process.env.PYTHON_OCR_SERVICE_URL || "http://localhost:8001",
@@ -147,6 +151,104 @@ export class PythonOCRClient {
     this.baseUrl = baseUrl;
     this.timeout = timeout;
     this.maxRetries = maxRetries;
+  }
+  
+  /**
+   * Warm up the Python OCR service to prevent cold starts.
+   * Makes a lightweight request to wake up the service.
+   * Can be called periodically or before processing.
+   * 
+   * @param force - If true, ignores warm-up interval and always pings
+   * @returns true if service is warmed up and healthy
+   */
+  async warmUp(force: boolean = false): Promise<boolean> {
+    // Skip if already warming up (deduplicate concurrent calls)
+    if (this.isWarmingUp && this.warmUpPromise) {
+      return this.warmUpPromise;
+    }
+    
+    // Skip if recently warmed up (within interval)
+    if (!force && Date.now() - this.lastWarmUpTime < this.warmUpIntervalMs) {
+      logger.debug("🔥 [PythonOCR] Skip warm-up (recently warmed)", {
+        lastWarmUp: new Date(this.lastWarmUpTime).toISOString(),
+        intervalMs: this.warmUpIntervalMs,
+      });
+      return this.healthCache?.healthy ?? false;
+    }
+    
+    this.isWarmingUp = true;
+    
+    this.warmUpPromise = (async () => {
+      try {
+        const startTime = Date.now();
+        logger.info("🔥 [PythonOCR] Warming up service...", {
+          baseUrl: this.baseUrl,
+        });
+        
+        // Step 1: Health check with longer timeout for cold start
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s for cold start
+        
+        const response = await fetch(`${this.baseUrl}/health`, {
+          method: "GET",
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          logger.warn("🔥 [PythonOCR] Warm-up failed: service unhealthy", {
+            status: response.status,
+            warmUpTimeMs: Date.now() - startTime,
+          });
+          this.healthCache = { healthy: false, timestamp: Date.now() };
+          return false;
+        }
+        
+        // Update cache
+        this.healthCache = { healthy: true, timestamp: Date.now() };
+        this.lastWarmUpTime = Date.now();
+        
+        const warmUpTimeMs = Date.now() - startTime;
+        logger.info("🔥 [PythonOCR] Service warmed up successfully!", {
+          warmUpTimeMs,
+          isColdStart: warmUpTimeMs > 5000,
+        });
+        
+        return true;
+        
+      } catch (error) {
+        logger.warn("🔥 [PythonOCR] Warm-up failed", {
+          error: error instanceof Error ? error.message : String(error),
+          baseUrl: this.baseUrl,
+        });
+        this.healthCache = { healthy: false, timestamp: Date.now() };
+        return false;
+        
+      } finally {
+        this.isWarmingUp = false;
+        this.warmUpPromise = null;
+      }
+    })();
+    
+    return this.warmUpPromise;
+  }
+  
+  /**
+   * Ensure service is warm before processing.
+   * Automatically warms up if service appears cold.
+   */
+  async ensureWarm(): Promise<boolean> {
+    // If we have a recent successful health check, assume warm
+    if (
+      this.healthCache?.healthy && 
+      Date.now() - this.healthCache.timestamp < this.healthCacheSuccessTTL
+    ) {
+      return true;
+    }
+    
+    // Otherwise, warm up
+    return this.warmUp();
   }
 
   /**
@@ -676,6 +778,7 @@ export class PythonOCRClient {
 // ============================================================
 
 let clientInstance: PythonOCRClient | null = null;
+let backgroundWarmUpInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Get the singleton Python OCR client instance
@@ -692,6 +795,61 @@ export function getPythonOCRClient(): PythonOCRClient {
  */
 export function resetPythonOCRClient(): void {
   clientInstance = null;
+  if (backgroundWarmUpInterval) {
+    clearInterval(backgroundWarmUpInterval);
+    backgroundWarmUpInterval = null;
+  }
+}
+
+/**
+ * Start background warm-up to keep the Python OCR service alive.
+ * Pings the service every 10 minutes to prevent cold starts on Render free tier.
+ * 
+ * Call this on app initialization (e.g., in a server component or API route).
+ */
+export function startBackgroundWarmUp(): void {
+  if (backgroundWarmUpInterval) {
+    return; // Already running
+  }
+  
+  const client = getPythonOCRClient();
+  
+  if (!client.isConfigured()) {
+    logger.info("🔥 [PythonOCR] Service not configured, skipping background warm-up");
+    return;
+  }
+  
+  logger.info("🔥 [PythonOCR] Starting background warm-up service", {
+    intervalMinutes: 10,
+  });
+  
+  // Immediate warm-up
+  client.warmUp().catch(() => {
+    // Ignore errors on initial warm-up
+  });
+  
+  // Schedule periodic warm-up every 10 minutes
+  backgroundWarmUpInterval = setInterval(() => {
+    client.warmUp().catch(() => {
+      // Ignore errors - we'll retry next interval
+    });
+  }, 10 * 60 * 1000); // 10 minutes
+}
+
+/**
+ * Pre-warm the service before processing a file.
+ * Returns immediately if service is already warm.
+ * 
+ * Use this before PDF processing to minimize cold start delays.
+ */
+export async function preWarmOCRService(): Promise<boolean> {
+  const client = getPythonOCRClient();
+  
+  if (!client.isConfigured()) {
+    return false;
+  }
+  
+  return client.ensureWarm();
 }
 
 

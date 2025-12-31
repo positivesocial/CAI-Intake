@@ -512,15 +512,89 @@ export class ResilientAIProvider implements AIProvider {
   // DOCUMENT PARSING
   // ============================================================
 
+  /**
+   * Parse a PDF document using native PDF support.
+   * Uses Anthropic's native PDF API as primary, falls back to text parsing.
+   */
   async parseDocument(
     pdfData: ArrayBuffer,
     extractedText?: string,
     options?: ParseOptions
   ): Promise<AIParseResult> {
-    return this.parseText(extractedText || "", options || {
+    const startTime = Date.now();
+    const safeOptions = options || {
       extractMetadata: true,
       confidence: "balanced",
-    });
+    };
+    
+    // If we have good extracted text (> 500 chars), use text parsing (faster)
+    if (extractedText && extractedText.length > 500) {
+      logger.info("📄 [Resilient] Using extracted text for PDF (faster)", {
+        textLength: extractedText.length,
+      });
+      return this.parseText(extractedText, safeOptions);
+    }
+    
+    // Otherwise, use the primary provider's native PDF support
+    // Anthropic (Claude) can process PDFs directly!
+    if (this.primary.isConfigured() && typeof this.primary.parseDocument === "function") {
+      try {
+        logger.info("📄 [Resilient] Trying Claude NATIVE PDF via primary provider", {
+          pdfSizeKB: Math.round(pdfData.byteLength / 1024),
+        });
+        
+        const result = await this.withTimeout(
+          this.primary.parseDocument(pdfData, undefined, safeOptions),
+          this.options.primaryTimeout!
+        );
+        
+        if (result.success && result.parts && result.parts.length > 0) {
+          logger.info("📄 [Resilient] Claude NATIVE PDF succeeded", {
+            partsFound: result.parts.length,
+            processingTimeMs: Date.now() - startTime,
+          });
+          return result;
+        }
+        
+        logger.warn("📄 [Resilient] Claude NATIVE PDF returned no parts", {
+          errors: result.errors,
+        });
+      } catch (error) {
+        logger.warn("📄 [Resilient] Claude NATIVE PDF failed, trying fallback", {
+          error: error instanceof Error ? error.message : String(error),
+          processingTimeMs: Date.now() - startTime,
+        });
+      }
+    }
+    
+    // Fall back to OpenAI text parsing if available
+    if (extractedText && extractedText.length > 0 && this.fallback.isConfigured()) {
+      logger.info("📄 [Resilient] Falling back to OpenAI text parsing", {
+        textLength: extractedText.length,
+      });
+      try {
+        return await this.withTimeout(
+          this.fallback.parseText(extractedText, safeOptions),
+          this.options.fallbackTimeout!
+        );
+      } catch (error) {
+        logger.warn("📄 [Resilient] OpenAI text parsing fallback failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    
+    // If no text at all, return failure with helpful message
+    return {
+      success: false,
+      parts: [],
+      totalConfidence: 0,
+      errors: [
+        "Could not parse PDF: No text extracted and native PDF processing failed.",
+        "Try uploading as images or using a PDF with selectable text.",
+      ],
+      processingTime: Date.now() - startTime,
+    };
   }
 
   // ============================================================

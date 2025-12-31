@@ -21,7 +21,7 @@ import { getUser, getServiceClient } from "@/lib/supabase/server";
 import { getOrCreateProvider } from "@/lib/ai/provider";
 import { logger } from "@/lib/logger";
 import { applyRateLimit } from "@/lib/api-middleware";
-import { getPythonOCRClient } from "@/lib/services/python-ocr-client";
+import { getPythonOCRClient, preWarmOCRService } from "@/lib/services/python-ocr-client";
 import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
 import { AnthropicProvider, type StreamingProgress } from "@/lib/ai/anthropic";
@@ -1090,6 +1090,10 @@ async function processPDF(
   const pdfStartTime = Date.now();
   const pythonOCR = getPythonOCRClient();
   
+  // PRE-WARM: Ensure Python OCR service is awake before processing
+  // This prevents cold start delays during actual extraction
+  const preWarmPromise = preWarmOCRService();
+  
   logger.debug("📥 [ParseFile] Loading PDF buffer", {
     requestId,
     fileName: file.name,
@@ -1185,16 +1189,17 @@ async function processPDF(
     
     const startTime = Date.now();
     
-    // Quick health check first (10 second timeout)
-    const isHealthy = await Promise.race([
-      pythonOCR.checkHealth(),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10000)),
+    // Wait for pre-warm to complete (30s timeout for cold starts)
+    // This ensures the service is awake before we try to use it
+    const preWarmResult = await Promise.race([
+      preWarmPromise,
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 30000)),
     ]);
     
-    if (!isHealthy) {
-      logger.info("📥 [ParseFile] 🐍 Python OCR service unhealthy/cold, skipping", {
+    if (!preWarmResult) {
+      logger.info("📥 [ParseFile] 🐍 Python OCR service cold/unavailable after warm-up attempt", {
         requestId,
-        healthCheckTimeMs: Date.now() - startTime,
+        warmUpTimeMs: Date.now() - startTime,
       });
       return { source: "python-ocr" as const, text: "", pages: [] as Array<{pageNumber: number; text: string}>, success: false, timeMs: Date.now() - startTime };
     }
