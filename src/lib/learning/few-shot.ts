@@ -68,6 +68,10 @@ export interface FewShotSelectionOptions {
   needsEdgeExamples?: boolean;
   /** Prioritize examples with groove notation */
   needsGrooveExamples?: boolean;
+  /** Template type detected (SketchCut PRO, MaxCut, CAI Template, etc.) */
+  templateType?: string;
+  /** Source type (image, pdf, excel) */
+  sourceType?: "image" | "pdf" | "excel" | "text";
 }
 
 export interface FormattedExample {
@@ -100,6 +104,8 @@ export async function selectFewShotExamples(
     minSuccessRate = 0.6,
     needsEdgeExamples,
     needsGrooveExamples,
+    templateType,
+    sourceType,
   } = options;
 
   try {
@@ -150,6 +156,8 @@ export async function selectFewShotExamples(
           categoryHint,
           needsEdgeExamples,
           needsGrooveExamples,
+          templateType,
+          sourceType,
         }),
       }))
       .sort((a, b) => b.score - a.score);
@@ -173,17 +181,50 @@ function scoreExample(
     categoryHint?: string;
     needsEdgeExamples?: boolean;
     needsGrooveExamples?: boolean;
+    templateType?: string;
+    sourceType?: string;
   }
 ): number {
   let score = 0;
 
+  // ============================================================
+  // TEMPLATE MATCHING (HIGHEST PRIORITY) - 0-40 points
+  // ============================================================
+  // Matching template type is the strongest signal for similarity
+  if (preferences.templateType) {
+    const templateLower = preferences.templateType.toLowerCase();
+    const categoryLower = (example.category || "").toLowerCase();
+    
+    // Exact template match (e.g., "SketchCut PRO" matches "SketchCut PRO")
+    if (categoryLower.includes(templateLower) || templateLower.includes(categoryLower)) {
+      score += 40; // Major bonus for exact template match
+    }
+    // Partial match (e.g., "SketchCut" matches "SketchCut PRO")
+    else if (
+      templateLower.split(/\s+/).some(word => categoryLower.includes(word)) ||
+      categoryLower.split(/\s+/).some(word => templateLower.includes(word))
+    ) {
+      score += 25; // Good bonus for partial template match
+    }
+  }
+
+  // Source type match (image examples for images, PDF for PDFs)
+  if (preferences.sourceType && example.sourceType === preferences.sourceType) {
+    score += 10;
+  }
+
+  // ============================================================
+  // SUCCESS & RELIABILITY - 0-40 points
+  // ============================================================
   // Base score from success rate (0-30 points)
   score += calculateSuccessRate(example) * 30;
 
   // Usage count indicates reliability (0-10 points)
   score += Math.min(example.usageCount / 10, 1) * 10;
 
-  // Structure similarity (0-20 points)
+  // ============================================================
+  // STRUCTURE SIMILARITY - 0-20 points
+  // ============================================================
   if (example.hasHeaders === textFeatures.hasHeaders) score += 5;
   if (example.columnCount && textFeatures.estimatedColumns) {
     const colDiff = Math.abs(example.columnCount - textFeatures.estimatedColumns);
@@ -194,13 +235,17 @@ function scoreExample(
     if (rowDiff < 20) score += 5;
   }
 
-  // Feature matching (0-20 points)
+  // ============================================================
+  // FEATURE MATCHING - 0-20 points
+  // ============================================================
   if (preferences.needsEdgeExamples && example.hasEdgeNotation) score += 10;
   if (preferences.needsGrooveExamples && example.hasGrooveNotation) score += 10;
   if (textFeatures.hasEdgePatterns && example.hasEdgeNotation) score += 5;
   if (textFeatures.hasGroovePatterns && example.hasGrooveNotation) score += 5;
 
-  // Client/category match (0-20 points)
+  // ============================================================
+  // CLIENT/CATEGORY MATCH - 0-20 points
+  // ============================================================
   if (preferences.clientHint && example.clientName?.toLowerCase().includes(preferences.clientHint.toLowerCase())) {
     score += 15;
   }
@@ -271,6 +316,151 @@ function analyzeTextFeatures(text: string): TextFeatures {
     hasDimensionPatterns: dimensionPatterns.test(text),
     isTabular: estimatedColumns > 2 || tabCount > lines.length,
   };
+}
+
+// ============================================================
+// TEMPLATE DETECTION
+// ============================================================
+
+/**
+ * Known template patterns for cutlist software
+ */
+const TEMPLATE_PATTERNS: { name: string; patterns: RegExp[]; confidence: number }[] = [
+  {
+    name: "SketchCut PRO",
+    patterns: [
+      /sketchcut/i,
+      /sketch\s*cut/i,
+      /SCPRO/i,
+      /edge\s*profile/i, // Common SketchCut header
+    ],
+    confidence: 0.9,
+  },
+  {
+    name: "MaxCut",
+    patterns: [
+      /maxcut/i,
+      /max\s*cut/i,
+      /actual\s*size.*cutting\s*size/i,
+      /L-L-W-W/i, // MaxCut edge format
+    ],
+    confidence: 0.9,
+  },
+  {
+    name: "CutList Plus",
+    patterns: [
+      /cutlist\s*plus/i,
+      /cutlistplus/i,
+    ],
+    confidence: 0.85,
+  },
+  {
+    name: "CutMaster",
+    patterns: [
+      /cutmaster/i,
+      /cut\s*master/i,
+    ],
+    confidence: 0.85,
+  },
+  {
+    name: "CAI Template",
+    patterns: [
+      /CAI-\d+/i,
+      /cai\s*template/i,
+      /cai\s*intake/i,
+    ],
+    confidence: 0.95,
+  },
+  {
+    name: "Handwritten",
+    patterns: [
+      /handwritten/i,
+      // No text patterns - detected by AI or OCR confidence
+    ],
+    confidence: 0.6,
+  },
+];
+
+export interface TemplateDetectionResult {
+  templateType: string | null;
+  confidence: number;
+  matchedPatterns: string[];
+}
+
+/**
+ * Detect template type from text content (OCR result or raw text)
+ */
+export function detectTemplateFromText(text: string): TemplateDetectionResult {
+  const results: { name: string; matches: string[]; confidence: number }[] = [];
+
+  for (const template of TEMPLATE_PATTERNS) {
+    const matchedPatterns: string[] = [];
+    for (const pattern of template.patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        matchedPatterns.push(match[0]);
+      }
+    }
+
+    if (matchedPatterns.length > 0) {
+      // Confidence increases with more pattern matches
+      const adjustedConfidence = Math.min(
+        1,
+        template.confidence + (matchedPatterns.length - 1) * 0.05
+      );
+      results.push({
+        name: template.name,
+        matches: matchedPatterns,
+        confidence: adjustedConfidence,
+      });
+    }
+  }
+
+  // Sort by confidence and return best match
+  results.sort((a, b) => b.confidence - a.confidence);
+
+  if (results.length > 0) {
+    return {
+      templateType: results[0].name,
+      confidence: results[0].confidence,
+      matchedPatterns: results[0].matches,
+    };
+  }
+
+  return {
+    templateType: null,
+    confidence: 0,
+    matchedPatterns: [],
+  };
+}
+
+/**
+ * Detect template from filename
+ */
+export function detectTemplateFromFilename(filename: string): string | null {
+  const lower = filename.toLowerCase();
+  
+  if (lower.includes("sketchcut") || lower.includes("sketch_cut")) {
+    return "SketchCut PRO";
+  }
+  if (lower.includes("maxcut") || lower.includes("max_cut")) {
+    return "MaxCut";
+  }
+  if (lower.includes("cutlist") || lower.includes("cut_list")) {
+    return "CutList Plus";
+  }
+  if (lower.includes("cai") || lower.includes("template")) {
+    return "CAI Template";
+  }
+  
+  return null;
+}
+
+/**
+ * Get all known template types for UI selection
+ */
+export function getKnownTemplateTypes(): string[] {
+  return TEMPLATE_PATTERNS.map(t => t.name);
 }
 
 // ============================================================

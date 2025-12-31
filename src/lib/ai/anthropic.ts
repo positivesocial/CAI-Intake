@@ -96,6 +96,8 @@ import {
   selectFewShotExamples, 
   formatExamplesForPrompt, 
   recordBatchUsage,
+  detectTemplateFromText,
+  detectTemplateFromFilename,
   type TrainingExample 
 } from "@/lib/learning/few-shot";
 import {
@@ -487,6 +489,25 @@ export class AnthropicProvider implements AIProvider {
       const skipFewShot = estimatedRows < 20 || text.length < 1000;
       
       if (!skipFewShot) {
+        // Detect template type for smarter few-shot selection
+        let detectedTemplate: string | undefined;
+        const templateFromText = detectTemplateFromText(text);
+        if (templateFromText.templateType && templateFromText.confidence > 0.6) {
+          detectedTemplate = templateFromText.templateType;
+          logger.info("📋 [Anthropic] Detected template type from content", {
+            template: detectedTemplate,
+            confidence: templateFromText.confidence,
+          });
+        } else if (options.fileName) {
+          detectedTemplate = detectTemplateFromFilename(options.fileName) || undefined;
+          if (detectedTemplate) {
+            logger.info("📋 [Anthropic] Detected template type from filename", {
+              template: detectedTemplate,
+              fileName: options.fileName,
+            });
+          }
+        }
+        
         // Select few-shot examples for better accuracy on larger docs
         try {
           fewShotExamples = await selectFewShotExamples(
@@ -496,6 +517,8 @@ export class AnthropicProvider implements AIProvider {
               maxExamples: 2, // Reduced from 3 to 2 for speed
               needsEdgeExamples: options.extractMetadata,
               needsGrooveExamples: options.extractMetadata,
+              templateType: detectedTemplate, // Use detected template for matching
+              sourceType: "image", // Could be enhanced to detect from file type
             }
           );
           
@@ -503,6 +526,7 @@ export class AnthropicProvider implements AIProvider {
             logger.info("🎯 [Anthropic] Selected few-shot examples", {
               count: fewShotExamples.length,
               exampleIds: fewShotExamples.map(e => e.id),
+              templateMatch: detectedTemplate,
             });
           }
         } catch (fewShotError) {

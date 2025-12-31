@@ -56,6 +56,8 @@ import {
   selectFewShotExamples, 
   formatExamplesForPrompt, 
   recordBatchUsage,
+  detectTemplateFromText,
+  detectTemplateFromFilename,
   type TrainingExample 
 } from "@/lib/learning/few-shot";
 import {
@@ -449,6 +451,25 @@ export class OpenAIProvider implements AIProvider {
         textLength: text.length,
       });
       
+      // Detect template type for smarter few-shot selection
+      let detectedTemplate: string | undefined;
+      const templateFromText = detectTemplateFromText(text);
+      if (templateFromText.templateType && templateFromText.confidence > 0.6) {
+        detectedTemplate = templateFromText.templateType;
+        logger.info("📋 [OpenAI] Detected template type from content", {
+          template: detectedTemplate,
+          confidence: templateFromText.confidence,
+        });
+      } else if (options.fileName) {
+        detectedTemplate = detectTemplateFromFilename(options.fileName) || undefined;
+        if (detectedTemplate) {
+          logger.info("📋 [OpenAI] Detected template type from filename", {
+            template: detectedTemplate,
+            fileName: options.fileName,
+          });
+        }
+      }
+      
       // Select few-shot examples for better accuracy
       try {
         fewShotExamples = await selectFewShotExamples(
@@ -458,6 +479,8 @@ export class OpenAIProvider implements AIProvider {
             maxExamples: 3,
             needsEdgeExamples: options.extractMetadata,
             needsGrooveExamples: options.extractMetadata,
+            templateType: detectedTemplate,
+            sourceType: "image",
           }
         );
         
@@ -465,6 +488,7 @@ export class OpenAIProvider implements AIProvider {
           logger.info("🎯 [OpenAI] Selected few-shot examples", {
             count: fewShotExamples.length,
             exampleIds: fewShotExamples.map(e => e.id),
+            templateMatch: detectedTemplate,
           });
         }
       } catch (fewShotError) {

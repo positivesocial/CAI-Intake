@@ -66,6 +66,8 @@ import { calculateFieldConfidence, ConfidenceSummary } from "./FieldConfidence";
 import { ValidationPanel } from "./ValidationPanel";
 import { DuplicateDetector } from "./DuplicateDetector";
 import { SourceFilesPanel, type SourceFile } from "./SourceFilesPanel";
+import { AutoTrainingPrompt, useAutoTraining } from "@/components/training/AutoTrainingPrompt";
+import { LowConfidenceSummary } from "@/components/training/ConfidenceFlag";
 
 // ============================================================
 // SHORTCODE FORMATTERS
@@ -1232,6 +1234,26 @@ export function IntakeInbox() {
   const [compareMode, setCompareMode] = React.useState(false);
   const [opsEditingPart, setOpsEditingPart] = React.useState<ParsedPartWithStatus | null>(null);
   
+  // Auto-training integration - track original parts for correction detection
+  const { trackOriginalParts, trackCorrection, getPromptProps, hasCorrections } = useAutoTraining();
+  const [originalPartsTracked, setOriginalPartsTracked] = React.useState(false);
+  
+  // Track original parts when inbox first populates
+  React.useEffect(() => {
+    if (inboxParts.length > 0 && !originalPartsTracked) {
+      trackOriginalParts(inboxParts, {
+        fileName: sourceFilePreviews[0]?.filename,
+        fileType: sourceFilePreviews[0]?.type?.startsWith("image") 
+          ? "image" 
+          : sourceFilePreviews[0]?.type === "application/pdf"
+            ? "pdf" 
+            : "image",
+        template: currentCutlist.metadata?.templateType as string | undefined,
+      });
+      setOriginalPartsTracked(true);
+    }
+  }, [inboxParts, originalPartsTracked, trackOriginalParts, sourceFilePreviews, currentCutlist.metadata?.templateType]);
+  
   const materials = currentCutlist.materials;
   const defaultEdgebandId = currentCutlist.edgebands?.[0]?.edgeband_id;
   
@@ -1297,9 +1319,12 @@ export function IntakeInbox() {
             cutlistId: currentCutlist.doc_id,
           });
         }
+        
+        // Also track for auto-training prompt
+        trackCorrection(partId, updates);
       }
     },
-    [inboxParts, updateInboxPart, currentCutlist]
+    [inboxParts, updateInboxPart, currentCutlist, trackCorrection]
   );
 
   // Handle ops change from UnifiedOpsPanel
@@ -1857,6 +1882,30 @@ export function IntakeInbox() {
         onChange={handleOpsChange}
         partLabel={opsEditingPart?.label || opsEditingPart?.part_id}
       />
+      
+      {/* Low Confidence Summary - appears when there are flagged parts */}
+      {counts.lowConfidence > 0 && (
+        <div className="mt-4">
+          <LowConfidenceSummary
+            parts={inboxParts.map(p => ({ 
+              part: p, 
+              confidence: p.audit?.confidence ?? 0.7 
+            }))}
+            onReviewClick={() => setFilter("low-confidence")}
+          />
+        </div>
+      )}
+      
+      {/* Auto Training Prompt - appears after significant corrections */}
+      {hasCorrections && (
+        <AutoTrainingPrompt
+          {...getPromptProps()}
+          onTrainingSaved={() => {
+            // Reset tracking after save
+            setOriginalPartsTracked(false);
+          }}
+        />
+      )}
     </Card>
   );
 }
