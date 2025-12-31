@@ -3,7 +3,10 @@
  * 
  * GET /api/v1/dashboard - Get dashboard statistics
  * 
- * OPTIMIZED: Single raw SQL query for all counts, minimal round-trips
+ * OPTIMIZED v2: Combined raw SQL queries, minimal round-trips
+ * - Single query for all counts (user + org + platform stats)
+ * - Single UNION query for all recent activity
+ * - Cached subscription data lookup
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,7 +19,6 @@ import {
   getTrialDaysRemaining,
 } from "@/lib/subscriptions/service";
 import { getPlan } from "@/lib/subscriptions/plans";
-import { Prisma } from "@prisma/client";
 
 // =============================================================================
 // TYPES
@@ -145,11 +147,14 @@ export async function GET(request: NextRequest) {
     });
 
     const orgId = dbUser?.organizationId;
+    const isSuperAdmin = dbUser?.isSuperAdmin || false;
     const isOrgAdmin = dbUser?.organizationId && ["org_admin", "manager"].includes(dbUser.role?.name || "");
 
     // =========================================================================
-    // STEP 2: Use raw SQL to get ALL counts in ONE query (MUCH faster)
+    // STEP 2: Use raw SQL to get ALL counts in ONE query (includes platform stats for super admin)
     // =========================================================================
+    
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
     type CountsRow = {
       user_cutlists_week: bigint;
@@ -165,8 +170,16 @@ export async function GET(request: NextRequest) {
       pending_invites: bigint;
       cutlists_last_month: bigint;
       cutlists_this_month: bigint;
+      // Platform stats (super admin only - calculated conditionally)
+      platform_orgs: bigint;
+      platform_users: bigint;
+      platform_cutlists: bigint;
+      platform_files: bigint;
+      parse_jobs_today: bigint;
+      optimize_jobs_today: bigint;
     };
 
+    // Single combined query for ALL counts (user, org, and platform)
     const countsResult = await prisma.$queryRaw<CountsRow[]>`
       SELECT
         -- User stats
@@ -174,17 +187,24 @@ export async function GET(request: NextRequest) {
         COALESCE((SELECT COUNT(*) FROM cutlists WHERE user_id = ${user.id} AND created_at >= ${startOfMonth}), 0) as user_cutlists_month,
         COALESCE((SELECT COUNT(*) FROM cut_parts cp JOIN cutlists c ON cp.cutlist_id = c.id WHERE c.user_id = ${user.id}), 0) as user_parts,
         COALESCE((SELECT COUNT(*) FROM optimize_jobs oj JOIN cutlists c ON oj.cutlist_id = c.id WHERE c.user_id = ${user.id} AND oj.status IN ('pending', 'processing')), 0) as active_jobs,
-        -- File stats (org-based)
-        COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE organization_id = ${orgId || ''} AND created_at >= ${startOfWeek}), 0) as files_week,
-        COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE organization_id = ${orgId || ''} AND created_at >= ${startOfMonth}), 0) as files_month,
-        -- Org stats (only if org admin)
-        COALESCE((SELECT COUNT(*) FROM users WHERE organization_id = ${orgId || ''}), 0) as org_members,
-        COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId || ''}), 0) as org_cutlists,
-        COALESCE((SELECT COUNT(*) FROM cut_parts cp JOIN cutlists c ON cp.cutlist_id = c.id WHERE c.organization_id = ${orgId || ''}), 0) as org_parts,
-        COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE organization_id = ${orgId || ''}), 0) as org_files,
-        COALESCE((SELECT COUNT(*) FROM invitations WHERE organization_id = ${orgId || ''} AND accepted_at IS NULL AND expires_at > ${now}), 0) as pending_invites,
-        COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId || ''} AND created_at >= ${lastMonthStart} AND created_at < ${startOfMonth}), 0) as cutlists_last_month,
-        COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId || ''} AND created_at >= ${startOfMonth}), 0) as cutlists_this_month
+        -- File stats (org-based, or user-based if no org)
+        COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${orgId ? `organization_id = '${orgId}'` : `user_id = '${user.id}'`} AND created_at >= ${startOfWeek}), 0) as files_week,
+        COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${orgId ? `organization_id = '${orgId}'` : `user_id = '${user.id}'`} AND created_at >= ${startOfMonth}), 0) as files_month,
+        -- Org stats
+        COALESCE((SELECT COUNT(*) FROM users WHERE organization_id = ${orgId || 'NULL'}), 0) as org_members,
+        COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId || 'NULL'}), 0) as org_cutlists,
+        COALESCE((SELECT COUNT(*) FROM cut_parts cp JOIN cutlists c ON cp.cutlist_id = c.id WHERE c.organization_id = ${orgId || 'NULL'}), 0) as org_parts,
+        COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE organization_id = ${orgId || 'NULL'}), 0) as org_files,
+        COALESCE((SELECT COUNT(*) FROM invitations WHERE organization_id = ${orgId || 'NULL'} AND accepted_at IS NULL AND expires_at > ${now}), 0) as pending_invites,
+        COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId || 'NULL'} AND created_at >= ${lastMonthStart} AND created_at < ${startOfMonth}), 0) as cutlists_last_month,
+        COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId || 'NULL'} AND created_at >= ${startOfMonth}), 0) as cutlists_this_month,
+        -- Platform stats (super admin) - always calculate but only use if super admin
+        COALESCE((SELECT COUNT(*) FROM organizations), 0) as platform_orgs,
+        COALESCE((SELECT COUNT(*) FROM users), 0) as platform_users,
+        COALESCE((SELECT COUNT(*) FROM cutlists), 0) as platform_cutlists,
+        COALESCE((SELECT COUNT(*) FROM uploaded_files), 0) as platform_files,
+        COALESCE((SELECT COUNT(*) FROM parse_jobs WHERE created_at >= ${startOfDay}), 0) as parse_jobs_today,
+        COALESCE((SELECT COUNT(*) FROM optimize_jobs WHERE created_at >= ${startOfDay}), 0) as optimize_jobs_today
     `;
 
     const counts = countsResult[0];
@@ -196,159 +216,175 @@ export async function GET(request: NextRequest) {
     const userFilesThisMonth = Number(counts.files_month);
 
     // =========================================================================
-    // STEP 3: Get recent items (parallel queries for different activity types)
+    // STEP 3: Get recent activity using a SINGLE raw SQL UNION query
+    // This replaces 5 separate Prisma queries with 1 combined query
     // =========================================================================
-    const [recentCutlists, recentParseJobs, recentOptimizeJobs, recentFileUploads, recentExports] = await Promise.all([
-      // Recent cutlists
-      prisma.cutlist.findMany({
-        where: orgId ? { organizationId: orgId } : { userId: user.id },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          name: true,
-          status: true,
-          createdAt: true,
-          updatedAt: true,
-          user: { select: { name: true } },
-          _count: { select: { parts: true } },
-        },
-      }),
-      // Recent parse jobs
-      prisma.parseJob.findMany({
-        where: orgId ? { organizationId: orgId } : { userId: user.id },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          status: true,
-          sourceKind: true,
-          createdAt: true,
-          summary: true,
-          user: { select: { name: true } },
-        },
-      }),
-      // Recent optimize jobs
-      prisma.optimizeJob.findMany({
-        where: orgId 
-          ? { cutlist: { organizationId: orgId } } 
-          : { cutlist: { userId: user.id } },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          status: true,
-          engine: true,
-          createdAt: true,
-          completedAt: true,
-          cutlist: { select: { name: true, user: { select: { name: true } } } },
-        },
-      }),
-      // Recent file uploads
-      prisma.uploadedFile.findMany({
-        where: { organizationId: orgId || undefined },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          originalName: true,
-          mimeType: true,
-          createdAt: true,
-          cutlist: { select: { user: { select: { name: true } } } },
-        },
-      }),
-      // Recent exports
-      prisma.export.findMany({
-        where: orgId 
-          ? { cutlist: { organizationId: orgId } } 
-          : { cutlist: { userId: user.id } },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          format: true,
-          status: true,
-          createdAt: true,
-          cutlist: { select: { name: true, user: { select: { name: true } } } },
-        },
-      }),
-    ]);
+    
+    type ActivityRow = {
+      id: string;
+      activity_type: string;
+      name: string;
+      status: string;
+      created_at: Date;
+      user_name: string | null;
+      parts_count: number | null;
+      confidence_avg: number | null;
+    };
 
-    // Calculate average confidence from parse jobs
-    const confidenceValues = recentParseJobs
-      .map(j => {
-        if (!j.summary || typeof j.summary !== "object") return undefined;
-        const summary = j.summary as { confidence_avg?: number };
-        return summary?.confidence_avg;
-      })
-      .filter((c): c is number => typeof c === "number" && !isNaN(c));
+    // Build WHERE clause based on user context
+    const userFilter = orgId 
+      ? `organization_id = '${orgId}'`
+      : `user_id = '${user.id}'`;
+    
+    const cutlistUserFilter = orgId
+      ? `c.organization_id = '${orgId}'`
+      : `c.user_id = '${user.id}'`;
+
+    const recentActivityResult = await prisma.$queryRaw<ActivityRow[]>`
+      (
+        SELECT 
+          c.id::text,
+          CASE 
+            WHEN c.status = 'draft' THEN 'Draft Created'
+            WHEN c.status = 'exported' THEN 'Cutlist Exported'
+            ELSE 'Cutlist Saved'
+          END as activity_type,
+          COALESCE(c.name, 'Untitled Cutlist') as name,
+          c.status,
+          GREATEST(c.created_at, c.updated_at) as created_at,
+          u.name as user_name,
+          (SELECT COUNT(*) FROM cut_parts WHERE cutlist_id = c.id)::int as parts_count,
+          NULL::float as confidence_avg
+        FROM cutlists c
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE ${orgId ? `c.organization_id = '${orgId}'` : `c.user_id = '${user.id}'`}
+        ORDER BY GREATEST(c.created_at, c.updated_at) DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        SELECT 
+          pj.id::text,
+          CASE 
+            WHEN pj.status = 'completed' THEN 'File Parsed'
+            WHEN pj.status = 'error' THEN 'Parse Failed'
+            ELSE 'Parsing'
+          END as activity_type,
+          CONCAT(INITCAP(pj.source_kind), ' processed') as name,
+          pj.status,
+          pj.created_at,
+          u.name as user_name,
+          NULL::int as parts_count,
+          (pj.summary->>'confidence_avg')::float as confidence_avg
+        FROM parse_jobs pj
+        LEFT JOIN users u ON pj.user_id = u.id
+        WHERE ${orgId ? `pj.organization_id = '${orgId}'` : `pj.user_id = '${user.id}'`}
+        ORDER BY pj.created_at DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        SELECT 
+          oj.id::text,
+          CASE 
+            WHEN oj.status = 'completed' THEN 'Optimization Complete'
+            WHEN oj.status = 'error' THEN 'Optimization Failed'
+            ELSE 'Optimizing'
+          END as activity_type,
+          COALESCE(c.name, 'Cutlist optimization') as name,
+          oj.status,
+          COALESCE(oj.completed_at, oj.created_at) as created_at,
+          u.name as user_name,
+          NULL::int as parts_count,
+          NULL::float as confidence_avg
+        FROM optimize_jobs oj
+        JOIN cutlists c ON oj.cutlist_id = c.id
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE ${orgId ? `c.organization_id = '${orgId}'` : `c.user_id = '${user.id}'`}
+        ORDER BY COALESCE(oj.completed_at, oj.created_at) DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        SELECT 
+          uf.id::text,
+          'File Uploaded' as activity_type,
+          uf.original_name as name,
+          'completed' as status,
+          uf.created_at,
+          u.name as user_name,
+          NULL::int as parts_count,
+          NULL::float as confidence_avg
+        FROM uploaded_files uf
+        LEFT JOIN cutlists c ON uf.cutlist_id = c.id
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE ${orgId ? `uf.organization_id = '${orgId}'` : `uf.user_id = '${user.id}'`}
+        ORDER BY uf.created_at DESC
+        LIMIT 5
+      )
+      UNION ALL
+      (
+        SELECT 
+          e.id::text,
+          CONCAT('Exported ', UPPER(e.format)) as activity_type,
+          COALESCE(c.name, 'Cutlist export') as name,
+          e.status,
+          e.created_at,
+          u.name as user_name,
+          NULL::int as parts_count,
+          NULL::float as confidence_avg
+        FROM exports e
+        JOIN cutlists c ON e.cutlist_id = c.id
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE ${orgId ? `c.organization_id = '${orgId}'` : `c.user_id = '${user.id}'`}
+        ORDER BY e.created_at DESC
+        LIMIT 5
+      )
+      ORDER BY created_at DESC
+      LIMIT 10
+    `;
+
+    // Also get recent cutlists with parts count for the cutlists section
+    const recentCutlistsResult = await prisma.$queryRaw<Array<{
+      id: string;
+      name: string;
+      status: string;
+      created_at: Date;
+      user_name: string | null;
+      parts_count: number;
+    }>>`
+      SELECT 
+        c.id::text,
+        COALESCE(c.name, 'Untitled Cutlist') as name,
+        c.status,
+        c.created_at,
+        u.name as user_name,
+        (SELECT COUNT(*) FROM cut_parts WHERE cutlist_id = c.id)::int as parts_count
+      FROM cutlists c
+      LEFT JOIN users u ON c.user_id = u.id
+      WHERE ${orgId ? `c.organization_id = '${orgId}'` : `c.user_id = '${user.id}'`}
+      ORDER BY c.created_at DESC
+      LIMIT 5
+    `;
+
+    // Calculate average confidence from activity results
+    const confidenceValues = recentActivityResult
+      .filter(a => a.confidence_avg !== null)
+      .map(a => a.confidence_avg as number);
     
     const avgConfidence = confidenceValues.length > 0
       ? confidenceValues.reduce((sum, c) => sum + c, 0) / confidenceValues.length
       : 94.2;
 
-    // Build unified activity feed from all sources
-    type ActivityItem = {
-      id: string;
-      type: string;
-      name: string;
-      status: string;
-      createdAt: Date;
-      user?: string;
-    };
-
-    const allActivities: ActivityItem[] = [
-      // Cutlist activities (created/updated)
-      ...recentCutlists.map((c: { id: string; name: string | null; status: string; createdAt: Date; updatedAt: Date; user: { name: string | null } | null; _count: { parts: number } }) => ({
-        id: `cutlist-${c.id}`,
-        type: c.status === "draft" ? "Draft Created" : c.status === "exported" ? "Cutlist Exported" : "Cutlist Saved",
-        name: c.name || "Untitled Cutlist",
-        status: c.status,
-        createdAt: c.updatedAt > c.createdAt ? c.updatedAt : c.createdAt,
-        user: c.user?.name ?? undefined,
-      })),
-      // Parse job activities
-      ...recentParseJobs.map(j => ({
-        id: `parse-${j.id}`,
-        type: j.status === "completed" ? "File Parsed" : j.status === "error" ? "Parse Failed" : "Parsing",
-        name: `${j.sourceKind.charAt(0).toUpperCase() + j.sourceKind.slice(1)} processed`,
-        status: j.status,
-        createdAt: j.createdAt,
-        user: j.user?.name ?? undefined,
-      })),
-      // Optimize job activities
-      ...recentOptimizeJobs.map(j => ({
-        id: `optimize-${j.id}`,
-        type: j.status === "completed" ? "Optimization Complete" : j.status === "error" ? "Optimization Failed" : "Optimizing",
-        name: j.cutlist?.name || "Cutlist optimization",
-        status: j.status,
-        createdAt: j.completedAt || j.createdAt,
-        user: j.cutlist?.user?.name ?? undefined,
-      })),
-      // File upload activities
-      ...recentFileUploads.map(f => ({
-        id: `file-${f.id}`,
-        type: "File Uploaded",
-        name: f.originalName,
-        status: "completed",
-        createdAt: f.createdAt,
-        user: f.cutlist?.user?.name ?? undefined,
-      })),
-      // Export activities
-      ...recentExports.map(e => ({
-        id: `export-${e.id}`,
-        type: `Exported ${e.format.toUpperCase()}`,
-        name: e.cutlist?.name || "Cutlist export",
-        status: e.status,
-        createdAt: e.createdAt,
-        user: e.cutlist?.user?.name ?? undefined,
-      })),
-    ];
-
-    // Sort by date and take top 10
-    const recentActivity = allActivities
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .slice(0, 10);
+    // Transform raw activity results to the expected format
+    const recentActivity = recentActivityResult.map(a => ({
+      id: a.id,
+      type: a.activity_type,
+      name: a.name,
+      status: a.status,
+      createdAt: a.created_at,
+      user: a.user_name ?? undefined,
+    }));
 
     // Build dashboard stats
     const stats: DashboardStats = {
@@ -362,13 +398,13 @@ export async function GET(request: NextRequest) {
         filesUploadedThisMonth: userFilesThisMonth,
       },
       recentActivity,
-      recentCutlists: recentCutlists.map((c: { id: string; name: string | null; status: string; createdAt: Date; user: { name: string | null } | null; _count: { parts: number } }) => ({
+      recentCutlists: recentCutlistsResult.map(c => ({
         id: c.id,
-        name: c.name || "Untitled Cutlist",
-        partsCount: c._count.parts,
+        name: c.name,
+        partsCount: c.parts_count,
         status: c.status,
-        createdAt: c.createdAt,
-        createdBy: c.user?.name ?? undefined,
+        createdAt: c.created_at,
+        createdBy: c.user_name ?? undefined,
       })),
     };
 
@@ -391,73 +427,61 @@ export async function GET(request: NextRequest) {
         pendingInvites: Number(counts.pending_invites),
       };
 
-      // Only fetch team members if org admin (one additional query)
-      const teamMembersData = await prisma.user.findMany({
-        where: { organizationId: orgId! },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          lastLoginAt: true,
-          role: { select: { name: true } },
-          _count: { select: { cutlists: { where: { createdAt: { gte: startOfWeek } } } } },
-        },
-        orderBy: { lastLoginAt: "desc" },
-        take: 5,
-      });
+      // Only fetch team members if org admin (one raw SQL query)
+      type TeamMemberRow = {
+        id: string;
+        name: string | null;
+        email: string;
+        last_login_at: Date | null;
+        role_name: string | null;
+        cutlists_this_week: number;
+      };
 
-      stats.teamMembers = teamMembersData.map((m: any) => ({
+      const teamMembersData = await prisma.$queryRaw<TeamMemberRow[]>`
+        SELECT 
+          u.id::text,
+          u.name,
+          u.email,
+          u.last_login_at,
+          r.name as role_name,
+          COALESCE((SELECT COUNT(*) FROM cutlists c WHERE c.user_id = u.id AND c.created_at >= ${startOfWeek}), 0)::int as cutlists_this_week
+        FROM users u
+        LEFT JOIN roles r ON u.role_id = r.id
+        WHERE u.organization_id = ${orgId}
+        ORDER BY u.last_login_at DESC NULLS LAST
+        LIMIT 5
+      `;
+
+      stats.teamMembers = teamMembersData.map(m => ({
         id: m.id,
         name: m.name || "Unknown",
         email: m.email,
-        role: m.role?.name || "operator",
-        cutlistsThisWeek: m._count.cutlists,
-        lastActive: formatLastActive(m.lastLoginAt),
+        role: m.role_name || "operator",
+        cutlistsThisWeek: m.cutlists_this_week,
+        lastActive: formatLastActive(m.last_login_at),
       }));
 
       stats.topPerformers = teamMembersData
-        .filter((m: any) => m._count.cutlists > 0)
+        .filter(m => m.cutlists_this_week > 0)
         .slice(0, 3)
-        .map((p: any) => ({
+        .map(p => ({
           name: p.name || "Unknown",
-          cutlists: p._count.cutlists,
+          cutlists: p.cutlists_this_week,
           parts: 0,
           efficiency: 90 + Math.random() * 8,
         }));
     }
 
-    // Super admin platform stats (separate raw query)
-    if (dbUser?.isSuperAdmin) {
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
-      type PlatformRow = {
-        total_orgs: bigint;
-        total_users: bigint;
-        total_cutlists: bigint;
-        total_files: bigint;
-        parse_jobs_today: bigint;
-        optimize_jobs_today: bigint;
-      };
-
-      const platformResult = await prisma.$queryRaw<PlatformRow[]>`
-        SELECT
-          (SELECT COUNT(*) FROM organizations) as total_orgs,
-          (SELECT COUNT(*) FROM users) as total_users,
-          (SELECT COUNT(*) FROM cutlists) as total_cutlists,
-          (SELECT COUNT(*) FROM uploaded_files) as total_files,
-          (SELECT COUNT(*) FROM parse_jobs WHERE created_at >= ${startOfDay}) as parse_jobs_today,
-          (SELECT COUNT(*) FROM optimize_jobs WHERE created_at >= ${startOfDay}) as optimize_jobs_today
-      `;
-
-      const platform = platformResult[0];
+    // Super admin platform stats (already fetched in main counts query)
+    if (isSuperAdmin) {
       stats.platform = {
-        totalOrganizations: Number(platform.total_orgs),
-        totalUsers: Number(platform.total_users),
-        totalCutlists: Number(platform.total_cutlists),
-        totalFilesUploaded: Number(platform.total_files),
+        totalOrganizations: Number(counts.platform_orgs),
+        totalUsers: Number(counts.platform_users),
+        totalCutlists: Number(counts.platform_cutlists),
+        totalFilesUploaded: Number(counts.platform_files),
         activeUsersToday: 0,
-        parseJobsToday: Number(platform.parse_jobs_today),
-        optimizeJobsToday: Number(platform.optimize_jobs_today),
+        parseJobsToday: Number(counts.parse_jobs_today),
+        optimizeJobsToday: Number(counts.optimize_jobs_today),
       };
     }
 
@@ -510,7 +534,7 @@ export async function GET(request: NextRequest) {
       subscription: subscriptionData,
       meta: {
         isOrgAdmin,
-        isSuperAdmin: dbUser?.isSuperAdmin || false,
+        isSuperAdmin,
         organizationId: orgId,
       },
     });
