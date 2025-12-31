@@ -1863,7 +1863,8 @@ async function convertPdfToImagesAndParse(
         try {
           // Check cache for this page's image
           const pageBuffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ""), "base64");
-          const pageCached = getCachedResult(pageBuffer);
+          const pageArrayBuffer = pageBuffer.buffer.slice(pageBuffer.byteOffset, pageBuffer.byteOffset + pageBuffer.byteLength);
+          const pageCached = getCachedResult(pageArrayBuffer);
           
           let parseResult;
           if (pageCached) {
@@ -1889,7 +1890,7 @@ async function convertPdfToImagesAndParse(
             // Cache successful page results
             if (parseResult.parts && parseResult.parts.length > 0) {
               cacheResult(
-                pageBuffer,
+                pageArrayBuffer,
                 parseResult.parts,
                 parseResult.confidence ?? 0.9,
                 "anthropic",
