@@ -232,6 +232,35 @@ export function validateAIResponse(rawResponse: string): ValidationResult & { me
     }
   }
   
+  // Step 1.4: Check for SIMPLE TABULAR format: { p: [...] }
+  // This is the ultra-fast format from SIMPLE_TABULAR_PROMPT
+  if (
+    typeof parsed === "object" && 
+    parsed !== null && 
+    !Array.isArray(parsed) && 
+    "p" in parsed &&
+    Array.isArray((parsed as { p: unknown }).p)
+  ) {
+    const simpleFormat = parsed as { p: Array<{ r?: number; n?: string; l: number; w: number; t?: number; q?: number; m?: string; e?: string; rot?: boolean }> };
+    
+    logger.info("⚡ [Validation] Detected SIMPLE TABULAR format, expanding", {
+      partsCount: simpleFormat.p.length,
+    });
+    
+    const { expandSimpleTabularParts } = require("./provider");
+    const expandedParts = expandSimpleTabularParts(simpleFormat.p);
+    
+    warnings.push(`Fast path: expanded ${simpleFormat.p.length} parts from simple tabular format`);
+    
+    return {
+      success: true,
+      parts: expandedParts as z.infer<typeof AIPartSchema>[],
+      errors: [],
+      warnings,
+      metadata,
+    };
+  }
+  
   // Step 1.5: Check for COMPACT format and expand if needed
   // Compact format uses abbreviated keys: r, l, w, q, m, e, g, n
   if (Array.isArray(parsed) && parsed.length > 0) {

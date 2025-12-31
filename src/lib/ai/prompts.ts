@@ -1867,6 +1867,170 @@ Always output edge and groove data in this structure:
 // FEW-SHOT PROMPT BUILDER
 // ============================================================
 
+// ============================================================
+// SIMPLE TABULAR PROMPT (for clean structured data - 3x faster)
+// ============================================================
+
+/**
+ * Minimal prompt for clean, tabular cutlist data.
+ * Use when Python OCR returns high-confidence structured text.
+ * 
+ * ~500 tokens vs ~2000 tokens = 3-4x faster parsing
+ */
+export const SIMPLE_TABULAR_PROMPT = `Parse this cutlist table into JSON. Extract each row as a part.
+
+## Column Mapping
+- Part/Description/Name → label
+- Length/L → length (mm)
+- Width/W → width (mm)  
+- Thick → thickness (mm, default 18)
+- Copies/Qty/Quantity → quantity (default 1)
+- Material → material (keep short: W, Ply, B, M)
+- Banding/Edge → edgeBanding (parse L1,L2,W1,W2 or "2L2W" notation)
+- Can Rotate → allowRotation (true/false)
+
+## Output Format (compact)
+\`\`\`json
+{"p":[
+  {"r":1,"n":"Part name","l":720,"w":560,"t":18,"q":2,"m":"W","e":"2L","rot":true},
+  {"r":2,"n":"Panel","l":600,"w":400,"t":18,"q":1,"m":"Ply","e":"","rot":true}
+]}
+\`\`\`
+
+Keys: r=row, n=name/label, l=length, w=width, t=thickness, q=quantity, m=material, e=edge code, rot=canRotate
+
+## Edge Code Format
+- "2L2W" or "4" = all 4 edges
+- "2L" = both long edges
+- "2W" = both width edges  
+- "1L" = one long edge
+- "" = no edging
+
+## Rules
+1. Skip header rows (containing "Length", "Width", etc.)
+2. Length is grain direction - do NOT swap if L < W
+3. Return ONLY the JSON, no other text
+4. Extract ALL data rows`;
+
+/**
+ * Detect if document is "simple" (clean tabular) or "complex" (needs full prompt)
+ */
+export interface DocumentComplexity {
+  isSimple: boolean;
+  confidence: number;
+  reasons: string[];
+  recommendedPrompt: "simple" | "full";
+}
+
+export function detectDocumentComplexity(
+  text: string,
+  ocrConfidence?: number
+): DocumentComplexity {
+  const reasons: string[] = [];
+  let simpleScore = 0;
+  let complexScore = 0;
+
+  // Check OCR confidence
+  if (ocrConfidence !== undefined) {
+    if (ocrConfidence >= 0.9) {
+      simpleScore += 3;
+      reasons.push("High OCR confidence (≥90%)");
+    } else if (ocrConfidence < 0.7) {
+      complexScore += 3;
+      reasons.push("Low OCR confidence (<70%)");
+    }
+  }
+
+  // Check for clear tabular structure
+  const lines = text.split("\n").filter(l => l.trim());
+  const tabCount = (text.match(/\t/g) || []).length;
+  const hasConsistentTabs = tabCount > lines.length * 2;
+  
+  if (hasConsistentTabs) {
+    simpleScore += 2;
+    reasons.push("Tab-separated columns detected");
+  }
+
+  // Check for header row
+  const headerPatterns = /\b(length|width|qty|quantity|material|thick|copies|part\s*#|description)\b/i;
+  if (headerPatterns.test(lines[0] || "")) {
+    simpleScore += 2;
+    reasons.push("Clear header row detected");
+  }
+
+  // Check for complex features that need full prompt
+  const complexPatterns = [
+    { pattern: /[═_]{2,}|underline/i, name: "Underline notation" },
+    { pattern: /\bgl\b|\bgw\b|groove/i, name: "Groove notation" },
+    { pattern: /\bcnc\b|drill|hole|bore/i, name: "CNC/drilling references" },
+    { pattern: /handwritten|hand\s*written/i, name: "Handwritten text" },
+    { pattern: /sketch\s*cut|maxcut/i, name: "Software-specific format" },
+  ];
+
+  for (const { pattern, name } of complexPatterns) {
+    if (pattern.test(text)) {
+      complexScore += 2;
+      reasons.push(`Complex feature: ${name}`);
+    }
+  }
+
+  // Check text density (handwritten often has irregular spacing)
+  const avgLineLength = text.length / lines.length;
+  if (avgLineLength > 200) {
+    complexScore += 1;
+    reasons.push("Dense text (possible prose/notes)");
+  }
+
+  // Check for numeric consistency (tables have regular numbers)
+  const numberMatches = text.match(/\d{2,4}/g) || [];
+  const hasRegularNumbers = numberMatches.length > lines.length * 2;
+  if (hasRegularNumbers) {
+    simpleScore += 1;
+    reasons.push("Regular numeric patterns");
+  }
+
+  const isSimple = simpleScore > complexScore;
+  const totalScore = simpleScore + complexScore;
+  const confidence = totalScore > 0 
+    ? Math.abs(simpleScore - complexScore) / totalScore 
+    : 0.5;
+
+  return {
+    isSimple,
+    confidence: Math.min(0.95, 0.5 + confidence * 0.5),
+    reasons,
+    recommendedPrompt: isSimple ? "simple" : "full",
+  };
+}
+
+/**
+ * Build the appropriate prompt based on document complexity
+ */
+export function buildAdaptivePrompt(
+  text: string,
+  options: PromptOptions & { ocrConfidence?: number }
+): { prompt: string; complexity: DocumentComplexity } {
+  const complexity = detectDocumentComplexity(text, options.ocrConfidence);
+  
+  if (complexity.isSimple && complexity.confidence > 0.6) {
+    // Use simple prompt for clean tabular data
+    return {
+      prompt: SIMPLE_TABULAR_PROMPT,
+      complexity,
+    };
+  }
+  
+  // Use full prompt for complex documents
+  return {
+    prompt: buildEnhancedParsePrompt(options),
+    complexity,
+  };
+}
+
+// ============================================================
+// PROMPT HELPERS
+// ============================================================
+
 /**
  * Build a prompt with few-shot examples injected
  */

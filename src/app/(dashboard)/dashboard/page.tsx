@@ -202,10 +202,40 @@ export default function DashboardPage() {
     meta: { isOrgAdmin: boolean; isSuperAdmin: boolean; organizationId?: string } | null;
   }>({ stats: null, meta: null });
   const [loading, setLoading] = React.useState(true);
+  const [quickLoading, setQuickLoading] = React.useState(true);
+  const [quickStats, setQuickStats] = React.useState<{
+    cutlistsThisWeek: number;
+    cutlistsThisMonth: number;
+    activeJobs: number;
+    isOrgAdmin: boolean;
+    isSuperAdmin: boolean;
+  } | null>(null);
 
-  // Single API call for all dashboard data
+  // TWO-PHASE LOADING: Quick stats first (instant), then full stats
   React.useEffect(() => {
-    async function loadDashboard() {
+    // Phase 1: Load quick stats immediately (single fast query)
+    async function loadQuickStats() {
+      try {
+        const response = await fetch("/api/v1/dashboard/quick");
+        if (response.ok) {
+          const data = await response.json();
+          setQuickStats({
+            cutlistsThisWeek: data.user.cutlistsThisWeek,
+            cutlistsThisMonth: data.user.cutlistsThisMonth,
+            activeJobs: data.user.activeJobs,
+            isOrgAdmin: data.isOrgAdmin,
+            isSuperAdmin: data.isSuperAdmin,
+          });
+        }
+      } catch (error) {
+        console.error("Quick stats load error:", error);
+      } finally {
+        setQuickLoading(false);
+      }
+    }
+
+    // Phase 2: Load full stats in background
+    async function loadFullDashboard() {
       try {
         const response = await fetch("/api/v1/dashboard");
         if (response.ok) {
@@ -221,20 +251,24 @@ export default function DashboardPage() {
         setLoading(false);
       }
     }
-    loadDashboard();
+
+    // Start both in parallel - quick stats will return first
+    loadQuickStats();
+    loadFullDashboard();
   }, []);
 
-  const showOrgAdmin = dashboardData.meta?.isOrgAdmin || isOrgAdmin();
+  // Use quick stats for instant display, then replace with full stats when ready
+  const showOrgAdmin = dashboardData.meta?.isOrgAdmin || quickStats?.isOrgAdmin || isOrgAdmin();
   const fullStats = dashboardData.stats;
   const teamMembers = fullStats?.teamMembers || [];
 
-  // Use stats from API response
+  // Use stats from API response - prioritize full stats, fallback to quick stats
   const userStats = fullStats?.user || {
-    cutlistsThisWeek: 0,
-    cutlistsThisMonth: 0,
+    cutlistsThisWeek: quickStats?.cutlistsThisWeek || 0,
+    cutlistsThisMonth: quickStats?.cutlistsThisMonth || 0,
     partsProcessed: 0,
     averageConfidence: 94.2,
-    activeJobs: 0,
+    activeJobs: quickStats?.activeJobs || 0,
     filesUploadedThisWeek: 0,
     filesUploadedThisMonth: 0,
   };
@@ -254,8 +288,8 @@ export default function DashboardPage() {
   const recentActivity = fullStats?.recentActivity || [];
   const topPerformers = fullStats?.topPerformers || [];
 
-  // Show loading skeleton
-  if (loading) {
+  // Show loading skeleton only until quick stats load (very fast)
+  if (quickLoading) {
     return (
       <div className="min-h-screen bg-[var(--background)]">
         <header className="border-b border-[var(--border)] bg-[var(--card)]">
@@ -269,6 +303,9 @@ export default function DashboardPage() {
       </div>
     );
   }
+  
+  // Show a subtle loading indicator while full stats load in background
+  const isLoadingFullStats = loading && quickStats !== null;
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
@@ -293,6 +330,12 @@ export default function DashboardPage() {
                   ? `${user?.organization?.name || "Your Organization"} Dashboard`
                   : "Here's what's happening with your cutlists"
                 }
+                {isLoadingFullStats && (
+                  <span className="ml-2 inline-flex items-center text-xs text-[var(--muted-foreground)]">
+                    <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                    Loading details...
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">

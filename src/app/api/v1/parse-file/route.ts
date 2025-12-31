@@ -44,6 +44,7 @@ import {
   AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
 } from "@/lib/templates/template-parsing-service";
 import { convertPdfToImages } from "@/lib/pdf/pdf-to-images";
+import { getCachedResult, cacheResult, getCacheStats, type CachedOCRResult } from "@/lib/ai/ocr-cache";
 
 // ============================================================
 // SERVERLESS FUNCTION CONFIGURATION
@@ -582,10 +583,64 @@ export async function POST(request: NextRequest) {
       }
       
       // ============================================================
-      // NON-STREAMING MODE - Original behavior
+      // NON-STREAMING MODE - With caching for repeated documents
       // ============================================================
       try {
-        aiResult = await provider.parseImage(dataUrl, parseOptions);
+        // Check cache first for identical images
+        const cachedResult = getCachedResult(originalBuffer);
+        
+        if (cachedResult) {
+          // Cache HIT - return cached result immediately
+          const savedMs = cachedResult.originalProcessingTimeMs;
+          logger.info("🚀 [ParseFile] CACHE HIT - returning cached result", {
+            requestId,
+            stage: "cache_hit",
+            partsFound: cachedResult.parts.length,
+            originalTimeMs: savedMs,
+            cachedAt: new Date(cachedResult.cachedAt).toISOString(),
+            hitCount: cachedResult.hitCount,
+          });
+          
+          aiResult = {
+            success: true,
+            parts: cachedResult.parts,
+            totalConfidence: cachedResult.totalConfidence,
+            rawResponse: undefined,
+            processingTime: Date.now() - aiStartTime,
+            errors: [],
+            cached: true,
+            savedTimeMs: savedMs,
+          };
+        } else {
+          // Cache MISS - process with AI
+          const cacheStats = getCacheStats();
+          logger.info("📥 [ParseFile] Cache miss, processing with AI", {
+            requestId,
+            cacheHitRate: (cacheStats.hitRate * 100).toFixed(1) + "%",
+            cacheEntries: cacheStats.entries,
+          });
+          
+          aiResult = await provider.parseImage(dataUrl, parseOptions);
+          
+          // Cache successful results
+          if (aiResult.success && aiResult.parts && aiResult.parts.length > 0) {
+            const processingTimeMs = Date.now() - aiStartTime;
+            cacheResult(
+              originalBuffer,
+              aiResult.parts,
+              aiResult.totalConfidence ?? 0.9,
+              "anthropic",
+              "claude-sonnet-4-20250514",
+              processingTimeMs
+            );
+            
+            logger.info("💾 [ParseFile] Result cached for future reuse", {
+              requestId,
+              partsCount: aiResult.parts.length,
+              processingTimeMs,
+            });
+          }
+        }
         
         logger.info("📥 [ParseFile] AI parsing completed", {
           requestId,
@@ -594,6 +649,7 @@ export async function POST(request: NextRequest) {
           partsFound: aiResult.parts?.length ?? 0,
           confidence: aiResult.totalConfidence?.toFixed(2),
           aiTimeMs: Date.now() - aiStartTime,
+          cached: !!(aiResult as any).cached,
         });
         
         // TEXT-BASED TEMPLATE DETECTION FALLBACK
@@ -1805,12 +1861,43 @@ async function convertPdfToImagesAndParse(
       const batchPromises = batch.map(async (imageBase64, idx) => {
         const pageNum = batchStartIdx + idx + 1;
         try {
-          // Parse the image using AI vision
-          const parseResult = await provider.parseImage(
-            imageBase64,
-            "image/png",
-            parseOptions
-          );
+          // Check cache for this page's image
+          const pageBuffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ""), "base64");
+          const pageCached = getCachedResult(pageBuffer);
+          
+          let parseResult;
+          if (pageCached) {
+            logger.info("🚀 [ParseFile] PDF page cache HIT", {
+              requestId,
+              pageNum,
+              cachedParts: pageCached.parts.length,
+            });
+            parseResult = {
+              parts: pageCached.parts,
+              confidence: pageCached.totalConfidence,
+              cached: true,
+            };
+          } else {
+            // Parse the image using AI vision
+            const pageStartTime = Date.now();
+            parseResult = await provider.parseImage(
+              imageBase64,
+              "image/png",
+              parseOptions
+            );
+            
+            // Cache successful page results
+            if (parseResult.parts && parseResult.parts.length > 0) {
+              cacheResult(
+                pageBuffer,
+                parseResult.parts,
+                parseResult.confidence ?? 0.9,
+                "anthropic",
+                "claude-sonnet-4-20250514",
+                Date.now() - pageStartTime
+              );
+            }
+          }
           
           if (parseResult.parts && parseResult.parts.length > 0) {
             const partsWithAudit: PartWithAudit[] = parseResult.parts.map((p: { part_id?: string; label?: string; size?: { L: number; W: number }; qty?: number; thickness_mm?: number; material_id?: string; allow_rotation?: boolean; notes?: string }) => ({

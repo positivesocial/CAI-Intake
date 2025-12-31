@@ -67,6 +67,11 @@ export async function GET(request: NextRequest) {
       organizationId: row.org_id,
       isOrgAdmin,
       isSuperAdmin: row.is_super_admin,
+    }, {
+      headers: {
+        // Cache for 30 seconds - quick stats are relatively stable
+        "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+      },
     });
   } catch (error) {
     console.error("Quick dashboard API error:", error);

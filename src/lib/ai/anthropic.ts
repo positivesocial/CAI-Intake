@@ -88,6 +88,8 @@ import {
   ANTHROPIC_SYSTEM_PROMPT,
   buildParsePrompt,
   buildEnhancedParsePrompt,
+  buildAdaptivePrompt,
+  SIMPLE_TABULAR_PROMPT,
   type AIPartResponse,
   validateAIPartResponse,
 } from "./prompts";
@@ -546,28 +548,25 @@ export class AnthropicProvider implements AIProvider {
         ? formatExamplesForPrompt(fewShotExamples) 
         : undefined;
       
-      // OPTIMIZATION: Use simpler prompt for very small documents
-      const prompt = skipFewShot 
-        ? buildParsePrompt({
-            extractMetadata: options.extractMetadata,
-            isMessyData: options.isMessyData ?? this.looksMessy(text),
-            isPastedText: options.isPastedText ?? true,
-            templateId: options.templateId,
-            templateConfig: options.templateConfig ? {
-              fieldLayout: options.templateConfig.fieldLayout,
-            } : undefined,
-          })
-        : buildEnhancedParsePrompt({
-            extractMetadata: options.extractMetadata,
-            isMessyData: options.isMessyData ?? this.looksMessy(text),
-            isPastedText: options.isPastedText ?? true,
-            templateId: options.templateId,
-            templateConfig: options.templateConfig ? {
-              fieldLayout: options.templateConfig.fieldLayout,
-            } : undefined,
-            fewShotExamples: fewShotPromptText,
-            includeDetailedEdgeGuide: options.extractMetadata,
-          });
+      // ADAPTIVE PROMPT: Use simple prompt for clean tabular data, full for complex
+      const { prompt, complexity } = buildAdaptivePrompt(text, {
+        extractMetadata: options.extractMetadata,
+        isMessyData: options.isMessyData ?? this.looksMessy(text),
+        isPastedText: options.isPastedText ?? true,
+        templateId: options.templateId,
+        templateConfig: options.templateConfig ? {
+          fieldLayout: options.templateConfig.fieldLayout,
+        } : undefined,
+        fewShotExamples: skipFewShot ? undefined : fewShotPromptText,
+        includeDetailedEdgeGuide: options.extractMetadata,
+      });
+      
+      logger.info("📋 [Anthropic] Adaptive prompt selection", {
+        isSimple: complexity.isSimple,
+        confidence: complexity.confidence.toFixed(2),
+        promptType: complexity.recommendedPrompt,
+        reasons: complexity.reasons.slice(0, 3),
+      });
 
       const response = await client.messages.create({
         model: CLAUDE_MODEL,

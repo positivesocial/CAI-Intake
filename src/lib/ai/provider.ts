@@ -539,6 +539,74 @@ export function isCompactFormat(parts: unknown[]): boolean {
 }
 
 /**
+ * Simple tabular format from SIMPLE_TABULAR_PROMPT
+ * Keys: r=row, n=name/label, l=length, w=width, t=thickness, q=quantity, m=material, e=edge code, rot=canRotate
+ */
+interface SimpleTabularPart {
+  r?: number;  // row
+  n?: string;  // name/label
+  l: number;   // length
+  w: number;   // width
+  t?: number;  // thickness
+  q?: number;  // quantity
+  m?: string;  // material
+  e?: string;  // edge code (2L2W, 2L, etc.)
+  rot?: boolean; // canRotate
+}
+
+/**
+ * Check if response is in simple tabular format
+ */
+export function isSimpleTabularFormat(parsed: unknown): parsed is { p: SimpleTabularPart[] } {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "p" in parsed &&
+    Array.isArray((parsed as { p: unknown }).p)
+  );
+}
+
+/**
+ * Expand simple tabular format to AIPartResponse[]
+ */
+export function expandSimpleTabularParts(parts: SimpleTabularPart[]): AIPartResponse[] {
+  return parts.map((sp, index) => {
+    const edgeBanding = expandEdgeBandingCode(sp.e);
+    
+    return {
+      row: sp.r || index + 1,
+      label: sp.n || `Part ${sp.r || index + 1}`,
+      length: sp.l,
+      width: sp.w,
+      thickness: sp.t || 18,
+      quantity: sp.q || 1,
+      material: sp.m || "",
+      confidence: 0.95, // High confidence for clean tabular data
+      allowRotation: sp.rot ?? true,
+      
+      edgeBanding: edgeBanding.detected ? {
+        detected: true,
+        L1: edgeBanding.L1,
+        L2: edgeBanding.L2,
+        W1: edgeBanding.W1,
+        W2: edgeBanding.W2,
+        edges: edgeBanding.edges,
+        description: edgeBanding.description,
+      } : undefined,
+      
+      fieldConfidence: {
+        length: 1.0,
+        width: 1.0,
+        quantity: 1.0,
+        material: sp.m ? 0.95 : 0.5,
+        edgeBanding: edgeBanding.detected ? 0.95 : 1.0,
+        grooving: 1.0,
+      },
+    } as AIPartResponse;
+  });
+}
+
+/**
  * Expand compact format parts to AIPartSchema format (with length/width at top level)
  * This format is compatible with the validation schema and Anthropic/OpenAI providers
  */
