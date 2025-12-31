@@ -356,6 +356,7 @@ export async function POST(request: NextRequest) {
         job_ref,
         client_ref,
         source_method: "web", // Required field
+        status: "draft", // Always start as draft - updated to completed/exported later
         created_at: now,
         updated_at: now, // Required field - no database default
         capabilities: capabilities ?? {

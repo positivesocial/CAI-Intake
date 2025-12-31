@@ -1061,6 +1061,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Return parsed results with file ID if saved
+    // Include warnings for parts that were skipped due to invalid data
+    const warnings = aiResult.warnings || [];
+    const skippedParts = aiResult.skippedParts || [];
+    
     return NextResponse.json({
       success: true,
       parts: aiResult.parts,
@@ -1070,6 +1074,10 @@ export async function POST(request: NextRequest) {
       uploadedFileId, // Include file ID for linking to cutlist later
       // Template-specific info for 0-human-review flow
       template: templateParseInfo.isTemplate ? templateParseInfo : undefined,
+      // Include warnings for user review (e.g., skipped parts with invalid dimensions)
+      warnings: warnings.length > 0 ? warnings : undefined,
+      // Include skipped parts details so user can manually add them if needed
+      skippedParts: skippedParts.length > 0 ? skippedParts : undefined,
     });
 
   } catch (error) {

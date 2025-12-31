@@ -133,6 +133,11 @@ export interface ValidationResult {
   errors: string[];
   warnings: string[];
   partialData?: unknown[];
+  skippedParts?: Array<{
+    row: number;
+    reason: string;
+    originalData: { l?: number; w?: number; m?: string; n?: string };
+  }>;
 }
 
 /**
@@ -313,18 +318,40 @@ export function validateAIResponse(rawResponse: string): ValidationResult & { me
         partsCount: parsed.length,
       });
       
-      // Expand compact format to full format
-      const { expandCompactParts } = require("./provider");
-      const expandedParts = expandCompactParts(parsed);
+      // Expand compact format to full format with details about skipped parts
+      const { expandCompactPartsWithDetails } = require("./provider");
+      const expansionResult = expandCompactPartsWithDetails(parsed);
       
       warnings.push(`Expanded ${parsed.length} parts from compact format`);
       
+      // Report skipped parts as warnings for user review
+      if (expansionResult.skippedParts.length > 0) {
+        logger.warn("⚠️ [Validation] Some parts had invalid dimensions and were skipped", {
+          skippedCount: expansionResult.skippedParts.length,
+          totalInput: expansionResult.totalInput,
+          totalOutput: expansionResult.totalOutput,
+          skippedRows: expansionResult.skippedParts.map((sp: { row: number; reason: string }) => 
+            `Row ${sp.row}: ${sp.reason}`
+          ),
+        });
+        
+        // Add specific warnings for each skipped part
+        for (const skipped of expansionResult.skippedParts) {
+          warnings.push(`⚠️ Row ${skipped.row} skipped: ${skipped.reason}. Original data: L=${skipped.originalData.l}, W=${skipped.originalData.w}${skipped.originalData.n ? `, Notes="${skipped.originalData.n}"` : ""}`);
+        }
+        
+        // Add a summary warning
+        warnings.push(`⚠️ ${expansionResult.skippedParts.length} part(s) were skipped due to missing or invalid dimensions. Please add them manually if needed.`);
+      }
+      
       return {
         success: true,
-        parts: expandedParts as z.infer<typeof AIPartSchema>[],
+        parts: expansionResult.parts as z.infer<typeof AIPartSchema>[],
         errors: [],
         warnings,
         metadata,
+        // Include skipped parts info in metadata for the frontend
+        skippedParts: expansionResult.skippedParts,
       };
     }
   }

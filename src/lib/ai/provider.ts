@@ -131,6 +131,8 @@ export interface AIParseResult {
   totalConfidence: number;
   rawResponse?: string;
   errors: string[];
+  warnings?: string[];
+  skippedParts?: SkippedPartInfo[];
   processingTime: number;
 }
 
@@ -607,22 +609,66 @@ export function expandSimpleTabularParts(parts: SimpleTabularPart[]): AIPartResp
 }
 
 /**
+ * Information about parts that were skipped during expansion
+ */
+export interface SkippedPartInfo {
+  row: number;
+  reason: string;
+  originalData: { l?: number; w?: number; m?: string; n?: string };
+}
+
+/**
+ * Result of expanding compact parts, including any skipped parts
+ */
+export interface ExpandCompactResult {
+  parts: AIPartResponse[];
+  skippedParts: SkippedPartInfo[];
+  totalInput: number;
+  totalOutput: number;
+}
+
+/**
  * Expand compact format parts to AIPartSchema format (with length/width at top level)
  * This format is compatible with the validation schema and Anthropic/OpenAI providers
+ * 
+ * Returns both valid parts and information about skipped parts for user review
  */
 export function expandCompactParts(compactParts: CompactPart[]): AIPartResponse[] {
-  return compactParts
-    .filter((cp) => {
-      // Filter out parts with invalid dimensions (0, undefined, null, or negative)
-      const length = typeof cp.l === "number" ? cp.l : 0;
-      const width = typeof cp.w === "number" ? cp.w : 0;
-      if (length <= 0 || width <= 0) {
-        console.warn(`⚠️ [expandCompactParts] Skipping part with invalid dimensions: L=${cp.l}, W=${cp.w}, row=${cp.r}`);
-        return false;
-      }
-      return true;
-    })
-    .map((cp, index) => {
+  const result = expandCompactPartsWithDetails(compactParts);
+  return result.parts;
+}
+
+/**
+ * Expand compact parts with detailed information about skipped parts
+ */
+export function expandCompactPartsWithDetails(compactParts: CompactPart[]): ExpandCompactResult {
+  const skippedParts: SkippedPartInfo[] = [];
+  
+  const validParts = compactParts.filter((cp, idx) => {
+    // Filter out parts with invalid dimensions (0, undefined, null, or negative)
+    const length = typeof cp.l === "number" ? cp.l : 0;
+    const width = typeof cp.w === "number" ? cp.w : 0;
+    
+    if (length <= 0 || width <= 0) {
+      const reason = length <= 0 && width <= 0 
+        ? `Invalid dimensions: L=${cp.l || 0}, W=${cp.w || 0}` 
+        : length <= 0 
+          ? `Invalid length: L=${cp.l || 0}` 
+          : `Invalid width: W=${cp.w || 0}`;
+      
+      skippedParts.push({
+        row: cp.r || idx + 1,
+        reason,
+        originalData: { l: cp.l, w: cp.w, m: cp.m, n: cp.n },
+      });
+      
+      console.warn(`⚠️ [expandCompactParts] Skipping part row ${cp.r || idx + 1}: ${reason}`);
+      return false;
+    }
+    return true;
+  });
+  
+  const parts = validParts.map((cp, index) => {
     const edgeBanding = expandEdgeBandingCode(cp.e);
     const grooving = expandGrooveCode(cp.g);
     const materialLabel = expandMaterialCode(cp.m);
@@ -695,5 +741,17 @@ export function expandCompactParts(compactParts: CompactPart[]): AIPartResponse[
       },
     } as AIPartResponse;
   });
+  
+  // Log if any parts were skipped
+  if (skippedParts.length > 0) {
+    console.warn(`⚠️ [expandCompactParts] Skipped ${skippedParts.length} of ${compactParts.length} parts due to invalid data`);
+  }
+  
+  return {
+    parts,
+    skippedParts,
+    totalInput: compactParts.length,
+    totalOutput: parts.length,
+  };
 }
 
