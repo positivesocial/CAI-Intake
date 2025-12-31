@@ -1242,7 +1242,7 @@ export function IntakeInbox() {
       : sourceFilePreviews[0]?.mimeType === "application/pdf"
         ? "pdf" 
         : "image",
-    detectedTemplate: currentCutlist.metadata?.templateType as string | undefined,
+    // Template detection happens automatically in the AI provider
     showToast: false, // Fully silent - no notifications
   });
   const [originalPartsTracked, setOriginalPartsTracked] = React.useState(false);
@@ -1257,11 +1257,10 @@ export function IntakeInbox() {
           : sourceFilePreviews[0]?.mimeType === "application/pdf"
             ? "pdf" 
             : "image",
-        template: currentCutlist.metadata?.templateType as string | undefined,
       });
       setOriginalPartsTracked(true);
     }
-  }, [inboxParts, originalPartsTracked, trackOriginalParts, sourceFilePreviews, currentCutlist.metadata?.templateType]);
+  }, [inboxParts, originalPartsTracked, trackOriginalParts, sourceFilePreviews]);
   
   const materials = currentCutlist.materials;
   const defaultEdgebandId = currentCutlist.edgebands?.[0]?.edgeband_id;
