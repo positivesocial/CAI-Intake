@@ -6,94 +6,96 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUser, createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   try {
-    // Authenticate and verify super admin
-    const user = await getUser();
-    if (!user) {
+    // Authenticate user via Supabase
+    const supabase = await createClient();
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    
+    if (!authUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const serviceClient = await createClient();
-    
-    // Check if super admin
-    const { data: profile } = await serviceClient
-      .from("profiles")
-      .select("is_super_admin")
-      .eq("id", user.id)
-      .single();
+    // Check if super admin using Prisma (users table)
+    const dbUser = await prisma.user.findUnique({
+      where: { id: authUser.id },
+      select: { isSuperAdmin: true },
+    });
 
-    if (!profile?.is_super_admin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!dbUser?.isSuperAdmin) {
+      return NextResponse.json({ error: "Forbidden - Super admin access required" }, { status: 403 });
     }
 
     // Get query params
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
-    const status = searchParams.get("status") || "all";
     const limit = parseInt(searchParams.get("limit") || "50", 10);
     const offset = parseInt(searchParams.get("offset") || "0", 10);
 
-    // Build query
-    let query = serviceClient
-      .from("profiles")
-      .select(`
-        id,
-        email,
-        full_name,
-        role,
-        is_super_admin,
-        created_at,
-        last_sign_in_at,
-        organization_id,
-        organizations!profiles_organization_id_fkey(
-          id,
-          name
-        )
-      `, { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+    // Build Prisma query
+    const where = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            { email: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
 
-    // Apply search filter
-    if (search) {
-      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
-    }
-
-    const { data: users, count, error } = await query;
-
-    if (error) {
-      throw error;
-    }
-
-    // Helper to ensure timestamps are properly formatted with UTC timezone
-    const formatTimestamp = (ts: unknown): string | null => {
-      if (!ts || typeof ts !== 'string') return null;
-      // If timestamp doesn't have timezone info, append 'Z' to indicate UTC
-      if (!ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
-        return ts + 'Z';
-      }
-      return ts;
-    };
+    // Get users with organization info
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          isSuperAdmin: true,
+          isActive: true,
+          createdAt: true,
+          lastLoginAt: true,
+          organizationId: true,
+          organization: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          role: {
+            select: {
+              name: true,
+              displayName: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: offset,
+        take: limit,
+      }),
+      prisma.user.count({ where }),
+    ]);
 
     // Format response
-    const formattedUsers = (users || []).map((u: Record<string, unknown>) => ({
+    const formattedUsers = users.map((u) => ({
       id: u.id,
       email: u.email,
-      name: u.full_name || "Unknown",
-      role: u.is_super_admin ? "super_admin" : (u.role || "user"),
-      organization: (u.organizations as Record<string, string>)?.name || "No Organization",
-      organizationId: u.organization_id,
-      status: u.last_sign_in_at ? "active" : "pending",
-      createdAt: formatTimestamp(u.created_at),
-      lastActive: formatTimestamp(u.last_sign_in_at),
+      name: u.name || "Unknown",
+      role: u.isSuperAdmin ? "super_admin" : (u.role?.name || "user"),
+      roleDisplay: u.isSuperAdmin ? "Super Admin" : (u.role?.displayName || "User"),
+      organization: u.organization?.name || "No Organization",
+      organizationId: u.organizationId,
+      status: u.isActive ? (u.lastLoginAt ? "active" : "pending") : "suspended",
+      createdAt: u.createdAt.toISOString(),
+      lastActive: u.lastLoginAt?.toISOString() || null,
     }));
 
     return NextResponse.json({
       users: formattedUsers,
-      total: count || 0,
+      total,
       limit,
       offset,
     });
@@ -109,23 +111,22 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    // Authenticate and verify super admin
-    const user = await getUser();
-    if (!user) {
+    // Authenticate user via Supabase
+    const supabase = await createClient();
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    
+    if (!authUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const serviceClient = await createClient();
-    
-    // Check if super admin
-    const { data: profile } = await serviceClient
-      .from("profiles")
-      .select("is_super_admin")
-      .eq("id", user.id)
-      .single();
+    // Check if super admin using Prisma
+    const dbUser = await prisma.user.findUnique({
+      where: { id: authUser.id },
+      select: { isSuperAdmin: true },
+    });
 
-    if (!profile?.is_super_admin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!dbUser?.isSuperAdmin) {
+      return NextResponse.json({ error: "Forbidden - Super admin access required" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -140,24 +141,55 @@ export async function PATCH(request: NextRequest) {
 
     switch (action) {
       case "updateRole": {
-        const { error } = await serviceClient
-          .from("profiles")
-          .update({ role: data.role })
-          .eq("id", userId);
-
-        if (error) throw error;
+        if (!data?.roleId) {
+          return NextResponse.json({ error: "roleId is required" }, { status: 400 });
+        }
+        await prisma.user.update({
+          where: { id: userId },
+          data: { roleId: data.roleId },
+        });
+        logger.info("User role updated", { userId, roleId: data.roleId, by: authUser.id });
         return NextResponse.json({ success: true, message: "Role updated" });
       }
 
       case "suspend": {
-        // In real implementation, this would update a status field
-        logger.info("User suspended", { userId, by: user.id });
+        await prisma.user.update({
+          where: { id: userId },
+          data: { isActive: false },
+        });
+        logger.info("User suspended", { userId, by: authUser.id });
         return NextResponse.json({ success: true, message: "User suspended" });
       }
 
       case "activate": {
-        logger.info("User activated", { userId, by: user.id });
+        await prisma.user.update({
+          where: { id: userId },
+          data: { isActive: true },
+        });
+        logger.info("User activated", { userId, by: authUser.id });
         return NextResponse.json({ success: true, message: "User activated" });
+      }
+
+      case "makeSuperAdmin": {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { isSuperAdmin: true },
+        });
+        logger.info("User promoted to super admin", { userId, by: authUser.id });
+        return NextResponse.json({ success: true, message: "User is now a super admin" });
+      }
+
+      case "removeSuperAdmin": {
+        // Don't allow removing your own super admin status
+        if (userId === authUser.id) {
+          return NextResponse.json({ error: "Cannot remove your own super admin status" }, { status: 400 });
+        }
+        await prisma.user.update({
+          where: { id: userId },
+          data: { isSuperAdmin: false },
+        });
+        logger.info("Super admin status removed", { userId, by: authUser.id });
+        return NextResponse.json({ success: true, message: "Super admin status removed" });
       }
 
       default:
@@ -175,4 +207,3 @@ export async function PATCH(request: NextRequest) {
     );
   }
 }
-

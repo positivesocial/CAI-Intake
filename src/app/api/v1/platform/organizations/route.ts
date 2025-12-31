@@ -6,28 +6,28 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUser, createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   try {
-    // Authenticate and verify super admin
-    const user = await getUser();
-    if (!user) {
+    // Authenticate user via Supabase
+    const supabase = await createClient();
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    
+    if (!authUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const serviceClient = await createClient();
-    
-    // Check if super admin
-    const { data: profile } = await serviceClient
-      .from("profiles")
-      .select("is_super_admin")
-      .eq("id", user.id)
-      .single();
+    // Check if super admin using Prisma (users table, not profiles)
+    const dbUser = await prisma.user.findUnique({
+      where: { id: authUser.id },
+      select: { isSuperAdmin: true },
+    });
 
-    if (!profile?.is_super_admin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!dbUser?.isSuperAdmin) {
+      return NextResponse.json({ error: "Forbidden - Super admin access required" }, { status: 403 });
     }
 
     // Get query params
@@ -36,69 +36,55 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50", 10);
     const offset = parseInt(searchParams.get("offset") || "0", 10);
 
-    // Build query
-    let query = serviceClient
-      .from("organizations")
-      .select(`
-        id,
-        name,
-        slug,
-        created_at,
-        subscription_plan,
-        subscription_status,
-        profiles!profiles_organization_id_fkey(count)
-      `, { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+    // Build Prisma query
+    const where = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            { slug: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
 
-    // Apply search filter
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,slug.ilike.%${search}%`);
-    }
-
-    const { data: organizations, count, error } = await query;
-
-    if (error) {
-      throw error;
-    }
-
-    // Get cutlist counts per org
-    const orgIds = (organizations || []).map((o: Record<string, unknown>) => o.id);
-    const { data: cutlistCounts } = await serviceClient
-      .from("cutlists")
-      .select("organization_id")
-      .in("organization_id", orgIds);
-
-    const cutlistCountMap = (cutlistCounts || []).reduce((acc: Record<string, number>, c: Record<string, string>) => {
-      acc[c.organization_id] = (acc[c.organization_id] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Helper to ensure timestamps are properly formatted with UTC timezone
-    const formatTimestamp = (ts: unknown): string | null => {
-      if (!ts || typeof ts !== 'string') return null;
-      // If timestamp doesn't have timezone info, append 'Z' to indicate UTC
-      if (!ts.endsWith('Z') && !ts.includes('+') && !ts.includes('-', 10)) {
-        return ts + 'Z';
-      }
-      return ts;
-    };
+    // Get organizations with user count
+    const [organizations, total] = await Promise.all([
+      prisma.organization.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          plan: true,
+          createdAt: true,
+          _count: {
+            select: {
+              users: true,
+              cutlists: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: offset,
+        take: limit,
+      }),
+      prisma.organization.count({ where }),
+    ]);
 
     // Format response
-    const formattedOrgs = (organizations || []).map((org: Record<string, unknown>) => ({
+    const formattedOrgs = organizations.map((org) => ({
       id: org.id,
       name: org.name,
       slug: org.slug,
-      plan: org.subscription_plan || "free",
-      status: org.subscription_status || "active",
-      members: (org.profiles as { count: number }[])?.length || 0,
-      cutlists: cutlistCountMap[org.id as string] || 0,
-      createdAt: formatTimestamp(org.created_at),
+      plan: org.plan || "free",
+      status: "active", // All orgs are active by default
+      members: org._count.users,
+      cutlists: org._count.cutlists,
+      createdAt: org.createdAt.toISOString(),
     }));
 
     return NextResponse.json({
       organizations: formattedOrgs,
-      total: count || 0,
+      total,
       limit,
       offset,
     });
@@ -114,27 +100,26 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Authenticate and verify super admin
-    const user = await getUser();
-    if (!user) {
+    // Authenticate user via Supabase
+    const supabase = await createClient();
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    
+    if (!authUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const serviceClient = await createClient();
-    
-    // Check if super admin
-    const { data: profile } = await serviceClient
-      .from("profiles")
-      .select("is_super_admin")
-      .eq("id", user.id)
-      .single();
+    // Check if super admin using Prisma
+    const dbUser = await prisma.user.findUnique({
+      where: { id: authUser.id },
+      select: { isSuperAdmin: true },
+    });
 
-    if (!profile?.is_super_admin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!dbUser?.isSuperAdmin) {
+      return NextResponse.json({ error: "Forbidden - Super admin access required" }, { status: 403 });
     }
 
     const body = await request.json();
-    const { name, slug, adminEmail, plan } = body;
+    const { name, slug, plan } = body;
 
     if (!name || !slug) {
       return NextResponse.json(
@@ -143,37 +128,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if slug is already taken
+    const existingOrg = await prisma.organization.findUnique({
+      where: { slug },
+    });
+
+    if (existingOrg) {
+      return NextResponse.json(
+        { error: "Organization with this slug already exists" },
+        { status: 400 }
+      );
+    }
+
     // Create organization
-    const { data: org, error } = await serviceClient
-      .from("organizations")
-      .insert({
+    const org = await prisma.organization.create({
+      data: {
         name,
         slug,
-        subscription_plan: plan || "free",
-        subscription_status: "active",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      if (error.code === "23505") {
-        return NextResponse.json(
-          { error: "Organization with this slug already exists" },
-          { status: 400 }
-        );
-      }
-      throw error;
-    }
+        plan: plan || "free",
+      },
+    });
 
     logger.info("Organization created by super admin", {
       orgId: org.id,
       name,
-      by: user.id,
+      by: authUser.id,
     });
 
     return NextResponse.json({
       success: true,
-      organization: org,
+      organization: {
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+        plan: org.plan,
+        createdAt: org.createdAt.toISOString(),
+      },
     });
 
   } catch (error) {
@@ -184,4 +174,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
