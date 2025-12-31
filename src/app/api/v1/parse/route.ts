@@ -15,6 +15,10 @@ import { getOrCreateProvider, type ParseOptions as AIParseOptions } from "@/lib/
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { applyRateLimit } from "@/lib/api-middleware";
+
+// Serverless function config - longer timeout for batch processing
+export const maxDuration = 120;
+export const dynamic = "force-dynamic";
 import { initMaterialMatcher, matchMaterial, matchEdgeband } from "@/lib/matching/material-matcher";
 import {
   setProgress,

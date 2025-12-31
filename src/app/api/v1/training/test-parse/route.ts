@@ -15,6 +15,10 @@ import type { CutPart } from "@/lib/schema";
 import { calculateAccuracyMetrics } from "@/lib/learning/accuracy";
 import { logParsingAccuracy } from "@/lib/learning/accuracy";
 
+// Serverless function config
+export const maxDuration = 120;
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
