@@ -49,14 +49,14 @@ export async function GET(request: NextRequest) {
     // Build plan data from config with real subscriber counts
     const plans = Object.entries(PLANS).map(([planId, planConfig]) => {
       const subscriberCount = countMap[planId] || 0;
-      const monthlyRevenue = subscriberCount * planConfig.price.monthly;
+      const monthlyRevenue = subscriberCount * planConfig.pricing.monthly;
 
       return {
         id: planId,
         name: planConfig.name,
         description: planConfig.description || "",
-        priceMonthly: planConfig.price.monthly,
-        priceYearly: planConfig.price.yearly,
+        priceMonthly: planConfig.pricing.monthly,
+        priceYearly: planConfig.pricing.yearly,
         isActive: true,
         highlighted: planId === "professional",
         badge: planId === "professional" ? "Most Popular" : undefined,
