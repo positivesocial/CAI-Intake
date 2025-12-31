@@ -7,10 +7,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUser } from "@/lib/supabase/server";
+import { getUser, createClient } from "@/lib/supabase/server";
 import { getOrCreateProvider } from "@/lib/ai/provider";
 import { logger } from "@/lib/logger";
 import { applyRateLimit } from "@/lib/api-middleware";
+import { logAIUsage } from "@/lib/ai/usage-tracker";
 
 // Serverless function config
 export const maxDuration = 120;
@@ -81,7 +82,37 @@ export async function POST(request: NextRequest) {
       defaultThicknessMm: options.defaultThicknessMm ?? 18,
     };
 
+    const startTime = Date.now();
     const aiResult = await provider.parseText(text, parseOptions);
+    const durationMs = Date.now() - startTime;
+
+    // Get user's organization for usage logging
+    const supabase = await createClient();
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+
+    // Log AI usage (non-blocking)
+    if (userData?.organization_id) {
+      logAIUsage({
+        organizationId: userData.organization_id,
+        userId: user.id,
+        provider: provider.name.toLowerCase().includes("anthropic") ? "anthropic" : "openai",
+        model: provider.name.toLowerCase().includes("anthropic") ? "claude-3-5-sonnet-latest" : "gpt-4o",
+        operation: "parse_text",
+        inputTokens: Math.round(text.length / 4), // Rough estimate: ~4 chars per token
+        outputTokens: Math.round((aiResult.parts?.length ?? 0) * 30),
+        durationMs,
+        success: aiResult.success !== false,
+        metadata: {
+          textLength: text.length,
+          partsFound: aiResult.parts?.length ?? 0,
+          confidence: aiResult.totalConfidence,
+        },
+      }).catch(err => logger.warn("Failed to log AI usage", { error: err }));
+    }
 
     if (!aiResult.success) {
       return NextResponse.json(
@@ -98,7 +129,7 @@ export async function POST(request: NextRequest) {
       success: true,
       parts: aiResult.parts,
       totalConfidence: aiResult.totalConfidence,
-      processingTimeMs: aiResult.processingTime,
+      processingTimeMs: durationMs,
       rawResponse: aiResult.rawResponse,
     });
 

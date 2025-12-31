@@ -35,6 +35,7 @@ model Organization {
   trainingExamples    TrainingExample[]
   files               UploadedFile[]
   users               User[]
+  aiUsageLogs         AIUsageLog[]
 
   @@map("organizations")
 }
@@ -63,6 +64,7 @@ model User {
   parseCorrections ParseCorrection[]
   parseJobs        ParseJob[]
   sessions         Session[]
+  aiUsageLogs      AIUsageLog[]
   organization     Organization?     @relation(fields: [organizationId], references: [id])
   role             Role?             @relation(fields: [roleId], references: [id])
 
@@ -899,4 +901,31 @@ model ParsingAccuracyLog {
   @@index([createdAt(sort: Desc)])
   @@index([organizationId, createdAt], map: "parsing_accuracy_logs_org_created_idx")
   @@map("parsing_accuracy_logs")
+}
+
+// AI Usage Logs for tracking provider costs
+model AIUsageLog {
+  id             String       @id @default(cuid())
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organizationId String       @map("organization_id")
+  userId         String?      @map("user_id")
+  provider       String       // anthropic, openai, python-ocr
+  model          String       // claude-3-5-sonnet, gpt-4o, etc.
+  operation      String       // parse_text, parse_image, parse_pdf, ocr
+  inputTokens    Int          @default(0) @map("input_tokens")
+  outputTokens   Int          @default(0) @map("output_tokens")
+  totalTokens    Int          @default(0) @map("total_tokens")
+  costUsd        Decimal      @default(0) @map("cost_usd") @db.Decimal(10, 6)
+  durationMs     Int          @default(0) @map("duration_ms")
+  success        Boolean      @default(true)
+  errorMessage   String?      @map("error_message")
+  metadata       Json?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([createdAt(sort: Desc)])
+  @@index([provider])
+  @@index([provider, createdAt(sort: Desc)])
+  @@map("ai_usage_logs")
 }

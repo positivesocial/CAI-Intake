@@ -45,6 +45,7 @@ import {
 } from "@/lib/templates/template-parsing-service";
 import { convertPdfToImages } from "@/lib/pdf/pdf-to-images";
 import { getCachedResult, cacheResult, getCacheStats, type CachedOCRResult } from "@/lib/ai/ocr-cache";
+import { logAIUsage } from "@/lib/ai/usage-tracker";
 
 // ============================================================
 // SERVERLESS FUNCTION CONFIGURATION
@@ -918,6 +919,27 @@ export async function POST(request: NextRequest) {
         overheadMs: totalTimeMs - (aiResult.processingTimeMs ?? 0),
       },
     });
+
+    // Log AI usage for analytics (non-blocking)
+    if (userData?.organization_id) {
+      logAIUsage({
+        organizationId: userData.organization_id,
+        userId: user.id,
+        provider: provider.name.toLowerCase().includes("anthropic") ? "anthropic" : "openai",
+        model: provider.name.toLowerCase().includes("anthropic") ? "claude-3-5-sonnet-latest" : "gpt-4o",
+        operation: fileType === "pdf" ? "parse_pdf" : "parse_image",
+        inputTokens: Math.round((file.size / 1024) * 100), // Rough estimate: ~100 tokens per KB
+        outputTokens: Math.round((aiResult.parts?.length ?? 0) * 30), // Rough estimate: ~30 tokens per part
+        durationMs: totalTimeMs,
+        success: aiResult.success !== false,
+        metadata: {
+          fileName: file.name,
+          partsFound: aiResult.parts?.length ?? 0,
+          confidence: aiResult.totalConfidence,
+          requestId,
+        },
+      }).catch(err => logger.warn("Failed to log AI usage", { error: err }));
+    }
 
     // ============================================================
     // TEMPLATE-SPECIFIC POST-PROCESSING
