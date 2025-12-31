@@ -196,9 +196,10 @@ export async function GET(request: NextRequest) {
     const userFilesThisMonth = Number(counts.files_month);
 
     // =========================================================================
-    // STEP 3: Get recent items (only 2 queries instead of many)
+    // STEP 3: Get recent items (parallel queries for different activity types)
     // =========================================================================
-    const [recentCutlists, recentParseJobs] = await Promise.all([
+    const [recentCutlists, recentParseJobs, recentOptimizeJobs, recentFileUploads, recentExports] = await Promise.all([
+      // Recent cutlists
       prisma.cutlist.findMany({
         where: orgId ? { organizationId: orgId } : { userId: user.id },
         orderBy: { createdAt: "desc" },
@@ -208,10 +209,12 @@ export async function GET(request: NextRequest) {
           name: true,
           status: true,
           createdAt: true,
+          updatedAt: true,
           user: { select: { name: true } },
           _count: { select: { parts: true } },
         },
       }),
+      // Recent parse jobs
       prisma.parseJob.findMany({
         where: orgId ? { organizationId: orgId } : { userId: user.id },
         orderBy: { createdAt: "desc" },
@@ -223,6 +226,50 @@ export async function GET(request: NextRequest) {
           createdAt: true,
           summary: true,
           user: { select: { name: true } },
+        },
+      }),
+      // Recent optimize jobs
+      prisma.optimizeJob.findMany({
+        where: orgId 
+          ? { cutlist: { organizationId: orgId } } 
+          : { cutlist: { userId: user.id } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          status: true,
+          engine: true,
+          createdAt: true,
+          completedAt: true,
+          cutlist: { select: { name: true, user: { select: { name: true } } } },
+        },
+      }),
+      // Recent file uploads
+      prisma.uploadedFile.findMany({
+        where: { organizationId: orgId || undefined },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          originalName: true,
+          mimeType: true,
+          createdAt: true,
+          cutlist: { select: { user: { select: { name: true } } } },
+        },
+      }),
+      // Recent exports
+      prisma.export.findMany({
+        where: orgId 
+          ? { cutlist: { organizationId: orgId } } 
+          : { cutlist: { userId: user.id } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          format: true,
+          status: true,
+          createdAt: true,
+          cutlist: { select: { name: true, user: { select: { name: true } } } },
         },
       }),
     ]);
@@ -240,6 +287,69 @@ export async function GET(request: NextRequest) {
       ? confidenceValues.reduce((sum, c) => sum + c, 0) / confidenceValues.length
       : 94.2;
 
+    // Build unified activity feed from all sources
+    type ActivityItem = {
+      id: string;
+      type: string;
+      name: string;
+      status: string;
+      createdAt: Date;
+      user?: string;
+    };
+
+    const allActivities: ActivityItem[] = [
+      // Cutlist activities (created/updated)
+      ...recentCutlists.map((c: { id: string; name: string | null; status: string; createdAt: Date; updatedAt: Date; user: { name: string | null } | null; _count: { parts: number } }) => ({
+        id: `cutlist-${c.id}`,
+        type: c.status === "draft" ? "Draft Created" : c.status === "exported" ? "Cutlist Exported" : "Cutlist Saved",
+        name: c.name || "Untitled Cutlist",
+        status: c.status,
+        createdAt: c.updatedAt > c.createdAt ? c.updatedAt : c.createdAt,
+        user: c.user?.name ?? undefined,
+      })),
+      // Parse job activities
+      ...recentParseJobs.map(j => ({
+        id: `parse-${j.id}`,
+        type: j.status === "completed" ? "File Parsed" : j.status === "error" ? "Parse Failed" : "Parsing",
+        name: `${j.sourceKind.charAt(0).toUpperCase() + j.sourceKind.slice(1)} processed`,
+        status: j.status,
+        createdAt: j.createdAt,
+        user: j.user?.name ?? undefined,
+      })),
+      // Optimize job activities
+      ...recentOptimizeJobs.map(j => ({
+        id: `optimize-${j.id}`,
+        type: j.status === "completed" ? "Optimization Complete" : j.status === "error" ? "Optimization Failed" : "Optimizing",
+        name: j.cutlist?.name || "Cutlist optimization",
+        status: j.status,
+        createdAt: j.completedAt || j.createdAt,
+        user: j.cutlist?.user?.name ?? undefined,
+      })),
+      // File upload activities
+      ...recentFileUploads.map(f => ({
+        id: `file-${f.id}`,
+        type: "File Uploaded",
+        name: f.originalName,
+        status: "completed",
+        createdAt: f.createdAt,
+        user: f.cutlist?.user?.name ?? undefined,
+      })),
+      // Export activities
+      ...recentExports.map(e => ({
+        id: `export-${e.id}`,
+        type: `Exported ${e.format.toUpperCase()}`,
+        name: e.cutlist?.name || "Cutlist export",
+        status: e.status,
+        createdAt: e.createdAt,
+        user: e.cutlist?.user?.name ?? undefined,
+      })),
+    ];
+
+    // Sort by date and take top 10
+    const recentActivity = allActivities
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, 10);
+
     // Build dashboard stats
     const stats: DashboardStats = {
       user: {
@@ -251,15 +361,8 @@ export async function GET(request: NextRequest) {
         filesUploadedThisWeek: userFilesThisWeek,
         filesUploadedThisMonth: userFilesThisMonth,
       },
-      recentActivity: recentParseJobs.map(j => ({
-        id: j.id,
-        type: `Parse (${j.sourceKind})`,
-        name: `File processed`,
-        status: j.status,
-        createdAt: j.createdAt,
-        user: j.user?.name ?? undefined,
-      })).slice(0, 10),
-      recentCutlists: recentCutlists.map((c: any) => ({
+      recentActivity,
+      recentCutlists: recentCutlists.map((c: { id: string; name: string | null; status: string; createdAt: Date; user: { name: string | null } | null; _count: { parts: number } }) => ({
         id: c.id,
         name: c.name || "Untitled Cutlist",
         partsCount: c._count.parts,

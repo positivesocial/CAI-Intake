@@ -724,33 +724,54 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {recentActivity.slice(0, 5).map((activity, i) => (
-                      <div
-                        key={activity.id || i}
-                        className="flex items-start gap-3 pb-4 border-b border-[var(--border)] last:border-0 last:pb-0"
-                      >
-                        <div className="w-2 h-2 rounded-full bg-[var(--cai-teal)] mt-2" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{activity.type}</p>
-                          <p className="text-sm text-[var(--muted-foreground)]">
-                            {activity.name}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <p className="text-xs text-[var(--muted-foreground)]">
-                              {formatTimeAgo(activity.createdAt)}
+                    {recentActivity.slice(0, 5).map((activity, i) => {
+                      // Determine icon and color based on activity type
+                      const getActivityIcon = () => {
+                        const type = activity.type.toLowerCase();
+                        if (type.includes("export")) return { icon: <FileSpreadsheet className="h-4 w-4" />, color: "bg-purple-100 text-purple-600" };
+                        if (type.includes("upload")) return { icon: <Upload className="h-4 w-4" />, color: "bg-blue-100 text-blue-600" };
+                        if (type.includes("pars")) return { icon: <FileImage className="h-4 w-4" />, color: "bg-orange-100 text-orange-600" };
+                        if (type.includes("optim")) return { icon: <Zap className="h-4 w-4" />, color: "bg-amber-100 text-amber-600" };
+                        if (type.includes("cutlist") || type.includes("draft") || type.includes("saved")) return { icon: <FileSpreadsheet className="h-4 w-4" />, color: "bg-green-100 text-green-600" };
+                        return { icon: <Activity className="h-4 w-4" />, color: "bg-[var(--cai-teal)]/20 text-[var(--cai-teal)]" };
+                      };
+                      
+                      const { icon, color } = getActivityIcon();
+                      const isFailed = activity.status === "error" || activity.type.toLowerCase().includes("failed");
+                      
+                      return (
+                        <div
+                          key={activity.id || i}
+                          className="flex items-start gap-3 pb-4 border-b border-[var(--border)] last:border-0 last:pb-0"
+                        >
+                          <div className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                            isFailed ? "bg-red-100 text-red-600" : color
+                          )}>
+                            {isFailed ? <AlertCircle className="h-4 w-4" /> : icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{activity.type}</p>
+                            <p className="text-sm text-[var(--muted-foreground)] truncate">
+                              {activity.name}
                             </p>
-                            {showOrgAdmin && activity.user && (
-                              <>
-                                <span className="text-xs text-[var(--muted-foreground)]">•</span>
-                                <p className="text-xs text-[var(--muted-foreground)]">
-                                  {activity.user}
-                                </p>
-                              </>
-                            )}
+                            <div className="flex items-center gap-2 mt-1">
+                              <p className="text-xs text-[var(--muted-foreground)]">
+                                {formatTimeAgo(activity.createdAt)}
+                              </p>
+                              {showOrgAdmin && activity.user && (
+                                <>
+                                  <span className="text-xs text-[var(--muted-foreground)]">•</span>
+                                  <p className="text-xs text-[var(--muted-foreground)] truncate">
+                                    {activity.user}
+                                  </p>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
