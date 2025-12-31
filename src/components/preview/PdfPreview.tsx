@@ -1,7 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { RefreshCw, FileText, ExternalLink, Download, Eye } from "lucide-react";
+import { 
+  RefreshCw, 
+  FileText, 
+  ExternalLink, 
+  Download, 
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -12,24 +23,91 @@ interface PdfPreviewProps {
   className?: string;
 }
 
+// We'll use canvas-based rendering for blob: URLs and iframe for http(s): URLs
+function isBlobUrl(url: string): boolean {
+  return url.startsWith("blob:");
+}
+
 export function PdfPreview({ url, fileName, fileId, className }: PdfPreviewProps) {
   const [loading, setLoading] = React.useState(true);
   const [showFallback, setShowFallback] = React.useState(false);
+  const [pageImages, setPageImages] = React.useState<string[]>([]);
+  const [currentPage, setCurrentPage] = React.useState(0);
+  const [zoom, setZoom] = React.useState(1);
+  const [rotation, setRotation] = React.useState(0);
   
   // Use proxy URL if fileId is provided (bypasses X-Frame-Options)
-  const proxyUrl = fileId ? `/api/v1/files/proxy/${fileId}` : null;
+  const proxyUrl = fileId && !isBlobUrl(url) ? `/api/v1/files/proxy/${fileId}` : null;
   const embedUrl = proxyUrl || url;
+  const useBlobRendering = isBlobUrl(url);
 
-  // Handle iframe load error
+  // For blob URLs, convert PDF to images using server-side API
+  React.useEffect(() => {
+    if (!useBlobRendering) return;
+    
+    async function renderBlobPdf() {
+      try {
+        setLoading(true);
+        
+        // Fetch the blob and convert to base64
+        const response = await fetch(url);
+        const blob = await response.blob();
+        
+        // Create FormData to send to our PDF conversion endpoint
+        const formData = new FormData();
+        formData.append("file", blob, fileName);
+        formData.append("action", "preview");
+        
+        // Use our existing PDF-to-images conversion
+        const convertResponse = await fetch("/api/v1/pdf-preview", {
+          method: "POST",
+          body: formData,
+        });
+        
+        if (!convertResponse.ok) {
+          throw new Error("Failed to convert PDF");
+        }
+        
+        const data = await convertResponse.json();
+        
+        if (data.images && data.images.length > 0) {
+          // Images are base64 encoded PNG
+          setPageImages(data.images.map((img: string) => 
+            img.startsWith("data:") ? img : `data:image/png;base64,${img}`
+          ));
+          setCurrentPage(0);
+        } else {
+          throw new Error("No pages converted");
+        }
+        
+        setLoading(false);
+      } catch (error) {
+        console.error("PDF preview error:", error);
+        setLoading(false);
+        setShowFallback(true);
+      }
+    }
+    
+    renderBlobPdf();
+  }, [url, fileName, useBlobRendering]);
+
+  // Handle iframe load error (for non-blob URLs)
   const handleIframeError = () => {
     setLoading(false);
     setShowFallback(true);
   };
 
-  // Handle successful load
+  // Handle successful iframe load
   const handleIframeLoad = () => {
     setLoading(false);
   };
+
+  // Navigation and zoom controls for blob rendering
+  const goToPrevPage = () => setCurrentPage((p) => Math.max(0, p - 1));
+  const goToNextPage = () => setCurrentPage((p) => Math.min(pageImages.length - 1, p + 1));
+  const zoomIn = () => setZoom((z) => Math.min(3, z + 0.25));
+  const zoomOut = () => setZoom((z) => Math.max(0.5, z - 0.25));
+  const rotate = () => setRotation((r) => (r + 90) % 360);
 
   // Show nice fallback with action buttons
   if (showFallback) {
@@ -62,6 +140,95 @@ export function PdfPreview({ url, fileName, fileId, className }: PdfPreviewProps
     );
   }
 
+  // Blob URL rendering with converted images
+  if (useBlobRendering) {
+    return (
+      <div className={cn("relative w-full h-full flex flex-col", className)}>
+        {/* Loading overlay */}
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--muted)]/50 z-10">
+            <div className="flex flex-col items-center text-[var(--muted-foreground)]">
+              <RefreshCw className="h-8 w-8 animate-spin mb-3" />
+              <p className="text-sm">Converting PDF for preview...</p>
+            </div>
+          </div>
+        )}
+        
+        {/* Image display area */}
+        {!loading && pageImages.length > 0 && (
+          <>
+            <div className="flex-1 overflow-auto bg-slate-200 dark:bg-slate-800 flex items-center justify-center p-4">
+              <img
+                src={pageImages[currentPage]}
+                alt={`${fileName} - Page ${currentPage + 1}`}
+                className="max-w-full max-h-full object-contain shadow-lg bg-white"
+                style={{
+                  transform: `scale(${zoom}) rotate(${rotation}deg)`,
+                  transition: "transform 0.2s ease",
+                }}
+              />
+            </div>
+            
+            {/* Controls bar */}
+            <div className="flex items-center justify-between px-3 py-2 border-t border-[var(--border)] bg-[var(--card)]">
+              {/* Page navigation */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={goToPrevPage}
+                  disabled={currentPage === 0}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-[var(--muted-foreground)]">
+                  Page {currentPage + 1} of {pageImages.length}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={goToNextPage}
+                  disabled={currentPage === pageImages.length - 1}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              {/* Zoom and rotate controls */}
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={zoomOut}>
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+                <span className="text-xs text-[var(--muted-foreground)] w-12 text-center">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={zoomIn}>
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={rotate}>
+                  <RotateCw className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              {/* Open/Download buttons */}
+              <div className="flex items-center gap-1">
+                <a href={url} target="_blank" rel="noopener noreferrer">
+                  <Button variant="ghost" size="sm" className="h-8 gap-1.5">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span className="text-xs hidden sm:inline">Open</span>
+                  </Button>
+                </a>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // Non-blob URL: use iframe
   return (
     <div className={cn("relative w-full h-full", className)}>
       {/* Loading overlay */}
