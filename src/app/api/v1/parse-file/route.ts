@@ -51,14 +51,14 @@ import { convertPdfToImages } from "@/lib/pdf/pdf-to-images";
 
 /**
  * Maximum execution time for this API route.
- * OCR/AI parsing can take 30-120 seconds for complex documents.
+ * OCR/AI parsing can take 60-240 seconds for complex documents.
  * 
  * Vercel Limits:
  * - Hobby: 10 seconds (too short for OCR)
- * - Pro: 60 seconds
+ * - Pro: 60 seconds (need Enterprise for full support)
  * - Enterprise: 900 seconds
  */
-export const maxDuration = 120;
+export const maxDuration = 240;
 
 /** Force dynamic rendering (no static generation) */
 export const dynamic = "force-dynamic";

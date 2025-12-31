@@ -13,7 +13,7 @@ import { logger } from "@/lib/logger";
 import { applyRateLimit } from "@/lib/api-middleware";
 
 // Serverless function config
-export const maxDuration = 60;
+export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
 // Size limits
