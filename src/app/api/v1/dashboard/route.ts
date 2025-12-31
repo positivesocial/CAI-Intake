@@ -11,7 +11,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { Prisma } from "@prisma/client";
 import { createClient } from "@/lib/supabase/server";
 import { 
   getSubscription, 
@@ -180,17 +179,9 @@ export async function GET(request: NextRequest) {
       optimize_jobs_today: bigint;
     };
 
-    // Build dynamic WHERE fragments for file stats
-    const fileWhereWeek = orgId 
-      ? Prisma.sql`organization_id = ${orgId} AND created_at >= ${startOfWeek}`
-      : Prisma.sql`user_id = ${user.id} AND created_at >= ${startOfWeek}`;
-    
-    const fileWhereMonth = orgId
-      ? Prisma.sql`organization_id = ${orgId} AND created_at >= ${startOfMonth}`
-      : Prisma.sql`user_id = ${user.id} AND created_at >= ${startOfMonth}`;
-
     // Single combined query for ALL counts (user, org, and platform)
-    // For org stats, if no orgId, we use a condition that always returns 0
+    // NOTE: uploaded_files table only has organization_id, not user_id
+    // For non-org users, we count files via cutlist join
     const countsResult = orgId
       ? await prisma.$queryRaw<CountsRow[]>`
           SELECT
@@ -200,8 +191,8 @@ export async function GET(request: NextRequest) {
             COALESCE((SELECT COUNT(*) FROM cut_parts cp JOIN cutlists c ON cp.cutlist_id = c.id WHERE c.user_id = ${user.id}), 0) as user_parts,
             COALESCE((SELECT COUNT(*) FROM optimize_jobs oj JOIN cutlists c ON oj.cutlist_id = c.id WHERE c.user_id = ${user.id} AND oj.status IN ('pending', 'processing')), 0) as active_jobs,
             -- File stats (org-based)
-            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${fileWhereWeek}), 0) as files_week,
-            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${fileWhereMonth}), 0) as files_month,
+            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE organization_id = ${orgId} AND created_at >= ${startOfWeek}), 0) as files_week,
+            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE organization_id = ${orgId} AND created_at >= ${startOfMonth}), 0) as files_month,
             -- Org stats
             COALESCE((SELECT COUNT(*) FROM users WHERE organization_id = ${orgId}), 0) as org_members,
             COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId}), 0) as org_cutlists,
@@ -225,9 +216,9 @@ export async function GET(request: NextRequest) {
             COALESCE((SELECT COUNT(*) FROM cutlists WHERE user_id = ${user.id} AND created_at >= ${startOfMonth}), 0) as user_cutlists_month,
             COALESCE((SELECT COUNT(*) FROM cut_parts cp JOIN cutlists c ON cp.cutlist_id = c.id WHERE c.user_id = ${user.id}), 0) as user_parts,
             COALESCE((SELECT COUNT(*) FROM optimize_jobs oj JOIN cutlists c ON oj.cutlist_id = c.id WHERE c.user_id = ${user.id} AND oj.status IN ('pending', 'processing')), 0) as active_jobs,
-            -- File stats (user-based - no org)
-            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${fileWhereWeek}), 0) as files_week,
-            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${fileWhereMonth}), 0) as files_month,
+            -- File stats (user-based via cutlist join - uploaded_files has no user_id column)
+            COALESCE((SELECT COUNT(*) FROM uploaded_files uf JOIN cutlists c ON uf.cutlist_id = c.id WHERE c.user_id = ${user.id} AND uf.created_at >= ${startOfWeek}), 0) as files_week,
+            COALESCE((SELECT COUNT(*) FROM uploaded_files uf JOIN cutlists c ON uf.cutlist_id = c.id WHERE c.user_id = ${user.id} AND uf.created_at >= ${startOfMonth}), 0) as files_month,
             -- Org stats (no org - return 0s)
             0::bigint as org_members,
             0::bigint as org_cutlists,
@@ -450,9 +441,9 @@ export async function GET(request: NextRequest) {
               NULL::int as parts_count,
               NULL::float as confidence_avg
             FROM uploaded_files uf
-            LEFT JOIN cutlists c ON uf.cutlist_id = c.id
+            JOIN cutlists c ON uf.cutlist_id = c.id
             LEFT JOIN users u ON c.user_id = u.id
-            WHERE uf.user_id = ${user.id}
+            WHERE c.user_id = ${user.id}
             ORDER BY uf.created_at DESC
             LIMIT 5
           )
