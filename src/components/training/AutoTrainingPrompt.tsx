@@ -166,11 +166,11 @@ function calculateSignificance(corrections: CorrectionSummary[]): number {
 // HELPER FUNCTIONS
 // ============================================================
 
-function summarizeEdging(edging: CutPart["ops"]["edging"]): string {
+function summarizeEdging(edging: NonNullable<CutPart["ops"]>["edging"]): string {
   if (!edging?.edges) return "";
   const edges = edging.edges;
-  const L = (edges.L1?.apply ? 1 : 0) + (edges.L2?.apply ? 1 : 0);
-  const W = (edges.W1?.apply ? 1 : 0) + (edges.W2?.apply ? 1 : 0);
+  const L = (edges["L1"]?.apply ? 1 : 0) + (edges["L2"]?.apply ? 1 : 0);
+  const W = (edges["W1"]?.apply ? 1 : 0) + (edges["W2"]?.apply ? 1 : 0);
   if (L === 0 && W === 0) return "";
   return (L > 0 ? `${L}L` : "") + (W > 0 ? `${W}W` : "");
 }
