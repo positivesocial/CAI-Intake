@@ -470,7 +470,8 @@ export async function logParsingAccuracy(
   try {
     const record = await prisma.parsingAccuracyLog.create({
       data: {
-        organizationId: entry.organizationId,
+        // Use connect syntax for organization relation
+        ...(entry.organizationId ? { organization: { connect: { id: entry.organizationId } } } : {}),
         parseJobId: entry.parseJobId,
         provider: entry.provider,
         sourceType: entry.sourceType,

@@ -289,6 +289,25 @@ export async function POST(request: NextRequest) {
     // Parse request body
     const body = await request.json();
     
+    // Sanitize parts before validation - filter out parts with invalid dimensions
+    if (Array.isArray(body.parts)) {
+      const originalCount = body.parts.length;
+      body.parts = body.parts.filter((part: { size?: { L?: number; W?: number } }) => {
+        const l = Number(part?.size?.L);
+        const w = Number(part?.size?.W);
+        // Keep parts with valid positive dimensions
+        return !isNaN(l) && !isNaN(w) && l > 0 && w > 0;
+      });
+      const filteredCount = originalCount - body.parts.length;
+      if (filteredCount > 0) {
+        logger.warn("Filtered out parts with invalid dimensions", {
+          originalCount,
+          validCount: body.parts.length,
+          filteredCount,
+        });
+      }
+    }
+    
     // Log incoming data for debugging
     logger.info("Creating cutlist", {
       userId: user.id,

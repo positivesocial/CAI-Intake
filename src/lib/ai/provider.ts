@@ -611,7 +611,18 @@ export function expandSimpleTabularParts(parts: SimpleTabularPart[]): AIPartResp
  * This format is compatible with the validation schema and Anthropic/OpenAI providers
  */
 export function expandCompactParts(compactParts: CompactPart[]): AIPartResponse[] {
-  return compactParts.map((cp, index) => {
+  return compactParts
+    .filter((cp) => {
+      // Filter out parts with invalid dimensions (0, undefined, null, or negative)
+      const length = typeof cp.l === "number" ? cp.l : 0;
+      const width = typeof cp.w === "number" ? cp.w : 0;
+      if (length <= 0 || width <= 0) {
+        console.warn(`⚠️ [expandCompactParts] Skipping part with invalid dimensions: L=${cp.l}, W=${cp.w}, row=${cp.r}`);
+        return false;
+      }
+      return true;
+    })
+    .map((cp, index) => {
     const edgeBanding = expandEdgeBandingCode(cp.e);
     const grooving = expandGrooveCode(cp.g);
     const materialLabel = expandMaterialCode(cp.m);
@@ -622,12 +633,16 @@ export function expandCompactParts(compactParts: CompactPart[]): AIPartResponse[
     const hasCNC = notesLower.includes("cnc") || notesLower.includes("r3") || notesLower.includes("radius");
     const hasDrilling = notesLower.includes("drill") || notesLower.includes("hole") || notesLower.includes("h1") || notesLower.includes("h2");
     
+    // Ensure dimensions are valid positive numbers
+    const length = Math.max(1, Number(cp.l) || 1);
+    const width = Math.max(1, Number(cp.w) || 1);
+    
     // Return AIPartResponse format with length/width at top level
     // This is what the validation and AI providers expect
     return {
       row: cp.r || index + 1,
-      length: cp.l,
-      width: cp.w,
+      length,
+      width,
       thickness: cp.t || 18,
       quantity: cp.q || 1,
       material: cp.m || "",
