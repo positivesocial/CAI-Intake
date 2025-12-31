@@ -2008,7 +2008,11 @@ export function detectDocumentComplexity(
  */
 export function buildAdaptivePrompt(
   text: string,
-  options: PromptOptions & { ocrConfidence?: number }
+  options: PromptOptions & { 
+    ocrConfidence?: number;
+    fewShotExamples?: string;
+    includeDetailedEdgeGuide?: boolean;
+  }
 ): { prompt: string; complexity: DocumentComplexity } {
   const complexity = detectDocumentComplexity(text, options.ocrConfidence);
   
