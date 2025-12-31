@@ -3,14 +3,36 @@
  * 
  * Uses pdf-to-img (pdfjs-dist wrapper) to convert PDF pages to images
  * locally without requiring external services.
+ * 
+ * NOTE: pdf-to-img may fail in Next.js dev mode due to worker bundling issues.
+ * In that case, we fall back to null and let the caller use Python OCR.
  */
 
 import { logger } from "@/lib/logger";
 
-// Dynamic import to avoid bundling issues
+// Track if pdf-to-img is available (may fail due to worker issues)
+let pdfModuleAvailable: boolean | null = null;
+let pdfModuleError: string | null = null;
+
+// Dynamic import with error handling
 async function getPdfModule() {
-  const { pdf } = await import("pdf-to-img");
-  return pdf;
+  // If we already know it's unavailable, return null immediately
+  if (pdfModuleAvailable === false) {
+    return null;
+  }
+  
+  try {
+    const { pdf } = await import("pdf-to-img");
+    pdfModuleAvailable = true;
+    return pdf;
+  } catch (error) {
+    pdfModuleAvailable = false;
+    pdfModuleError = error instanceof Error ? error.message : String(error);
+    logger.warn("🖼️ [PdfToImages] pdf-to-img module unavailable", {
+      error: pdfModuleError,
+    });
+    return null;
+  }
 }
 
 export interface PdfToImagesResult {
@@ -44,6 +66,17 @@ export async function convertPdfToImages(
     });
     
     const pdf = await getPdfModule();
+    
+    // If pdf module is unavailable (worker issues), return early
+    if (!pdf) {
+      return {
+        success: false,
+        images: [],
+        pageCount: 0,
+        error: pdfModuleError || "pdf-to-img module unavailable (worker bundling issue)",
+      };
+    }
+    
     const images: string[] = [];
     let pageNum = 0;
     
@@ -105,9 +138,11 @@ export async function convertPdfToImages(
 
 /**
  * Check if the local PDF-to-images capability is available
- * This is always true when the module is loaded
+ * Returns false if the module failed to load (e.g., worker bundling issues)
  */
 export function isLocalPdfConversionAvailable(): boolean {
-  return true;
+  // If we haven't tried loading yet, assume available
+  // The actual check happens on first use
+  return pdfModuleAvailable !== false;
 }
 

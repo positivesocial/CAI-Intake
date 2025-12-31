@@ -187,15 +187,23 @@ export function validateAIResponse(rawResponse: string): ValidationResult & { me
     };
   }
   
-  // Step 1.2: Handle NEW wrapper format: { meta: {...}, parts: [...] }
-  // This format includes template metadata alongside parts
+  // Step 1.2: Handle wrapper formats: { meta: {...}, parts: [...] } or { extractedParts: [...] }
+  // OpenAI sometimes uses "extractedParts" instead of "parts"
   if (
     typeof parsed === "object" && 
     parsed !== null && 
     !Array.isArray(parsed) && 
-    "parts" in parsed
+    ("parts" in parsed || "extractedParts" in parsed)
   ) {
-    const wrapper = parsed as { meta?: TemplateMetadata; parts?: unknown[] };
+    const wrapper = parsed as { meta?: TemplateMetadata; parts?: unknown[]; extractedParts?: unknown[] };
+    
+    // Normalize: if extractedParts exists, use it as parts
+    if (!wrapper.parts && wrapper.extractedParts) {
+      wrapper.parts = wrapper.extractedParts;
+      logger.info("📋 [Validation] Normalized 'extractedParts' to 'parts'", {
+        partsCount: wrapper.parts?.length || 0,
+      });
+    }
     
     // Extract metadata if present
     if (wrapper.meta && typeof wrapper.meta === "object") {
