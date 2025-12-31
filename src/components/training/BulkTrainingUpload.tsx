@@ -240,6 +240,37 @@ export default function BulkTrainingUpload() {
         }
       }
       
+      // Extract drilling/holes - can be in ops.holes, drilling, or top-level
+      const drilling = part.ops?.holes || part.drilling || part.holes;
+      let drillCode = "";
+      if (drilling) {
+        if (typeof drilling === "string") {
+          drillCode = drilling;
+        } else if (Array.isArray(drilling) && drilling.length > 0) {
+          // Has drilling operations - extract pattern or count
+          drillCode = drilling[0]?.pattern_id || drilling[0]?.code || `H${drilling.length}`;
+        } else if (drilling.detected) {
+          drillCode = drilling.description || drilling.holes?.length ? `H${drilling.holes.length}` : "DRILL";
+        }
+      }
+      
+      // Extract CNC operations - can be in ops.cnc, ops.custom_cnc_ops, cncOperations, or top-level
+      const cnc = part.ops?.cnc || part.ops?.custom_cnc_ops || part.cncOperations || part.cnc;
+      let cncCode = "";
+      if (cnc) {
+        if (typeof cnc === "string") {
+          cncCode = cnc;
+        } else if (Array.isArray(cnc) && cnc.length > 0) {
+          // Has CNC operations - extract type or count
+          cncCode = cnc.map((c: { op_type?: string; code?: string }) => c.op_type || c.code).filter(Boolean).join(",") || `CNC${cnc.length}`;
+        } else if (cnc.detected) {
+          cncCode = cnc.description || "CNC";
+        }
+      }
+      
+      // Extract notes - can be in notes, operator_notes, or n (compact format)
+      const notes = part.notes || part.operator_notes || part.n || "";
+      
       return {
         label: part.label || part.part_id || "Part",
         length: part.size?.L ?? part.length ?? part.length_mm ?? 0,
@@ -249,7 +280,9 @@ export default function BulkTrainingUpload() {
         material: part.material_id ?? part.material,
         edge: edgeCode || undefined,
         groove: grooveCode || undefined,
-        notes: part.notes,
+        drill: drillCode || undefined,
+        cnc: cncCode || undefined,
+        notes: notes || undefined,
       };
     });
     setEditedParts(JSON.stringify(mappedParts, null, 2));
@@ -292,6 +325,8 @@ export default function BulkTrainingUpload() {
             rowCount: parsedCorrectParts.length,
             hasEdgeNotation: parsedCorrectParts.some((p: {edge?: string}) => p.edge),
             hasGrooveNotation: parsedCorrectParts.some((p: {groove?: string}) => p.groove),
+            hasDrillingNotation: parsedCorrectParts.some((p: {drill?: string}) => p.drill),
+            hasCncNotation: parsedCorrectParts.some((p: {cnc?: string}) => p.cnc),
           },
         }),
       });

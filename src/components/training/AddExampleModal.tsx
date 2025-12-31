@@ -59,6 +59,8 @@ interface PartRow {
   material?: string;
   edge?: string;
   groove?: string;
+  drill?: string;
+  cnc?: string;
   notes?: string;
 }
 
@@ -155,6 +157,35 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
             }
           }
           
+          // Extract drilling/holes - can be in ops.holes, drilling, or top-level
+          const drilling = p.ops?.holes || p.drilling || p.holes;
+          let drillCode = "";
+          if (drilling) {
+            if (typeof drilling === "string") {
+              drillCode = drilling;
+            } else if (Array.isArray(drilling) && drilling.length > 0) {
+              drillCode = drilling[0]?.pattern_id || drilling[0]?.code || `H${drilling.length}`;
+            } else if (drilling.detected) {
+              drillCode = drilling.description || drilling.holes?.length ? `H${drilling.holes.length}` : "DRILL";
+            }
+          }
+          
+          // Extract CNC operations - can be in ops.cnc, ops.custom_cnc_ops, cncOperations, or top-level
+          const cnc = p.ops?.cnc || p.ops?.custom_cnc_ops || p.cncOperations || p.cnc;
+          let cncCode = "";
+          if (cnc) {
+            if (typeof cnc === "string") {
+              cncCode = cnc;
+            } else if (Array.isArray(cnc) && cnc.length > 0) {
+              cncCode = cnc.map((c: { op_type?: string; code?: string }) => c.op_type || c.code).filter(Boolean).join(",") || `CNC${cnc.length}`;
+            } else if (cnc.detected) {
+              cncCode = cnc.description || "CNC";
+            }
+          }
+          
+          // Extract notes - can be in notes, operator_notes, or n (compact format)
+          const notes = p.notes || p.operator_notes || p.n || "";
+          
           return {
             label: p.label || p.part_id || "Part",
             length: p.size?.L ?? p.length ?? p.length_mm ?? 0,
@@ -164,7 +195,9 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
             material: p.material_id ?? p.material,
             edge: edgeCode || undefined,
             groove: grooveCode || undefined,
-            notes: p.notes,
+            drill: drillCode || undefined,
+            cnc: cncCode || undefined,
+            notes: notes || undefined,
           };
         });
 
@@ -324,6 +357,8 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
             rowCount: parsedParts.length,
             hasEdgeNotation: parsedParts.some(p => p.edge),
             hasGrooveNotation: parsedParts.some(p => p.groove),
+            hasDrillingNotation: parsedParts.some(p => p.drill),
+            hasCncNotation: parsedParts.some(p => p.cnc),
           },
         }),
       });
