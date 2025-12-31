@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { createClient } from "@/lib/supabase/server";
 import { 
   getSubscription, 
@@ -179,33 +180,70 @@ export async function GET(request: NextRequest) {
       optimize_jobs_today: bigint;
     };
 
+    // Build dynamic WHERE fragments for file stats
+    const fileWhereWeek = orgId 
+      ? Prisma.sql`organization_id = ${orgId} AND created_at >= ${startOfWeek}`
+      : Prisma.sql`user_id = ${user.id} AND created_at >= ${startOfWeek}`;
+    
+    const fileWhereMonth = orgId
+      ? Prisma.sql`organization_id = ${orgId} AND created_at >= ${startOfMonth}`
+      : Prisma.sql`user_id = ${user.id} AND created_at >= ${startOfMonth}`;
+
     // Single combined query for ALL counts (user, org, and platform)
-    const countsResult = await prisma.$queryRaw<CountsRow[]>`
-      SELECT
-        -- User stats
-        COALESCE((SELECT COUNT(*) FROM cutlists WHERE user_id = ${user.id} AND created_at >= ${startOfWeek}), 0) as user_cutlists_week,
-        COALESCE((SELECT COUNT(*) FROM cutlists WHERE user_id = ${user.id} AND created_at >= ${startOfMonth}), 0) as user_cutlists_month,
-        COALESCE((SELECT COUNT(*) FROM cut_parts cp JOIN cutlists c ON cp.cutlist_id = c.id WHERE c.user_id = ${user.id}), 0) as user_parts,
-        COALESCE((SELECT COUNT(*) FROM optimize_jobs oj JOIN cutlists c ON oj.cutlist_id = c.id WHERE c.user_id = ${user.id} AND oj.status IN ('pending', 'processing')), 0) as active_jobs,
-        -- File stats (org-based, or user-based if no org)
-        COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${orgId ? `organization_id = '${orgId}'` : `user_id = '${user.id}'`} AND created_at >= ${startOfWeek}), 0) as files_week,
-        COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${orgId ? `organization_id = '${orgId}'` : `user_id = '${user.id}'`} AND created_at >= ${startOfMonth}), 0) as files_month,
-        -- Org stats
-        COALESCE((SELECT COUNT(*) FROM users WHERE organization_id = ${orgId || 'NULL'}), 0) as org_members,
-        COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId || 'NULL'}), 0) as org_cutlists,
-        COALESCE((SELECT COUNT(*) FROM cut_parts cp JOIN cutlists c ON cp.cutlist_id = c.id WHERE c.organization_id = ${orgId || 'NULL'}), 0) as org_parts,
-        COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE organization_id = ${orgId || 'NULL'}), 0) as org_files,
-        COALESCE((SELECT COUNT(*) FROM invitations WHERE organization_id = ${orgId || 'NULL'} AND accepted_at IS NULL AND expires_at > ${now}), 0) as pending_invites,
-        COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId || 'NULL'} AND created_at >= ${lastMonthStart} AND created_at < ${startOfMonth}), 0) as cutlists_last_month,
-        COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId || 'NULL'} AND created_at >= ${startOfMonth}), 0) as cutlists_this_month,
-        -- Platform stats (super admin) - always calculate but only use if super admin
-        COALESCE((SELECT COUNT(*) FROM organizations), 0) as platform_orgs,
-        COALESCE((SELECT COUNT(*) FROM users), 0) as platform_users,
-        COALESCE((SELECT COUNT(*) FROM cutlists), 0) as platform_cutlists,
-        COALESCE((SELECT COUNT(*) FROM uploaded_files), 0) as platform_files,
-        COALESCE((SELECT COUNT(*) FROM parse_jobs WHERE created_at >= ${startOfDay}), 0) as parse_jobs_today,
-        COALESCE((SELECT COUNT(*) FROM optimize_jobs WHERE created_at >= ${startOfDay}), 0) as optimize_jobs_today
-    `;
+    // For org stats, if no orgId, we use a condition that always returns 0
+    const countsResult = orgId
+      ? await prisma.$queryRaw<CountsRow[]>`
+          SELECT
+            -- User stats
+            COALESCE((SELECT COUNT(*) FROM cutlists WHERE user_id = ${user.id} AND created_at >= ${startOfWeek}), 0) as user_cutlists_week,
+            COALESCE((SELECT COUNT(*) FROM cutlists WHERE user_id = ${user.id} AND created_at >= ${startOfMonth}), 0) as user_cutlists_month,
+            COALESCE((SELECT COUNT(*) FROM cut_parts cp JOIN cutlists c ON cp.cutlist_id = c.id WHERE c.user_id = ${user.id}), 0) as user_parts,
+            COALESCE((SELECT COUNT(*) FROM optimize_jobs oj JOIN cutlists c ON oj.cutlist_id = c.id WHERE c.user_id = ${user.id} AND oj.status IN ('pending', 'processing')), 0) as active_jobs,
+            -- File stats (org-based)
+            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${fileWhereWeek}), 0) as files_week,
+            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${fileWhereMonth}), 0) as files_month,
+            -- Org stats
+            COALESCE((SELECT COUNT(*) FROM users WHERE organization_id = ${orgId}), 0) as org_members,
+            COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId}), 0) as org_cutlists,
+            COALESCE((SELECT COUNT(*) FROM cut_parts cp JOIN cutlists c ON cp.cutlist_id = c.id WHERE c.organization_id = ${orgId}), 0) as org_parts,
+            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE organization_id = ${orgId}), 0) as org_files,
+            COALESCE((SELECT COUNT(*) FROM invitations WHERE organization_id = ${orgId} AND accepted_at IS NULL AND expires_at > ${now}), 0) as pending_invites,
+            COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId} AND created_at >= ${lastMonthStart} AND created_at < ${startOfMonth}), 0) as cutlists_last_month,
+            COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgId} AND created_at >= ${startOfMonth}), 0) as cutlists_this_month,
+            -- Platform stats (super admin) - always calculate but only use if super admin
+            COALESCE((SELECT COUNT(*) FROM organizations), 0) as platform_orgs,
+            COALESCE((SELECT COUNT(*) FROM users), 0) as platform_users,
+            COALESCE((SELECT COUNT(*) FROM cutlists), 0) as platform_cutlists,
+            COALESCE((SELECT COUNT(*) FROM uploaded_files), 0) as platform_files,
+            COALESCE((SELECT COUNT(*) FROM parse_jobs WHERE created_at >= ${startOfDay}), 0) as parse_jobs_today,
+            COALESCE((SELECT COUNT(*) FROM optimize_jobs WHERE created_at >= ${startOfDay}), 0) as optimize_jobs_today
+        `
+      : await prisma.$queryRaw<CountsRow[]>`
+          SELECT
+            -- User stats
+            COALESCE((SELECT COUNT(*) FROM cutlists WHERE user_id = ${user.id} AND created_at >= ${startOfWeek}), 0) as user_cutlists_week,
+            COALESCE((SELECT COUNT(*) FROM cutlists WHERE user_id = ${user.id} AND created_at >= ${startOfMonth}), 0) as user_cutlists_month,
+            COALESCE((SELECT COUNT(*) FROM cut_parts cp JOIN cutlists c ON cp.cutlist_id = c.id WHERE c.user_id = ${user.id}), 0) as user_parts,
+            COALESCE((SELECT COUNT(*) FROM optimize_jobs oj JOIN cutlists c ON oj.cutlist_id = c.id WHERE c.user_id = ${user.id} AND oj.status IN ('pending', 'processing')), 0) as active_jobs,
+            -- File stats (user-based - no org)
+            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${fileWhereWeek}), 0) as files_week,
+            COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE ${fileWhereMonth}), 0) as files_month,
+            -- Org stats (no org - return 0s)
+            0::bigint as org_members,
+            0::bigint as org_cutlists,
+            0::bigint as org_parts,
+            0::bigint as org_files,
+            0::bigint as pending_invites,
+            0::bigint as cutlists_last_month,
+            0::bigint as cutlists_this_month,
+            -- Platform stats (super admin) - always calculate but only use if super admin
+            COALESCE((SELECT COUNT(*) FROM organizations), 0) as platform_orgs,
+            COALESCE((SELECT COUNT(*) FROM users), 0) as platform_users,
+            COALESCE((SELECT COUNT(*) FROM cutlists), 0) as platform_cutlists,
+            COALESCE((SELECT COUNT(*) FROM uploaded_files), 0) as platform_files,
+            COALESCE((SELECT COUNT(*) FROM parse_jobs WHERE created_at >= ${startOfDay}), 0) as parse_jobs_today,
+            COALESCE((SELECT COUNT(*) FROM optimize_jobs WHERE created_at >= ${startOfDay}), 0) as optimize_jobs_today
+        `;
 
     const counts = countsResult[0];
     const userCutlistsThisWeek = Number(counts.user_cutlists_week);
@@ -231,141 +269,254 @@ export async function GET(request: NextRequest) {
       confidence_avg: number | null;
     };
 
-    // Build WHERE clause based on user context
-    const userFilter = orgId 
-      ? `organization_id = '${orgId}'`
-      : `user_id = '${user.id}'`;
-    
-    const cutlistUserFilter = orgId
-      ? `c.organization_id = '${orgId}'`
-      : `c.user_id = '${user.id}'`;
-
-    const recentActivityResult = await prisma.$queryRaw<ActivityRow[]>`
-      (
-        SELECT 
-          c.id::text,
-          CASE 
-            WHEN c.status = 'draft' THEN 'Draft Created'
-            WHEN c.status = 'exported' THEN 'Cutlist Exported'
-            ELSE 'Cutlist Saved'
-          END as activity_type,
-          COALESCE(c.name, 'Untitled Cutlist') as name,
-          c.status,
-          GREATEST(c.created_at, c.updated_at) as created_at,
-          u.name as user_name,
-          (SELECT COUNT(*) FROM cut_parts WHERE cutlist_id = c.id)::int as parts_count,
-          NULL::float as confidence_avg
-        FROM cutlists c
-        LEFT JOIN users u ON c.user_id = u.id
-        WHERE ${orgId ? `c.organization_id = '${orgId}'` : `c.user_id = '${user.id}'`}
-        ORDER BY GREATEST(c.created_at, c.updated_at) DESC
-        LIMIT 5
-      )
-      UNION ALL
-      (
-        SELECT 
-          pj.id::text,
-          CASE 
-            WHEN pj.status = 'completed' THEN 'File Parsed'
-            WHEN pj.status = 'error' THEN 'Parse Failed'
-            ELSE 'Parsing'
-          END as activity_type,
-          CONCAT(INITCAP(pj.source_kind), ' processed') as name,
-          pj.status,
-          pj.created_at,
-          u.name as user_name,
-          NULL::int as parts_count,
-          (pj.summary->>'confidence_avg')::float as confidence_avg
-        FROM parse_jobs pj
-        LEFT JOIN users u ON pj.user_id = u.id
-        WHERE ${orgId ? `pj.organization_id = '${orgId}'` : `pj.user_id = '${user.id}'`}
-        ORDER BY pj.created_at DESC
-        LIMIT 5
-      )
-      UNION ALL
-      (
-        SELECT 
-          oj.id::text,
-          CASE 
-            WHEN oj.status = 'completed' THEN 'Optimization Complete'
-            WHEN oj.status = 'error' THEN 'Optimization Failed'
-            ELSE 'Optimizing'
-          END as activity_type,
-          COALESCE(c.name, 'Cutlist optimization') as name,
-          oj.status,
-          COALESCE(oj.completed_at, oj.created_at) as created_at,
-          u.name as user_name,
-          NULL::int as parts_count,
-          NULL::float as confidence_avg
-        FROM optimize_jobs oj
-        JOIN cutlists c ON oj.cutlist_id = c.id
-        LEFT JOIN users u ON c.user_id = u.id
-        WHERE ${orgId ? `c.organization_id = '${orgId}'` : `c.user_id = '${user.id}'`}
-        ORDER BY COALESCE(oj.completed_at, oj.created_at) DESC
-        LIMIT 5
-      )
-      UNION ALL
-      (
-        SELECT 
-          uf.id::text,
-          'File Uploaded' as activity_type,
-          uf.original_name as name,
-          'completed' as status,
-          uf.created_at,
-          u.name as user_name,
-          NULL::int as parts_count,
-          NULL::float as confidence_avg
-        FROM uploaded_files uf
-        LEFT JOIN cutlists c ON uf.cutlist_id = c.id
-        LEFT JOIN users u ON c.user_id = u.id
-        WHERE ${orgId ? `uf.organization_id = '${orgId}'` : `uf.user_id = '${user.id}'`}
-        ORDER BY uf.created_at DESC
-        LIMIT 5
-      )
-      UNION ALL
-      (
-        SELECT 
-          e.id::text,
-          CONCAT('Exported ', UPPER(e.format)) as activity_type,
-          COALESCE(c.name, 'Cutlist export') as name,
-          e.status,
-          e.created_at,
-          u.name as user_name,
-          NULL::int as parts_count,
-          NULL::float as confidence_avg
-        FROM exports e
-        JOIN cutlists c ON e.cutlist_id = c.id
-        LEFT JOIN users u ON c.user_id = u.id
-        WHERE ${orgId ? `c.organization_id = '${orgId}'` : `c.user_id = '${user.id}'`}
-        ORDER BY e.created_at DESC
-        LIMIT 5
-      )
-      ORDER BY created_at DESC
-      LIMIT 10
-    `;
+    // Build recent activity query based on context (org or user)
+    const recentActivityResult = orgId
+      ? await prisma.$queryRaw<ActivityRow[]>`
+          (
+            SELECT 
+              c.id::text,
+              CASE 
+                WHEN c.status = 'draft' THEN 'Draft Created'
+                WHEN c.status = 'exported' THEN 'Cutlist Exported'
+                ELSE 'Cutlist Saved'
+              END as activity_type,
+              COALESCE(c.name, 'Untitled Cutlist') as name,
+              c.status,
+              GREATEST(c.created_at, c.updated_at) as created_at,
+              u.name as user_name,
+              (SELECT COUNT(*) FROM cut_parts WHERE cutlist_id = c.id)::int as parts_count,
+              NULL::float as confidence_avg
+            FROM cutlists c
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.organization_id = ${orgId}
+            ORDER BY GREATEST(c.created_at, c.updated_at) DESC
+            LIMIT 5
+          )
+          UNION ALL
+          (
+            SELECT 
+              pj.id::text,
+              CASE 
+                WHEN pj.status = 'completed' THEN 'File Parsed'
+                WHEN pj.status = 'error' THEN 'Parse Failed'
+                ELSE 'Parsing'
+              END as activity_type,
+              CONCAT(INITCAP(pj.source_kind), ' processed') as name,
+              pj.status,
+              pj.created_at,
+              u.name as user_name,
+              NULL::int as parts_count,
+              (pj.summary->>'confidence_avg')::float as confidence_avg
+            FROM parse_jobs pj
+            LEFT JOIN users u ON pj.user_id = u.id
+            WHERE pj.organization_id = ${orgId}
+            ORDER BY pj.created_at DESC
+            LIMIT 5
+          )
+          UNION ALL
+          (
+            SELECT 
+              oj.id::text,
+              CASE 
+                WHEN oj.status = 'completed' THEN 'Optimization Complete'
+                WHEN oj.status = 'error' THEN 'Optimization Failed'
+                ELSE 'Optimizing'
+              END as activity_type,
+              COALESCE(c.name, 'Cutlist optimization') as name,
+              oj.status,
+              COALESCE(oj.completed_at, oj.created_at) as created_at,
+              u.name as user_name,
+              NULL::int as parts_count,
+              NULL::float as confidence_avg
+            FROM optimize_jobs oj
+            JOIN cutlists c ON oj.cutlist_id = c.id
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.organization_id = ${orgId}
+            ORDER BY COALESCE(oj.completed_at, oj.created_at) DESC
+            LIMIT 5
+          )
+          UNION ALL
+          (
+            SELECT 
+              uf.id::text,
+              'File Uploaded' as activity_type,
+              uf.original_name as name,
+              'completed' as status,
+              uf.created_at,
+              u.name as user_name,
+              NULL::int as parts_count,
+              NULL::float as confidence_avg
+            FROM uploaded_files uf
+            LEFT JOIN cutlists c ON uf.cutlist_id = c.id
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE uf.organization_id = ${orgId}
+            ORDER BY uf.created_at DESC
+            LIMIT 5
+          )
+          UNION ALL
+          (
+            SELECT 
+              e.id::text,
+              CONCAT('Exported ', UPPER(e.format)) as activity_type,
+              COALESCE(c.name, 'Cutlist export') as name,
+              e.status,
+              e.created_at,
+              u.name as user_name,
+              NULL::int as parts_count,
+              NULL::float as confidence_avg
+            FROM exports e
+            JOIN cutlists c ON e.cutlist_id = c.id
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.organization_id = ${orgId}
+            ORDER BY e.created_at DESC
+            LIMIT 5
+          )
+          ORDER BY created_at DESC
+          LIMIT 10
+        `
+      : await prisma.$queryRaw<ActivityRow[]>`
+          (
+            SELECT 
+              c.id::text,
+              CASE 
+                WHEN c.status = 'draft' THEN 'Draft Created'
+                WHEN c.status = 'exported' THEN 'Cutlist Exported'
+                ELSE 'Cutlist Saved'
+              END as activity_type,
+              COALESCE(c.name, 'Untitled Cutlist') as name,
+              c.status,
+              GREATEST(c.created_at, c.updated_at) as created_at,
+              u.name as user_name,
+              (SELECT COUNT(*) FROM cut_parts WHERE cutlist_id = c.id)::int as parts_count,
+              NULL::float as confidence_avg
+            FROM cutlists c
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.user_id = ${user.id}
+            ORDER BY GREATEST(c.created_at, c.updated_at) DESC
+            LIMIT 5
+          )
+          UNION ALL
+          (
+            SELECT 
+              pj.id::text,
+              CASE 
+                WHEN pj.status = 'completed' THEN 'File Parsed'
+                WHEN pj.status = 'error' THEN 'Parse Failed'
+                ELSE 'Parsing'
+              END as activity_type,
+              CONCAT(INITCAP(pj.source_kind), ' processed') as name,
+              pj.status,
+              pj.created_at,
+              u.name as user_name,
+              NULL::int as parts_count,
+              (pj.summary->>'confidence_avg')::float as confidence_avg
+            FROM parse_jobs pj
+            LEFT JOIN users u ON pj.user_id = u.id
+            WHERE pj.user_id = ${user.id}
+            ORDER BY pj.created_at DESC
+            LIMIT 5
+          )
+          UNION ALL
+          (
+            SELECT 
+              oj.id::text,
+              CASE 
+                WHEN oj.status = 'completed' THEN 'Optimization Complete'
+                WHEN oj.status = 'error' THEN 'Optimization Failed'
+                ELSE 'Optimizing'
+              END as activity_type,
+              COALESCE(c.name, 'Cutlist optimization') as name,
+              oj.status,
+              COALESCE(oj.completed_at, oj.created_at) as created_at,
+              u.name as user_name,
+              NULL::int as parts_count,
+              NULL::float as confidence_avg
+            FROM optimize_jobs oj
+            JOIN cutlists c ON oj.cutlist_id = c.id
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.user_id = ${user.id}
+            ORDER BY COALESCE(oj.completed_at, oj.created_at) DESC
+            LIMIT 5
+          )
+          UNION ALL
+          (
+            SELECT 
+              uf.id::text,
+              'File Uploaded' as activity_type,
+              uf.original_name as name,
+              'completed' as status,
+              uf.created_at,
+              u.name as user_name,
+              NULL::int as parts_count,
+              NULL::float as confidence_avg
+            FROM uploaded_files uf
+            LEFT JOIN cutlists c ON uf.cutlist_id = c.id
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE uf.user_id = ${user.id}
+            ORDER BY uf.created_at DESC
+            LIMIT 5
+          )
+          UNION ALL
+          (
+            SELECT 
+              e.id::text,
+              CONCAT('Exported ', UPPER(e.format)) as activity_type,
+              COALESCE(c.name, 'Cutlist export') as name,
+              e.status,
+              e.created_at,
+              u.name as user_name,
+              NULL::int as parts_count,
+              NULL::float as confidence_avg
+            FROM exports e
+            JOIN cutlists c ON e.cutlist_id = c.id
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.user_id = ${user.id}
+            ORDER BY e.created_at DESC
+            LIMIT 5
+          )
+          ORDER BY created_at DESC
+          LIMIT 10
+        `;
 
     // Also get recent cutlists with parts count for the cutlists section
-    const recentCutlistsResult = await prisma.$queryRaw<Array<{
+    type RecentCutlistRow = {
       id: string;
       name: string;
       status: string;
       created_at: Date;
       user_name: string | null;
       parts_count: number;
-    }>>`
-      SELECT 
-        c.id::text,
-        COALESCE(c.name, 'Untitled Cutlist') as name,
-        c.status,
-        c.created_at,
-        u.name as user_name,
-        (SELECT COUNT(*) FROM cut_parts WHERE cutlist_id = c.id)::int as parts_count
-      FROM cutlists c
-      LEFT JOIN users u ON c.user_id = u.id
-      WHERE ${orgId ? `c.organization_id = '${orgId}'` : `c.user_id = '${user.id}'`}
-      ORDER BY c.created_at DESC
-      LIMIT 5
-    `;
+    };
+    
+    const recentCutlistsResult = orgId
+      ? await prisma.$queryRaw<RecentCutlistRow[]>`
+          SELECT 
+            c.id::text,
+            COALESCE(c.name, 'Untitled Cutlist') as name,
+            c.status,
+            c.created_at,
+            u.name as user_name,
+            (SELECT COUNT(*) FROM cut_parts WHERE cutlist_id = c.id)::int as parts_count
+          FROM cutlists c
+          LEFT JOIN users u ON c.user_id = u.id
+          WHERE c.organization_id = ${orgId}
+          ORDER BY c.created_at DESC
+          LIMIT 5
+        `
+      : await prisma.$queryRaw<RecentCutlistRow[]>`
+          SELECT 
+            c.id::text,
+            COALESCE(c.name, 'Untitled Cutlist') as name,
+            c.status,
+            c.created_at,
+            u.name as user_name,
+            (SELECT COUNT(*) FROM cut_parts WHERE cutlist_id = c.id)::int as parts_count
+          FROM cutlists c
+          LEFT JOIN users u ON c.user_id = u.id
+          WHERE c.user_id = ${user.id}
+          ORDER BY c.created_at DESC
+          LIMIT 5
+        `;
 
     // Calculate average confidence from activity results
     const confidenceValues = recentActivityResult
