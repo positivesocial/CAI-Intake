@@ -11,6 +11,10 @@
  */
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/lib/auth/store";
+import { PlatformHeader } from "@/components/platform/PlatformHeader";
+import { Shield, RefreshCw } from "lucide-react";
 import {
   BarChart3,
   TrendingUp,
@@ -352,6 +356,9 @@ const DEFAULT_OCR_DATA: OCRAuditData = {
 };
 
 export default function AnalyticsPage() {
+  const router = useRouter();
+  const { isSuperAdmin } = useAuthStore();
+  const [mounted, setMounted] = React.useState(false);
   const [timeRange, setTimeRange] = React.useState("14d");
   const [isLoading, setIsLoading] = React.useState(true);
   const [lastRefresh, setLastRefresh] = React.useState(new Date());
@@ -360,6 +367,17 @@ export default function AnalyticsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [showOcrLogs, setShowOcrLogs] = React.useState(false);
   const [ocrMetricPeriod, setOcrMetricPeriod] = React.useState<"day" | "week" | "month">("week");
+
+  // Mount and auth check
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (mounted && !isSuperAdmin()) {
+      router.push("/platform/login");
+    }
+  }, [mounted, isSuperAdmin, router]);
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true);
@@ -400,17 +418,35 @@ export default function AnalyticsPage() {
     fetchData();
   };
 
+  // Show loading state until mounted
+  if (!mounted || !isSuperAdmin()) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <Shield className="h-16 w-16 mx-auto mb-4 animate-pulse" />
+          <p>Verifying access...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-[var(--cai-teal)]" />
+      <div className="min-h-screen bg-slate-50">
+        <PlatformHeader />
+        <div className="flex items-center justify-center min-h-[400px]">
+          <RefreshCw className="h-8 w-8 animate-spin text-purple-600" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="min-h-screen bg-slate-50">
+      <PlatformHeader />
+      
+      <main className="max-w-[1600px] mx-auto px-6 py-8 space-y-6">
+      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -871,6 +907,7 @@ export default function AnalyticsPage() {
           </div>
         </CardContent>
       </Card>
+      </main>
     </div>
   );
 }

@@ -1,9 +1,8 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Plus,
   Edit2,
   Trash2,
@@ -15,10 +14,9 @@ import {
   Users,
   Layers,
   Zap,
-  ToggleLeft,
-  ToggleRight,
   ChevronDown,
   ChevronUp,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +24,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/auth/store";
+import { PlatformHeader } from "@/components/platform/PlatformHeader";
 
 // =============================================================================
 // TYPES
@@ -347,22 +347,40 @@ function PlanEditor({
 // =============================================================================
 
 export default function PlansManagementPage() {
+  const router = useRouter();
+  const { isSuperAdmin } = useAuthStore();
+  const [mounted, setMounted] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [plans, setPlans] = React.useState<PlanData[]>([]);
   const [editingPlan, setEditingPlan] = React.useState<PlanData | null | "new">(null);
+  const [totals, setTotals] = React.useState({ mrr: 0, totalSubscribers: 0, paidSubscribers: 0 });
+
+  // Mount and auth check
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (mounted && !isSuperAdmin()) {
+      router.push("/platform/login");
+    }
+  }, [mounted, isSuperAdmin, router]);
 
   // Fetch plans
   React.useEffect(() => {
-    fetchPlans();
-  }, []);
+    if (mounted && isSuperAdmin()) {
+      fetchPlans();
+    }
+  }, [mounted, isSuperAdmin]);
 
   const fetchPlans = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/v1/admin/plans");
+      const response = await fetch("/api/v1/platform/plans");
       if (response.ok) {
         const data = await response.json();
         setPlans(data.plans || []);
+        setTotals(data.totals || { mrr: 0, totalSubscribers: 0, paidSubscribers: 0 });
       } else {
         // Use default plans from config
         setPlans([
@@ -566,12 +584,25 @@ export default function PlansManagementPage() {
     }
   };
 
-  const totalMRR = plans.reduce((sum, p) => sum + (p.monthlyRevenue || 0), 0);
-  const totalSubscribers = plans.reduce((sum, p) => sum + (p.subscriberCount || 0), 0);
+  const totalMRR = totals.mrr || plans.reduce((sum, p) => sum + (p.monthlyRevenue || 0), 0);
+  const totalSubscribers = totals.totalSubscribers || plans.reduce((sum, p) => sum + (p.subscriberCount || 0), 0);
+
+  // Show loading state until mounted
+  if (!mounted || !isSuperAdmin()) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <Shield className="h-16 w-16 mx-auto mb-4 animate-pulse" />
+          <p>Verifying access...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--background)]">
+      <div className="min-h-screen bg-slate-50">
+        <PlatformHeader />
         <div className="flex items-center justify-center py-24">
           <RefreshCw className="h-8 w-8 animate-spin text-purple-600" />
         </div>
@@ -580,24 +611,18 @@ export default function PlansManagementPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
-      {/* Header */}
-      <header className="border-b border-[var(--border)] bg-[var(--card)]">
-        <div className="container mx-auto px-4 py-6">
+    <div className="min-h-screen bg-slate-50">
+      <PlatformHeader />
+      
+      {/* Page Header */}
+      <div className="border-b border-[var(--border)] bg-white">
+        <div className="max-w-[1600px] mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link href="/platform/dashboard">
-                <Button variant="ghost" size="sm">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back
-                </Button>
-              </Link>
-              <div>
-                <h1 className="text-2xl font-bold">Plan Management</h1>
-                <p className="text-[var(--muted-foreground)]">
-                  Configure subscription plans and pricing
-                </p>
-              </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Plan Management</h1>
+              <p className="text-slate-500">
+                Configure subscription plans and pricing
+              </p>
             </div>
             <Button variant="primary" onClick={() => setEditingPlan("new")}>
               <Plus className="h-4 w-4 mr-2" />
@@ -605,9 +630,9 @@ export default function PlansManagementPage() {
             </Button>
           </div>
         </div>
-      </header>
+      </div>
 
-      <main className="container mx-auto px-4 py-6 space-y-6">
+      <main className="max-w-[1600px] mx-auto px-6 py-6 space-y-6">
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>

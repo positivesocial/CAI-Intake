@@ -1,9 +1,8 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   ArrowUpRight,
   ArrowDownRight,
   DollarSign,
@@ -11,15 +10,17 @@ import {
   TrendingUp,
   RefreshCw,
   Download,
-  Calendar,
   CreditCard,
   BarChart3,
   PieChart,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/auth/store";
+import { PlatformHeader } from "@/components/platform/PlatformHeader";
 
 // =============================================================================
 // TYPES
@@ -162,6 +163,9 @@ function RevenueChart({ data }: { data: MonthlyRevenue[] }) {
 // =============================================================================
 
 export default function RevenueDashboardPage() {
+  const router = useRouter();
+  const { isSuperAdmin } = useAuthStore();
+  const [mounted, setMounted] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [dateRange, setDateRange] = React.useState<"7d" | "30d" | "90d" | "1y">("30d");
   const [stats, setStats] = React.useState<RevenueStats | null>(null);
@@ -169,51 +173,74 @@ export default function RevenueDashboardPage() {
   const [transactions, setTransactions] = React.useState<RecentTransaction[]>([]);
   const [monthlyData, setMonthlyData] = React.useState<MonthlyRevenue[]>([]);
 
+  // Mount and auth check
   React.useEffect(() => {
-    // Simulated data - in production this would fetch from API
-    setTimeout(() => {
-      setStats({
-        mrr: 7912,
-        mrrGrowth: 12.4,
-        arr: 94944,
-        arrGrowth: 15.2,
-        totalRevenue: 47235,
-        averageRevenuePerUser: 28.5,
-        churnRate: 2.3,
-        ltv: 342,
-      });
+    setMounted(true);
+  }, []);
 
-      setPlanBreakdown([
-        { planId: "free", planName: "Free", subscribers: 142, mrr: 0, percentOfRevenue: 0, growth: 8 },
-        { planId: "starter", planName: "Starter", subscribers: 87, mrr: 2523, percentOfRevenue: 32, growth: 15 },
-        { planId: "professional", planName: "Professional", subscribers: 43, mrr: 3397, percentOfRevenue: 43, growth: 22 },
-        { planId: "enterprise", planName: "Enterprise", subscribers: 8, mrr: 1992, percentOfRevenue: 25, growth: 5 },
-      ]);
+  React.useEffect(() => {
+    if (mounted && !isSuperAdmin()) {
+      router.push("/platform/login");
+    }
+  }, [mounted, isSuperAdmin, router]);
 
-      setTransactions([
-        { id: "1", organizationName: "Premium Cabinets Co.", planName: "Professional", amount: 79, type: "subscription", date: "2024-12-22" },
-        { id: "2", organizationName: "Chen Custom Millwork", planName: "Enterprise", amount: 249, type: "upgrade", date: "2024-12-21" },
-        { id: "3", organizationName: "Oak & Pine Workshop", planName: "Starter", amount: 29, type: "subscription", date: "2024-12-21" },
-        { id: "4", organizationName: "Precision Cabinet Works", planName: "Professional", amount: 79, type: "subscription", date: "2024-12-20" },
-        { id: "5", organizationName: "Modern Interiors LLC", planName: "Starter", amount: -29, type: "refund", date: "2024-12-19" },
-      ]);
+  // Fetch data from API
+  React.useEffect(() => {
+    if (!mounted || !isSuperAdmin()) return;
+    
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/v1/platform/revenue?range=${dateRange}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          setStats(data.stats);
+          setPlanBreakdown(data.planBreakdown);
+          setTransactions(data.transactions);
+          setMonthlyData(data.monthlyData);
+        } else {
+          // Fallback to default data
+          setStats({
+            mrr: 0,
+            mrrGrowth: 0,
+            arr: 0,
+            arrGrowth: 0,
+            totalRevenue: 0,
+            averageRevenuePerUser: 0,
+            churnRate: 0,
+            ltv: 0,
+          });
+          setPlanBreakdown([]);
+          setTransactions([]);
+          setMonthlyData([]);
+        }
+      } catch (error) {
+        console.error("Failed to fetch revenue data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-      setMonthlyData([
-        { month: "Jul", revenue: 5200, newMrr: 800, churnedMrr: 200, expansionMrr: 300 },
-        { month: "Aug", revenue: 5800, newMrr: 900, churnedMrr: 300, expansionMrr: 400 },
-        { month: "Sep", revenue: 6300, newMrr: 1000, churnedMrr: 250, expansionMrr: 350 },
-        { month: "Oct", revenue: 6800, newMrr: 850, churnedMrr: 200, expansionMrr: 450 },
-        { month: "Nov", revenue: 7200, newMrr: 950, churnedMrr: 300, expansionMrr: 500 },
-        { month: "Dec", revenue: 7912, newMrr: 1100, churnedMrr: 280, expansionMrr: 420 },
-      ]);
+    fetchData();
+  }, [mounted, isSuperAdmin, dateRange]);
 
-      setLoading(false);
-    }, 500);
-  }, [dateRange]);
+  // Show loading state until mounted
+  if (!mounted || !isSuperAdmin()) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <Shield className="h-16 w-16 mx-auto mb-4 animate-pulse" />
+          <p>Verifying access...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--background)]">
+      <div className="min-h-screen bg-slate-50">
+        <PlatformHeader />
         <div className="flex items-center justify-center py-24">
           <RefreshCw className="h-8 w-8 animate-spin text-purple-600" />
         </div>
@@ -222,28 +249,22 @@ export default function RevenueDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
-      {/* Header */}
-      <header className="border-b border-[var(--border)] bg-[var(--card)]">
-        <div className="container mx-auto px-4 py-6">
+    <div className="min-h-screen bg-slate-50">
+      <PlatformHeader />
+      
+      {/* Page Header */}
+      <div className="border-b border-[var(--border)] bg-white">
+        <div className="max-w-[1600px] mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link href="/platform/dashboard">
-                <Button variant="ghost" size="sm">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back
-                </Button>
-              </Link>
-              <div>
-                <h1 className="text-2xl font-bold">Revenue Dashboard</h1>
-                <p className="text-[var(--muted-foreground)]">
-                  Track subscription revenue and growth metrics
-                </p>
-              </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Revenue Dashboard</h1>
+              <p className="text-slate-500">
+                Track subscription revenue and growth metrics
+              </p>
             </div>
             <div className="flex items-center gap-3">
               {/* Date Range Selector */}
-              <div className="flex items-center bg-[var(--muted)] p-1 rounded-lg">
+              <div className="flex items-center bg-slate-100 p-1 rounded-lg">
                 {(["7d", "30d", "90d", "1y"] as const).map((range) => (
                   <button
                     key={range}
@@ -251,8 +272,8 @@ export default function RevenueDashboardPage() {
                     className={cn(
                       "px-3 py-1.5 rounded text-sm font-medium transition-colors",
                       dateRange === range
-                        ? "bg-white shadow text-[var(--foreground)]"
-                        : "text-[var(--muted-foreground)]"
+                        ? "bg-white shadow text-slate-900"
+                        : "text-slate-500"
                     )}
                   >
                     {range}
@@ -266,9 +287,9 @@ export default function RevenueDashboardPage() {
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
-      <main className="container mx-auto px-4 py-6 space-y-6">
+      <main className="max-w-[1600px] mx-auto px-6 py-6 space-y-6">
         {/* Key Metrics */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

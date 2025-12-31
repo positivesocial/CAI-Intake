@@ -1,16 +1,11 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  LayoutDashboard,
   Building2,
   Users,
-  Settings,
   Shield,
-  LogOut,
-  ChevronDown,
   Search,
   RefreshCw,
   Plus,
@@ -19,17 +14,14 @@ import {
   Edit,
   Trash2,
   Activity,
-  ListOrdered,
   DollarSign,
   Mail,
-  Calendar,
   ChevronLeft,
   ChevronRight,
-  Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -43,7 +35,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -56,6 +47,7 @@ import {
 } from "@/components/ui/select";
 import { useAuthStore } from "@/lib/auth/store";
 import { cn } from "@/lib/utils";
+import { PlatformHeader } from "@/components/platform/PlatformHeader";
 
 // =============================================================================
 // TYPES
@@ -152,7 +144,7 @@ function LoadingState() {
 
 export default function PlatformOrganizationsPage() {
   const router = useRouter();
-  const { user, logout, isSuperAdmin } = useAuthStore();
+  const { isSuperAdmin } = useAuthStore();
   
   const [mounted, setMounted] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
@@ -160,13 +152,12 @@ export default function PlatformOrganizationsPage() {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [planFilter, setPlanFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState("all");
+  const [error, setError] = React.useState<string | null>(null);
 
   // Handle client-side mounting
   React.useEffect(() => {
     setMounted(true);
   }, []);
-
-  const [error, setError] = React.useState<string | null>(null);
 
   // Load data after mounted
   React.useEffect(() => {
@@ -188,11 +179,6 @@ export default function PlatformOrganizationsPage() {
         });
     }
   }, [mounted, isSuperAdmin, router, searchQuery]);
-
-  const handleLogout = async () => {
-    await logout();
-    router.push("/platform/login");
-  };
 
   // Filter organizations
   const filteredOrgs = organizations.filter((org) => {
@@ -218,90 +204,7 @@ export default function PlatformOrganizationsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Top Navigation */}
-      <header className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white sticky top-0 z-50">
-        <div className="max-w-[1600px] mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-8">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
-                  <Shield className="h-5 w-5 text-purple-300" />
-                </div>
-                <div>
-                  <span className="font-bold text-lg">CAI Platform</span>
-                  <Badge className="ml-2 bg-purple-500/30 text-purple-200 text-xs">Super Admin</Badge>
-                </div>
-              </div>
-              
-              <nav className="hidden md:flex items-center gap-1">
-                <Link href="/platform/dashboard">
-                  <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10">
-                    <LayoutDashboard className="h-4 w-4 mr-2" />
-                    Dashboard
-                  </Button>
-                </Link>
-                <Link href="/platform/organizations">
-                  <Button variant="ghost" size="sm" className="text-white bg-white/10">
-                    <Building2 className="h-4 w-4 mr-2" />
-                    Organizations
-                  </Button>
-                </Link>
-                <Link href="/platform/users">
-                  <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10">
-                    <Users className="h-4 w-4 mr-2" />
-                    Users
-                  </Button>
-                </Link>
-                <Link href="/platform/analytics">
-                  <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10">
-                    <Activity className="h-4 w-4 mr-2" />
-                    Analytics
-                  </Button>
-                </Link>
-                <Link href="/platform/settings">
-                  <Button variant="ghost" size="sm" className="text-white/80 hover:text-white hover:bg-white/10">
-                    <Settings className="h-4 w-4 mr-2" />
-                    Settings
-                  </Button>
-                </Link>
-              </nav>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="flex items-center gap-2 text-white/80 hover:text-white hover:bg-white/10">
-                    <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center">
-                      <span className="text-sm font-medium">SA</span>
-                    </div>
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>
-                    <div className="flex flex-col">
-                      <span>{user?.name || "Super Admin"}</span>
-                      <span className="text-xs text-slate-500">{user?.email || "super@cai-intake.io"}</span>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/settings/training">
-                      <Brain className="h-4 w-4 mr-2" />
-                      AI Training
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleLogout} className="text-red-600">
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Sign Out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PlatformHeader />
 
       <main className="max-w-[1600px] mx-auto px-6 py-8">
         {/* Page Header */}
