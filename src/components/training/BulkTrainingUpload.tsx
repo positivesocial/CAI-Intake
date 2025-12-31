@@ -261,29 +261,47 @@ export default function BulkTrainingUpload() {
         if (typeof drilling === "string") {
           drillCode = drilling;
         } else if (Array.isArray(drilling) && drilling.length > 0) {
-          // Has drilling operations - extract pattern or count
-          drillCode = drilling[0]?.pattern_id || drilling[0]?.code || `H${drilling.length}`;
+          // CutPart format: ops.holes = [{ pattern_id?, face?, notes? }]
+          const patterns = drilling.map((h: { pattern_id?: string; face?: string }) => 
+            h.pattern_id || h.face
+          ).filter(Boolean);
+          drillCode = patterns.length > 0 ? patterns.join(",") : `H${drilling.length}`;
         } else if (drilling.detected) {
           drillCode = drilling.description || drilling.holes?.length ? `H${drilling.holes.length}` : "DRILL";
         }
       }
       
       // Extract CNC operations - check compact format FIRST (c), then full formats
-      const cnc = part.c || part.ops?.cnc || part.ops?.custom_cnc_ops || part.cncOperations || part.cnc;
+      const cnc = part.c || part.ops?.custom_cnc_ops || part.ops?.routing || part.cncOperations || part.cnc;
       let cncCode = "";
       if (cnc) {
         if (typeof cnc === "string") {
           cncCode = cnc;
         } else if (Array.isArray(cnc) && cnc.length > 0) {
-          // Has CNC operations - extract type or count
-          cncCode = cnc.map((c: { op_type?: string; code?: string }) => c.op_type || c.code).filter(Boolean).join(",") || `CNC${cnc.length}`;
+          // CutPart format: ops.custom_cnc_ops = [{ op_type?, notes?, payload? }]
+          // or ops.routing = [{ profile_id?, notes? }]
+          const ops = cnc.map((c: { op_type?: string; profile_id?: string; payload?: { program_name?: string } }) => 
+            c.op_type || c.profile_id || c.payload?.program_name
+          ).filter(Boolean);
+          cncCode = ops.length > 0 ? ops.join(",") : `CNC${cnc.length}`;
         } else if (cnc.detected) {
           cncCode = cnc.description || "CNC";
         }
       }
       
       // Extract notes - check compact format FIRST (n), then full formats
-      const notes = part.n || part.notes || part.operator_notes || "";
+      // CutPart format: notes = { operator?: string, cnc?: string, design?: string }
+      let notesStr = "";
+      const notesField = part.n || part.notes || part.operator_notes;
+      if (notesField) {
+        if (typeof notesField === "string") {
+          notesStr = notesField;
+        } else if (typeof notesField === "object") {
+          // CutPart PartNotes format
+          const parts = [notesField.operator, notesField.cnc, notesField.design].filter(Boolean);
+          notesStr = parts.join("; ");
+        }
+      }
       
       // Extract material - check compact format FIRST (m), then full formats
       const material = part.m || part.material_id || part.material || "";
@@ -304,7 +322,7 @@ export default function BulkTrainingUpload() {
         groove: grooveCode || undefined,
         drill: drillCode || undefined,
         cnc: cncCode || undefined,
-        notes: notes || undefined,
+        notes: notesStr || undefined,
       };
     });
     setEditedParts(JSON.stringify(mappedParts, null, 2));
