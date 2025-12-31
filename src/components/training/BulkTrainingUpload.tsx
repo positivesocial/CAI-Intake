@@ -208,19 +208,47 @@ export default function BulkTrainingUpload() {
   // Open verify dialog
   const handleReview = (result: ProcessResult) => {
     setSelectedResult(result);
-    // Safely map parts - handle both formats (size.L/W or direct length/width)
+    // Safely map parts - handle multiple formats from different AI responses
     const mappedParts = result.parsedParts.map(p => {
       // Handle different part formats from the API
-      const part = p as CutPart & { length?: number; width?: number };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const part = p as any;
+      
+      // Extract edge banding - can be in ops.edgeBanding, ops.edging, or top-level edgeBanding
+      const edgeBanding = part.ops?.edgeBanding || part.edgeBanding || part.ops?.edging;
+      let edgeCode = "";
+      if (edgeBanding) {
+        if (typeof edgeBanding === "string") {
+          edgeCode = edgeBanding;
+        } else if (edgeBanding.detected || edgeBanding.L1 || edgeBanding.L2 || edgeBanding.W1 || edgeBanding.W2) {
+          edgeCode = formatEdgeCode(edgeBanding);
+        } else if (edgeBanding.summary?.code) {
+          edgeCode = edgeBanding.summary.code;
+        }
+      }
+      
+      // Extract grooving - can be in ops.grooves, grooving, or top-level
+      const grooving = part.ops?.grooves || part.grooving;
+      let grooveCode = "";
+      if (grooving) {
+        if (typeof grooving === "string") {
+          grooveCode = grooving;
+        } else if (Array.isArray(grooving) && grooving.length > 0) {
+          grooveCode = "GL"; // Has groove operations
+        } else if (grooving.detected) {
+          grooveCode = (grooving.GL ? "GL" : "") + (grooving.GW ? "GW" : "");
+        }
+      }
+      
       return {
         label: part.label || part.part_id || "Part",
-        length: part.size?.L ?? part.length ?? 0,
-        width: part.size?.W ?? part.width ?? 0,
-        quantity: part.qty ?? 1,
-        thickness: part.thickness_mm ?? 18,
-        material: part.material_id,
-        edge: part.ops?.edgeBanding ? formatEdgeCode(part.ops.edgeBanding) : undefined,
-        groove: part.ops?.grooves?.length ? "GL" : undefined,
+        length: part.size?.L ?? part.length ?? part.length_mm ?? 0,
+        width: part.size?.W ?? part.width ?? part.width_mm ?? 0,
+        quantity: part.qty ?? part.quantity ?? 1,
+        thickness: part.thickness_mm ?? part.thickness ?? 18,
+        material: part.material_id ?? part.material,
+        edge: edgeCode || undefined,
+        groove: grooveCode || undefined,
         notes: part.notes,
       };
     });

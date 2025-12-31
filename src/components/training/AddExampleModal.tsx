@@ -127,26 +127,46 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
       const processingTime = Date.now() - startTime;
 
       if (response.ok && data.success && data.parts?.length > 0) {
-        const normalized = data.parts.map((p: {
-          label?: string;
-          part_id?: string;
-          size?: { L: number; W: number };
-          qty?: number;
-          thickness_mm?: number;
-          material_id?: string;
-          ops?: { edgeBanding?: { L1?: boolean; L2?: boolean; W1?: boolean; W2?: boolean }; grooves?: unknown[] };
-          notes?: string;
-        }) => ({
-          label: p.label || p.part_id || "Part",
-          length: p.size?.L || 0,
-          width: p.size?.W || 0,
-          quantity: p.qty || 1,
-          thickness: p.thickness_mm,
-          material: p.material_id,
-          edge: p.ops?.edgeBanding ? formatEdgeCode(p.ops.edgeBanding) : undefined,
-          groove: p.ops?.grooves?.length ? "GL" : undefined,
-          notes: p.notes,
-        }));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const normalized = data.parts.map((p: any) => {
+          // Extract edge banding - can be in ops.edgeBanding, ops.edging, or top-level edgeBanding
+          const edgeBanding = p.ops?.edgeBanding || p.edgeBanding || p.ops?.edging;
+          let edgeCode = "";
+          if (edgeBanding) {
+            if (typeof edgeBanding === "string") {
+              edgeCode = edgeBanding;
+            } else if (edgeBanding.detected || edgeBanding.L1 || edgeBanding.L2 || edgeBanding.W1 || edgeBanding.W2) {
+              edgeCode = formatEdgeCode(edgeBanding);
+            } else if (edgeBanding.summary?.code) {
+              edgeCode = edgeBanding.summary.code;
+            }
+          }
+          
+          // Extract grooving - can be in ops.grooves, grooving, or top-level
+          const grooving = p.ops?.grooves || p.grooving;
+          let grooveCode = "";
+          if (grooving) {
+            if (typeof grooving === "string") {
+              grooveCode = grooving;
+            } else if (Array.isArray(grooving) && grooving.length > 0) {
+              grooveCode = "GL"; // Has groove operations
+            } else if (grooving.detected) {
+              grooveCode = (grooving.GL ? "GL" : "") + (grooving.GW ? "GW" : "");
+            }
+          }
+          
+          return {
+            label: p.label || p.part_id || "Part",
+            length: p.size?.L ?? p.length ?? p.length_mm ?? 0,
+            width: p.size?.W ?? p.width ?? p.width_mm ?? 0,
+            quantity: p.qty ?? p.quantity ?? 1,
+            thickness: p.thickness_mm ?? p.thickness ?? 18,
+            material: p.material_id ?? p.material,
+            edge: edgeCode || undefined,
+            groove: grooveCode || undefined,
+            notes: p.notes,
+          };
+        });
 
         setParsedParts(normalized);
         setPartsJson(JSON.stringify(normalized, null, 2));
