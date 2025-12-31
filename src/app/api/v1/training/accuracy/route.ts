@@ -119,6 +119,8 @@ interface AccuracyLog {
   materialAccuracy: number | null;
   edgingAccuracy: number | null;
   groovingAccuracy: number | null;
+  holesAccuracy: number | null;
+  cncAccuracy: number | null;
   quantityAccuracy: number | null;
   labelAccuracy: number | null;
   fewShotExamplesUsed: number;
@@ -263,6 +265,8 @@ function calculateFieldAverages(logs: AccuracyLog[]): Record<string, number | nu
     { key: "materialAccuracy", name: "materials" },
     { key: "edgingAccuracy", name: "edging" },
     { key: "groovingAccuracy", name: "grooving" },
+    { key: "holesAccuracy", name: "holes" },
+    { key: "cncAccuracy", name: "cnc" },
     { key: "quantityAccuracy", name: "quantities" },
     { key: "labelAccuracy", name: "labels" },
   ];
@@ -296,6 +300,8 @@ function getEmptySummary() {
       materials: null,
       edging: null,
       grooving: null,
+      holes: null,
+      cnc: null,
       quantities: null,
       labels: null,
     },

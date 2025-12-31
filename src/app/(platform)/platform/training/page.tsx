@@ -178,36 +178,58 @@ export default function PlatformTrainingPage() {
           autoTrainedExamples: examplesData?.autoTrained || 0,
         };
 
+        // Build accuracy by category from API data or defaults
+        const fieldData = accuracyData?.data?.fieldAccuracy || accuracyData?.byField || {};
+        const sampleCount = accuracyData?.data?.totalDocuments || 0;
+        
         const accuracyByCategory: AccuracyByCategory[] = [
           { 
             category: "Dimensions", 
-            accuracy: accuracyData?.byField?.dimensions || 95, 
-            samples: 100, 
-            trend: 2.5 
+            accuracy: (fieldData.dimensions ?? 0) * 100, 
+            samples: sampleCount, 
+            trend: 0 
           },
           { 
             category: "Materials", 
-            accuracy: accuracyData?.byField?.materials || 88, 
-            samples: 100, 
-            trend: 1.2 
+            accuracy: (fieldData.materials ?? 0) * 100, 
+            samples: sampleCount, 
+            trend: 0 
           },
           { 
             category: "Edge Banding", 
-            accuracy: accuracyData?.byField?.edging || 82, 
-            samples: 100, 
-            trend: 5.0 
+            accuracy: (fieldData.edging ?? 0) * 100, 
+            samples: sampleCount, 
+            trend: 0 
+          },
+          { 
+            category: "Grooving", 
+            accuracy: (fieldData.grooving ?? 0) * 100, 
+            samples: sampleCount, 
+            trend: 0 
+          },
+          { 
+            category: "Holes/Drilling", 
+            accuracy: (fieldData.holes ?? fieldData.drilling ?? 0) * 100, 
+            samples: sampleCount, 
+            trend: 0 
+          },
+          { 
+            category: "CNC/Routing", 
+            accuracy: (fieldData.cnc ?? fieldData.routing ?? 0) * 100, 
+            samples: sampleCount, 
+            trend: 0 
           },
           { 
             category: "Labels/Names", 
-            accuracy: accuracyData?.byField?.labels || 90, 
-            samples: 100, 
-            trend: -0.5 
+            accuracy: (fieldData.labels ?? 0) * 100, 
+            samples: sampleCount, 
+            trend: 0 
           },
           { 
             category: "Quantities", 
-            accuracy: accuracyData?.byField?.quantities || 97, 
-            samples: 100, 
-            trend: 0.8 
+            accuracy: (fieldData.quantities ?? 0) * 100, 
+            samples: sampleCount, 
+            trend: 0 
           },
         ];
 

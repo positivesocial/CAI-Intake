@@ -23,6 +23,8 @@ export interface AccuracyMetrics {
   materialAccuracy: number;
   edgingAccuracy: number;
   groovingAccuracy: number;
+  holesAccuracy: number;
+  cncAccuracy: number;
   quantityAccuracy: number;
   labelAccuracy: number;
 }
@@ -44,6 +46,8 @@ export interface AccuracyLogEntry {
   materialAccuracy?: number;
   edgingAccuracy?: number;
   groovingAccuracy?: number;
+  holesAccuracy?: number;
+  cncAccuracy?: number;
   quantityAccuracy?: number;
   labelAccuracy?: number;
   
@@ -100,6 +104,8 @@ export function calculateAccuracyMetrics(
       materialAccuracy: 0,
       edgingAccuracy: 0,
       groovingAccuracy: 0,
+      holesAccuracy: 0,
+      cncAccuracy: 0,
       quantityAccuracy: 0,
       labelAccuracy: 0,
     };
@@ -110,6 +116,8 @@ export function calculateAccuracyMetrics(
   let materialCorrect = 0;
   let edgingCorrect = 0;
   let groovingCorrect = 0;
+  let holesCorrect = 0;
+  let cncCorrect = 0;
   let quantityCorrect = 0;
   let labelCorrect = 0;
 
@@ -124,6 +132,8 @@ export function calculateAccuracyMetrics(
     const matMatch = checkMaterialMatch(parsed, truth);
     const edgeMatch = checkEdgingMatch(parsed, truth);
     const grooveMatch = checkGroovingMatch(parsed, truth);
+    const holesMatch = checkHolesMatch(parsed, truth);
+    const cncMatch = checkCncMatch(parsed, truth);
     const qtyMatch = checkQuantityMatch(parsed, truth);
     const labelMatch = checkLabelMatch(parsed, truth);
 
@@ -131,6 +141,8 @@ export function calculateAccuracyMetrics(
     if (matMatch) materialCorrect++;
     if (edgeMatch) edgingCorrect++;
     if (grooveMatch) groovingCorrect++;
+    if (holesMatch) holesCorrect++;
+    if (cncMatch) cncCorrect++;
     if (qtyMatch) quantityCorrect++;
     if (labelMatch) labelCorrect++;
 
@@ -151,6 +163,8 @@ export function calculateAccuracyMetrics(
     materialAccuracy: matched > 0 ? materialCorrect / matched : 0,
     edgingAccuracy: matched > 0 ? edgingCorrect / matched : 0,
     groovingAccuracy: matched > 0 ? groovingCorrect / matched : 0,
+    holesAccuracy: matched > 0 ? holesCorrect / matched : 0,
+    cncAccuracy: matched > 0 ? cncCorrect / matched : 0,
     quantityAccuracy: matched > 0 ? quantityCorrect / matched : 0,
     labelAccuracy: matched > 0 ? labelCorrect / matched : 0,
   };
@@ -315,6 +329,67 @@ function checkGroovingMatch(parsed: CutPart, truth: CutPart): boolean {
   return true;
 }
 
+function checkHolesMatch(parsed: CutPart, truth: CutPart): boolean {
+  const parsedHoles = parsed.ops?.holes || [];
+  const truthHoles = truth.ops?.holes || [];
+  
+  // Simple check: same number of holes operations
+  if (parsedHoles.length !== truthHoles.length) return false;
+  
+  // If both have no holes, match
+  if (parsedHoles.length === 0 && truthHoles.length === 0) return true;
+  
+  // Check hole pattern IDs match
+  const parsedPatterns = new Set(parsedHoles.map(h => h.pattern_id || "default"));
+  const truthPatterns = new Set(truthHoles.map(h => h.pattern_id || "default"));
+  
+  if (parsedPatterns.size !== truthPatterns.size) return false;
+  
+  for (const pattern of parsedPatterns) {
+    if (!truthPatterns.has(pattern)) return false;
+  }
+  
+  return true;
+}
+
+function checkCncMatch(parsed: CutPart, truth: CutPart): boolean {
+  // Check both routing and custom CNC operations
+  const parsedRouting = parsed.ops?.routing || [];
+  const truthRouting = truth.ops?.routing || [];
+  const parsedCustomCnc = parsed.ops?.custom_cnc_ops || [];
+  const truthCustomCnc = truth.ops?.custom_cnc_ops || [];
+  
+  // Simple check: same number of operations
+  if (parsedRouting.length !== truthRouting.length) return false;
+  if (parsedCustomCnc.length !== truthCustomCnc.length) return false;
+  
+  // If all empty, match
+  if (parsedRouting.length === 0 && parsedCustomCnc.length === 0 &&
+      truthRouting.length === 0 && truthCustomCnc.length === 0) {
+    return true;
+  }
+  
+  // Check routing profile IDs match
+  const parsedRoutingIds = new Set(parsedRouting.map(r => r.profile_id || "default"));
+  const truthRoutingIds = new Set(truthRouting.map(r => r.profile_id || "default"));
+  
+  if (parsedRoutingIds.size !== truthRoutingIds.size) return false;
+  for (const id of parsedRoutingIds) {
+    if (!truthRoutingIds.has(id)) return false;
+  }
+  
+  // Check custom CNC op_types match
+  const parsedCncIds = new Set(parsedCustomCnc.map(c => c.op_type || "default"));
+  const truthCncIds = new Set(truthCustomCnc.map(c => c.op_type || "default"));
+  
+  if (parsedCncIds.size !== truthCncIds.size) return false;
+  for (const id of parsedCncIds) {
+    if (!truthCncIds.has(id)) return false;
+  }
+  
+  return true;
+}
+
 function checkQuantityMatch(parsed: CutPart, truth: CutPart): boolean {
   return parsed.qty === truth.qty;
 }
@@ -406,6 +481,8 @@ export async function logParsingAccuracy(
         materialAccuracy: entry.materialAccuracy,
         edgingAccuracy: entry.edgingAccuracy,
         groovingAccuracy: entry.groovingAccuracy,
+        holesAccuracy: entry.holesAccuracy,
+        cncAccuracy: entry.cncAccuracy,
         quantityAccuracy: entry.quantityAccuracy,
         labelAccuracy: entry.labelAccuracy,
         fewShotExamplesUsed: entry.fewShotExamplesUsed,
@@ -889,6 +966,8 @@ export async function logAccuracyFromCorrections(
       materialAccuracy: metrics.materialAccuracy,
       edgingAccuracy: metrics.edgingAccuracy,
       groovingAccuracy: metrics.groovingAccuracy,
+      holesAccuracy: metrics.holesAccuracy,
+      cncAccuracy: metrics.cncAccuracy,
       quantityAccuracy: metrics.quantityAccuracy,
       labelAccuracy: metrics.labelAccuracy,
       fewShotExamplesUsed: metadata.fewShotExamplesUsed || 0,

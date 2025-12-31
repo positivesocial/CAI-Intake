@@ -885,6 +885,8 @@ model ParsingAccuracyLog {
   materialAccuracy    Float?        @map("material_accuracy")
   edgingAccuracy      Float?        @map("edging_accuracy")
   groovingAccuracy    Float?        @map("grooving_accuracy")
+  holesAccuracy       Float?        @map("holes_accuracy")
+  cncAccuracy         Float?        @map("cnc_accuracy")
   quantityAccuracy    Float?        @map("quantity_accuracy")
   labelAccuracy       Float?        @map("label_accuracy")
   fewShotExamplesUsed Int           @default(0) @map("few_shot_examples_used")
