@@ -957,6 +957,28 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // DEBUG: Log the exact structure being returned to client
+    if (aiResult.parts && aiResult.parts.length > 0) {
+      const firstPart = aiResult.parts[0] as Record<string, unknown>;
+      logger.info("🔍 [DEBUG] API Response parts structure", {
+        requestId,
+        partsCount: aiResult.parts.length,
+        firstPartKeys: Object.keys(firstPart),
+        firstPartSample: {
+          size: firstPart.size,
+          qty: firstPart.qty,
+          label: firstPart.label,
+          // Check for alternative formats
+          l: firstPart.l,
+          w: firstPart.w,
+          q: firstPart.q,
+          length: firstPart.length,
+          width: firstPart.width,
+          quantity: firstPart.quantity,
+        },
+      });
+    }
+
     // Return parsed results with file ID if saved
     return NextResponse.json({
       success: true,

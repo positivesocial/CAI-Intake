@@ -308,6 +308,10 @@ export default function BulkTrainingUpload() {
         notes: notes || undefined,
       };
     });
+    
+    // DEBUG: Log the mapped output
+    console.log("🔍 [Training] Mapped parts result:", JSON.stringify(mappedParts.slice(0, 3), null, 2));
+    
     setEditedParts(JSON.stringify(mappedParts, null, 2));
     setShowVerifyDialog(true);
   };
