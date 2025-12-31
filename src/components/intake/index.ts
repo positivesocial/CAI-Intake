@@ -20,6 +20,7 @@ export * from "./ProjectMergePanel";
 export * from "./CsvWizard";
 export * from "./OcrProgressTracker";
 export * from "./SourceFilesPanel";
+export * from "./InvalidPartsModal";
 
 // Step Components for Stepper Workflow
 export * from "./steps";

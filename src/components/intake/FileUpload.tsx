@@ -44,6 +44,7 @@ import { toast } from "sonner";
 import { fileUploadLogger, createFileContext } from "@/lib/logging/file-upload-logger";
 import { notifyFileProcessed, notifyFileError } from "@/lib/notifications";
 import { ExcelImportDialog } from "./ExcelImportDialog";
+import { InvalidPartsModal, useInvalidPartsModal, type SkippedPartInfo } from "./InvalidPartsModal";
 
 type FileType = "pdf" | "image" | "excel" | "csv" | "text" | "unknown";
 type ProcessingStatus = "queued" | "uploading" | "detecting_qr" | "processing" | "complete" | "error" | "cancelled";
@@ -147,6 +148,9 @@ export function FileUpload() {
   // Excel/CSV import dialog state
   const [excelDialogOpen, setExcelDialogOpen] = React.useState(false);
   const [excelFile, setExcelFile] = React.useState<File | null>(null);
+  
+  // Invalid parts modal for post-parse corrections
+  const invalidPartsModal = useInvalidPartsModal();
   
   const [batchStats, setBatchStats] = React.useState<BatchStats>({
     totalFiles: 0,
@@ -709,6 +713,33 @@ export function FileUpload() {
               grooving: metadata.grooving,
               cncOps: metadata.cncOps,
             });
+            
+            // Check for skipped parts that need user attention
+            if (data.skippedParts && data.skippedParts.length > 0) {
+              console.warn(`📤 [FileUpload] ⚠️ ${data.skippedParts.length} parts skipped due to invalid data`, {
+                fileId: fileId.substring(0, 8),
+                skippedCount: data.skippedParts.length,
+                skippedRows: data.skippedParts.map((sp: SkippedPartInfo) => sp.row),
+              });
+              
+              // Show toast notification
+              toast.warning(`${data.skippedParts.length} part(s) need attention`, {
+                description: "Some parts had missing dimensions. Click to review.",
+                duration: 10000,
+                action: {
+                  label: "Review",
+                  onClick: () => invalidPartsModal.showModal(data.skippedParts, uploadedFile.file.name),
+                },
+              });
+              
+              // Automatically show modal for correction
+              invalidPartsModal.showModal(data.skippedParts, uploadedFile.file.name);
+            }
+            
+            // Show warnings if any
+            if (data.warnings && data.warnings.length > 0) {
+              console.debug(`📤 [FileUpload] Parsing warnings:`, data.warnings);
+            }
 
             // Track uploaded file for linking to cutlist later
             if (data.uploadedFileId) {
@@ -1298,6 +1329,34 @@ export function FileUpload() {
         onOpenChange={setExcelDialogOpen}
         file={excelFile}
         onComplete={handleExcelImportComplete}
+      />
+      
+      {/* Invalid Parts Correction Modal */}
+      <InvalidPartsModal
+        open={invalidPartsModal.isOpen}
+        onOpenChange={invalidPartsModal.setIsOpen}
+        skippedParts={invalidPartsModal.skippedParts}
+        fileName={invalidPartsModal.fileName}
+        onAddParts={(correctedParts) => {
+          // Convert corrected parts to the format expected by addToInbox
+          const partsWithStatus: ParsedPartWithStatus[] = correctedParts.map((p, index) => ({
+            part_id: `corrected-${Date.now()}-${index}`,
+            label: p.label,
+            qty: p.qty,
+            size: p.size,
+            thickness_mm: p.thickness_mm,
+            material_id: p.material || "",
+            allow_rotation: true,
+            // Notes is an object with operator/cnc/design fields
+            notes: p.notes ? { operator: p.notes } : undefined,
+            _status: "pending" as const,
+            _originalText: `Manually corrected from invalid part`,
+          }));
+          
+          addToInbox(partsWithStatus);
+          
+          console.info(`📤 [FileUpload] Added ${correctedParts.length} corrected parts to inbox`);
+        }}
       />
     </Card>
   );
