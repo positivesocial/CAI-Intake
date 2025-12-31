@@ -34,17 +34,20 @@ const NAV_ITEMS = [
   { href: "/platform/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/platform/organizations", label: "Organizations", icon: Building2 },
   { href: "/platform/analytics", label: "Analytics", icon: Activity },
+  { href: "/platform/training", label: "AI Training", icon: Brain },
   { href: "/platform/plans", label: "Plans", icon: ListOrdered },
   { href: "/platform/revenue", label: "Revenue", icon: DollarSign },
   { href: "/platform/settings", label: "Settings", icon: Settings },
 ];
 
 interface PlatformHeaderProps {
+  title?: string;
+  description?: string;
   showSearch?: boolean;
   showNotifications?: boolean;
 }
 
-export function PlatformHeader({ showSearch = true, showNotifications = true }: PlatformHeaderProps) {
+export function PlatformHeader({ title, description, showSearch = true, showNotifications = true }: PlatformHeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuthStore();
@@ -132,7 +135,7 @@ export function PlatformHeader({ showSearch = true, showNotifications = true }: 
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/settings/training">
+                  <Link href="/platform/training">
                     <Brain className="h-4 w-4 mr-2" />
                     AI Training
                   </Link>
