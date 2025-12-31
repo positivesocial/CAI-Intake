@@ -125,11 +125,30 @@ export default function DashboardLayout({
   }, []);
 
   // Toggle sidebar collapsed state
-  const toggleCollapsed = () => {
+  const toggleCollapsed = React.useCallback(() => {
     const newState = !isCollapsed;
     setIsCollapsed(newState);
     localStorage.setItem("sidebar-collapsed", String(newState));
-  };
+  }, [isCollapsed]);
+
+  // Keyboard shortcut for sidebar toggle ([ to collapse, ] to expand)
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      if (e.key === "[" && !isCollapsed) {
+        toggleCollapsed();
+      } else if (e.key === "]" && isCollapsed) {
+        toggleCollapsed();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCollapsed, toggleCollapsed]);
 
   // Redirect to login if not authenticated
   React.useEffect(() => {
@@ -302,16 +321,22 @@ export default function DashboardLayout({
         )}
       >
         <div className="flex flex-col h-full">
-          {/* Collapse Toggle - Desktop Only */}
+          {/* Collapse Toggle - Desktop Only - More visible and intuitive */}
           <button
             onClick={toggleCollapsed}
-            className="hidden lg:flex absolute -right-3 top-6 w-6 h-6 items-center justify-center bg-[var(--card)] border border-[var(--border)] rounded-full shadow-sm hover:bg-[var(--muted)] transition-colors z-10"
-            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className={cn(
+              "hidden lg:flex absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-16 items-center justify-center",
+              "bg-[var(--card)] border border-[var(--border)] rounded-r-lg shadow-md",
+              "hover:bg-[var(--muted)] hover:shadow-lg hover:border-[var(--cai-teal)]/50",
+              "transition-all duration-200 z-10 group"
+            )}
+            title={isCollapsed ? "Expand sidebar (])" : "Collapse sidebar ([)"}
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {isCollapsed ? (
-              <PanelLeft className="h-3.5 w-3.5" />
+              <PanelLeft className="h-5 w-5 text-[var(--muted-foreground)] group-hover:text-[var(--cai-teal)] transition-colors" />
             ) : (
-              <PanelLeftClose className="h-3.5 w-3.5" />
+              <PanelLeftClose className="h-5 w-5 text-[var(--muted-foreground)] group-hover:text-[var(--cai-teal)] transition-colors" />
             )}
           </button>
 
@@ -437,6 +462,33 @@ export default function DashboardLayout({
                 </div>
               )}
             </Link>
+            
+            {/* Collapse/Expand Button - More visible at bottom */}
+            <button
+              onClick={toggleCollapsed}
+              className={cn(
+                "hidden lg:flex items-center rounded-lg transition-colors mt-2 w-full",
+                "hover:bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
+                isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
+              )}
+              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isCollapsed ? (
+                <>
+                  <PanelLeft className="h-5 w-5 flex-shrink-0" />
+                  <div className="absolute left-full ml-2 px-2 py-1 bg-[var(--popover)] text-[var(--popover-foreground)] text-sm rounded-md shadow-lg border border-[var(--border)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+                    Expand
+                  </div>
+                </>
+              ) : (
+                <>
+                  <PanelLeftClose className="h-5 w-5 flex-shrink-0" />
+                  <span className="font-medium">Collapse</span>
+                  <kbd className="ml-auto px-1.5 py-0.5 text-xs bg-[var(--muted)] rounded border border-[var(--border)]">[</kbd>
+                </>
+              )}
+            </button>
+            
             {!isCollapsed && (
               <div className="mt-2 px-3 py-2 text-xs text-[var(--muted-foreground)]">
                 <p>CAI Intake v1.0.0</p>
