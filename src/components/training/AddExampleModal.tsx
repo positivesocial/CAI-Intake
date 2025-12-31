@@ -130,8 +130,12 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
 
       if (response.ok && data.success && data.parts?.length > 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        // API can return COMPACT format (l, w, q, e, g, m, n, r) or FULL format (length, width, quantity, etc.)
-        const normalized = data.parts.map((p: any) => {
+        // API returns ParsedPartResult format: { part: CutPart, confidence, ... }
+        // Or can return COMPACT format (l, w, q, e, g, m, n, r) or FULL format (length, width, quantity, etc.)
+        const normalized = data.parts.map((wrapper: any) => {
+          // API returns { part: CutPart, confidence, ... } - unwrap if needed
+          const p = wrapper.part || wrapper;
+          
           // Extract edge banding - check compact format FIRST (e), then full formats
           const edgeBanding = p.e || p.ops?.edgeBanding || p.edgeBanding || p.ops?.edging;
           let edgeCode = "";

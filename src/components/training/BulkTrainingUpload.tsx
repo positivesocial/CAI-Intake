@@ -209,25 +209,16 @@ export default function BulkTrainingUpload() {
   const handleReview = (result: ProcessResult) => {
     setSelectedResult(result);
     
-    // DEBUG: Log the raw parts structure to understand what's coming from the API
-    console.log("🔍 [Training] Raw parsed parts from API:", JSON.stringify(result.parsedParts.slice(0, 3), null, 2));
-    if (result.parsedParts[0]) {
-      console.log("🔍 [Training] First part keys:", Object.keys(result.parsedParts[0]));
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const p = result.parsedParts[0] as any;
-      console.log("🔍 [Training] First part dimensions:", {
-        l: p.l, w: p.w, q: p.q,
-        length: p.length, width: p.width, quantity: p.quantity,
-        size: p.size, qty: p.qty,
-      });
-    }
-    
     // Safely map parts - handle multiple formats from different AI responses
-    // API can return COMPACT format (l, w, q, e, g, m, n, r) or FULL format (length, width, quantity, etc.)
+    // API returns ParsedPartResult format: { part: CutPart, confidence, ... }
+    // Or can return COMPACT format (l, w, q, e, g, m, n, r) or FULL format (length, width, quantity, etc.)
     const mappedParts = result.parsedParts.map(p => {
       // Handle different part formats from the API
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const part = p as any;
+      const wrapper = p as any;
+      
+      // API returns { part: CutPart, confidence, ... } - unwrap if needed
+      const part = wrapper.part || wrapper;
       
       // Extract edge banding - check compact format FIRST (e), then full formats
       const edgeBanding = part.e || part.ops?.edgeBanding || part.edgeBanding || part.ops?.edging;
@@ -308,10 +299,6 @@ export default function BulkTrainingUpload() {
         notes: notes || undefined,
       };
     });
-    
-    // DEBUG: Log the mapped output
-    console.log("🔍 [Training] Mapped parts result:", JSON.stringify(mappedParts.slice(0, 3), null, 2));
-    
     setEditedParts(JSON.stringify(mappedParts, null, 2));
     setShowVerifyDialog(true);
   };
