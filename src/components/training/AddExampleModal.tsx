@@ -130,9 +130,10 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
 
       if (response.ok && data.success && data.parts?.length > 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // API can return COMPACT format (l, w, q, e, g, m, n, r) or FULL format (length, width, quantity, etc.)
         const normalized = data.parts.map((p: any) => {
-          // Extract edge banding - can be in ops.edgeBanding, ops.edging, or top-level edgeBanding
-          const edgeBanding = p.ops?.edgeBanding || p.edgeBanding || p.ops?.edging;
+          // Extract edge banding - check compact format FIRST (e), then full formats
+          const edgeBanding = p.e || p.ops?.edgeBanding || p.edgeBanding || p.ops?.edging;
           let edgeCode = "";
           if (edgeBanding) {
             if (typeof edgeBanding === "string") {
@@ -144,8 +145,8 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
             }
           }
           
-          // Extract grooving - can be in ops.grooves, grooving, or top-level
-          const grooving = p.ops?.grooves || p.grooving;
+          // Extract grooving - check compact format FIRST (g), then full formats
+          const grooving = p.g || p.ops?.grooves || p.grooving;
           let grooveCode = "";
           if (grooving) {
             if (typeof grooving === "string") {
@@ -157,8 +158,8 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
             }
           }
           
-          // Extract drilling/holes - can be in ops.holes, drilling, or top-level
-          const drilling = p.ops?.holes || p.drilling || p.holes;
+          // Extract drilling/holes - check compact format FIRST (d/h), then full formats
+          const drilling = p.d || p.h || p.ops?.holes || p.drilling || p.holes;
           let drillCode = "";
           if (drilling) {
             if (typeof drilling === "string") {
@@ -170,8 +171,8 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
             }
           }
           
-          // Extract CNC operations - can be in ops.cnc, ops.custom_cnc_ops, cncOperations, or top-level
-          const cnc = p.ops?.cnc || p.ops?.custom_cnc_ops || p.cncOperations || p.cnc;
+          // Extract CNC operations - check compact format FIRST (c), then full formats
+          const cnc = p.c || p.ops?.cnc || p.ops?.custom_cnc_ops || p.cncOperations || p.cnc;
           let cncCode = "";
           if (cnc) {
             if (typeof cnc === "string") {
@@ -183,16 +184,24 @@ export function AddExampleModal({ open, onOpenChange, onSuccess }: AddExampleMod
             }
           }
           
-          // Extract notes - can be in notes, operator_notes, or n (compact format)
-          const notes = p.notes || p.operator_notes || p.n || "";
+          // Extract notes - check compact format FIRST (n), then full formats
+          const notes = p.n || p.notes || p.operator_notes || "";
+          
+          // Extract material - check compact format FIRST (m), then full formats
+          const material = p.m || p.material_id || p.material || "";
+          
+          // Generate label from row number (r) if no label present
+          const label = p.label || p.part_id || (p.r ? `Part ${p.r}` : "Part");
           
           return {
-            label: p.label || p.part_id || "Part",
-            length: p.size?.L ?? p.length ?? p.length_mm ?? 0,
-            width: p.size?.W ?? p.width ?? p.width_mm ?? 0,
-            quantity: p.qty ?? p.quantity ?? 1,
-            thickness: p.thickness_mm ?? p.thickness ?? 18,
-            material: p.material_id ?? p.material,
+            label,
+            // COMPACT FORMAT: l, w, q (single letter keys)
+            // FULL FORMAT: length, width, quantity OR size.L, size.W, qty
+            length: p.l ?? p.size?.L ?? p.length ?? p.length_mm ?? 0,
+            width: p.w ?? p.size?.W ?? p.width ?? p.width_mm ?? 0,
+            quantity: p.q ?? p.qty ?? p.quantity ?? 1,
+            thickness: p.t ?? p.thickness_mm ?? p.thickness ?? 18,
+            material: material || undefined,
             edge: edgeCode || undefined,
             groove: grooveCode || undefined,
             drill: drillCode || undefined,

@@ -209,13 +209,14 @@ export default function BulkTrainingUpload() {
   const handleReview = (result: ProcessResult) => {
     setSelectedResult(result);
     // Safely map parts - handle multiple formats from different AI responses
+    // API can return COMPACT format (l, w, q, e, g, m, n, r) or FULL format (length, width, quantity, etc.)
     const mappedParts = result.parsedParts.map(p => {
       // Handle different part formats from the API
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const part = p as any;
       
-      // Extract edge banding - can be in ops.edgeBanding, ops.edging, or top-level edgeBanding
-      const edgeBanding = part.ops?.edgeBanding || part.edgeBanding || part.ops?.edging;
+      // Extract edge banding - check compact format FIRST (e), then full formats
+      const edgeBanding = part.e || part.ops?.edgeBanding || part.edgeBanding || part.ops?.edging;
       let edgeCode = "";
       if (edgeBanding) {
         if (typeof edgeBanding === "string") {
@@ -227,8 +228,8 @@ export default function BulkTrainingUpload() {
         }
       }
       
-      // Extract grooving - can be in ops.grooves, grooving, or top-level
-      const grooving = part.ops?.grooves || part.grooving;
+      // Extract grooving - check compact format FIRST (g), then full formats
+      const grooving = part.g || part.ops?.grooves || part.grooving;
       let grooveCode = "";
       if (grooving) {
         if (typeof grooving === "string") {
@@ -240,8 +241,8 @@ export default function BulkTrainingUpload() {
         }
       }
       
-      // Extract drilling/holes - can be in ops.holes, drilling, or top-level
-      const drilling = part.ops?.holes || part.drilling || part.holes;
+      // Extract drilling/holes - check compact format FIRST (d/h), then full formats
+      const drilling = part.d || part.h || part.ops?.holes || part.drilling || part.holes;
       let drillCode = "";
       if (drilling) {
         if (typeof drilling === "string") {
@@ -254,8 +255,8 @@ export default function BulkTrainingUpload() {
         }
       }
       
-      // Extract CNC operations - can be in ops.cnc, ops.custom_cnc_ops, cncOperations, or top-level
-      const cnc = part.ops?.cnc || part.ops?.custom_cnc_ops || part.cncOperations || part.cnc;
+      // Extract CNC operations - check compact format FIRST (c), then full formats
+      const cnc = part.c || part.ops?.cnc || part.ops?.custom_cnc_ops || part.cncOperations || part.cnc;
       let cncCode = "";
       if (cnc) {
         if (typeof cnc === "string") {
@@ -268,16 +269,24 @@ export default function BulkTrainingUpload() {
         }
       }
       
-      // Extract notes - can be in notes, operator_notes, or n (compact format)
-      const notes = part.notes || part.operator_notes || part.n || "";
+      // Extract notes - check compact format FIRST (n), then full formats
+      const notes = part.n || part.notes || part.operator_notes || "";
+      
+      // Extract material - check compact format FIRST (m), then full formats
+      const material = part.m || part.material_id || part.material || "";
+      
+      // Generate label from row number (r) if no label present
+      const label = part.label || part.part_id || (part.r ? `Part ${part.r}` : "Part");
       
       return {
-        label: part.label || part.part_id || "Part",
-        length: part.size?.L ?? part.length ?? part.length_mm ?? 0,
-        width: part.size?.W ?? part.width ?? part.width_mm ?? 0,
-        quantity: part.qty ?? part.quantity ?? 1,
-        thickness: part.thickness_mm ?? part.thickness ?? 18,
-        material: part.material_id ?? part.material,
+        label,
+        // COMPACT FORMAT: l, w, q (single letter keys)
+        // FULL FORMAT: length, width, quantity OR size.L, size.W, qty
+        length: part.l ?? part.size?.L ?? part.length ?? part.length_mm ?? 0,
+        width: part.w ?? part.size?.W ?? part.width ?? part.width_mm ?? 0,
+        quantity: part.q ?? part.qty ?? part.quantity ?? 1,
+        thickness: part.t ?? part.thickness_mm ?? part.thickness ?? 18,
+        material: material || undefined,
         edge: edgeCode || undefined,
         groove: grooveCode || undefined,
         drill: drillCode || undefined,
