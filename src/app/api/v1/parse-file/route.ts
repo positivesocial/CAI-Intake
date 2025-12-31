@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     // Parse form data
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const fileType = formData.get("fileType") as string | null;
+    const fileTypeFromForm = formData.get("fileType") as string | null;
     const templateId = formData.get("templateId") as string | null;
     const templateConfigRaw = formData.get("templateConfig") as string | null;
 
@@ -107,11 +107,31 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // Determine file type from form data OR from the file's MIME type
+    const mimeType = file.type;
+    let fileType: "image" | "pdf" | "excel" | null = fileTypeFromForm as "image" | "pdf" | "excel" | null;
+    
+    if (!fileType) {
+      // Auto-detect from MIME type
+      if (mimeType.startsWith("image/")) {
+        fileType = "image";
+      } else if (mimeType === "application/pdf") {
+        fileType = "pdf";
+      } else if (
+        mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        mimeType === "application/vnd.ms-excel" ||
+        mimeType === "text/csv"
+      ) {
+        fileType = "excel";
+      }
+    }
+    
     const fileSizeKB = file.size / 1024;
     logger.info("📥 [ParseFile] Processing file", {
       requestId,
       fileName: file.name,
-      fileType: fileType || file.type,
+      mimeType,
+      fileType,
       sizeKB: fileSizeKB.toFixed(1),
       hasTemplate: !!templateId,
       templateId,
@@ -633,14 +653,28 @@ export async function POST(request: NextRequest) {
         pdfTimeMs: Date.now() - pdfStartTime,
       });
       
+    } else if (fileType === "excel") {
+      // Excel files need to be parsed client-side with the Excel parser
+      logger.info("📥 [ParseFile] Excel file - use client-side parser", {
+        requestId,
+        fileName: file.name,
+      });
+      return NextResponse.json(
+        { 
+          error: "Excel files should be parsed using the Excel parser in the browser. Please use the paste/upload feature in the intake flow.",
+          code: "EXCEL_USE_CLIENT_PARSER"
+        },
+        { status: 400 }
+      );
     } else {
       logger.warn("📥 [ParseFile] Unsupported file type", {
         requestId,
         fileType,
+        mimeType,
         fileName: file.name,
       });
       return NextResponse.json(
-        { error: "Unsupported file type. Use images or PDFs." },
+        { error: `Unsupported file type: ${mimeType || "unknown"}. Use images (JPG, PNG, WebP) or PDFs.` },
         { status: 400 }
       );
     }
