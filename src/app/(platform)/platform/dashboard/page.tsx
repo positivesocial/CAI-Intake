@@ -102,7 +102,7 @@ interface TopOrganization {
 
 interface ActivityItem {
   id: string;
-  type: "signup" | "upgrade" | "alert";
+  type: "signup" | "upgrade" | "alert" | "org_created" | "cutlist" | "parse";
   message: string;
   time: string;
 }
@@ -731,24 +731,35 @@ export default function PlatformDashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {recentActivity.map((activity) => (
-                    <div key={activity.id} className="flex items-start gap-3">
-                      <div className={cn(
-                        "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                        activity.type === "signup" && "bg-green-100",
-                        activity.type === "upgrade" && "bg-purple-100",
-                        activity.type === "alert" && "bg-amber-100",
-                      )}>
-                        {activity.type === "signup" && <Users className="h-4 w-4 text-green-600" />}
-                        {activity.type === "upgrade" && <TrendingUp className="h-4 w-4 text-purple-600" />}
-                        {activity.type === "alert" && <AlertTriangle className="h-4 w-4 text-amber-600" />}
+                  {recentActivity.map((activity) => {
+                    // Determine icon based on message content for more specific styling
+                    const isError = activity.type === "alert" || activity.message.toLowerCase().includes("failed");
+                    const isOrg = activity.message.toLowerCase().includes("organization") || activity.message.toLowerCase().includes("subscribed");
+                    const isCutlist = activity.message.toLowerCase().includes("cutlist") || activity.message.toLowerCase().includes("parsed");
+                    
+                    return (
+                      <div key={activity.id} className="flex items-start gap-3">
+                        <div className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                          isError ? "bg-red-100" :
+                          activity.type === "upgrade" ? "bg-purple-100" :
+                          isOrg ? "bg-blue-100" :
+                          isCutlist ? "bg-teal-100" :
+                          "bg-green-100",
+                        )}>
+                          {isError ? <AlertTriangle className="h-4 w-4 text-red-600" /> :
+                           activity.type === "upgrade" ? <TrendingUp className="h-4 w-4 text-purple-600" /> :
+                           isOrg ? <Building2 className="h-4 w-4 text-blue-600" /> :
+                           isCutlist ? <FileSpreadsheet className="h-4 w-4 text-teal-600" /> :
+                           <Users className="h-4 w-4 text-green-600" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-slate-700 truncate">{activity.message}</p>
+                          <p className="text-xs text-slate-500">{activity.time}</p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-slate-700">{activity.message}</p>
-                        <p className="text-xs text-slate-500">{activity.time}</p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

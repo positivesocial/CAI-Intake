@@ -173,9 +173,10 @@ export async function GET(request: NextRequest) {
     };
 
     // =========================================================================
-    // Parallel queries for top orgs + recent activity (2 queries instead of many)
+    // Parallel queries for top orgs + recent activity (multiple activity types)
     // =========================================================================
-    const [topOrgsData, recentUsers] = await Promise.all([
+    const [topOrgsData, recentUsers, recentOrgs, recentCutlists, recentParseJobs, recentOptimizeJobs] = await Promise.all([
+      // Top organizations
       prisma.organization.findMany({
         select: {
           id: true,
@@ -186,16 +187,67 @@ export async function GET(request: NextRequest) {
         orderBy: { cutlists: { _count: "desc" } },
         take: 5,
       }),
+      // Recent user signups (today)
       prisma.user.findMany({
         where: { createdAt: { gte: startOfDay } },
         select: {
           id: true,
+          name: true,
           email: true,
           createdAt: true,
           organization: { select: { name: true } },
         },
         orderBy: { createdAt: "desc" },
         take: 5,
+      }),
+      // Recent organizations created (this week)
+      prisma.organization.findMany({
+        where: { createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } },
+        select: {
+          id: true,
+          name: true,
+          plan: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      // Recent cutlists created
+      prisma.cutlist.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          createdAt: true,
+          organization: { select: { name: true } },
+          user: { select: { name: true } },
+        },
+      }),
+      // Recent parse jobs
+      prisma.parseJob.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          status: true,
+          sourceKind: true,
+          createdAt: true,
+          organization: { select: { name: true } },
+        },
+      }),
+      // Recent optimize jobs (errors/alerts)
+      prisma.optimizeJob.findMany({
+        where: { status: "error" },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          cutlist: { select: { name: true, organization: { select: { name: true } } } },
+        },
       }),
     ]);
 
@@ -208,14 +260,80 @@ export async function GET(request: NextRequest) {
       status: "active",
     }));
 
-    const recentActivity: ActivityItem[] = recentUsers.map((u) => ({
-      id: u.id,
-      type: "signup" as const,
-      message: u.organization
-        ? `New user: ${u.email} joined ${u.organization.name}`
-        : `New user registered: ${u.email}`,
-      time: formatTimeAgo(u.createdAt),
-    }));
+    // Build comprehensive activity feed
+    type ActivityEntry = {
+      id: string;
+      type: "signup" | "upgrade" | "alert" | "org_created" | "cutlist" | "parse";
+      message: string;
+      time: string;
+      createdAt: Date;
+    };
+
+    const allActivities: ActivityEntry[] = [
+      // User signups
+      ...recentUsers.map((u) => ({
+        id: `user-${u.id}`,
+        type: "signup" as const,
+        message: u.organization
+          ? `${u.name || u.email} joined ${u.organization.name}`
+          : `New user: ${u.email}`,
+        time: formatTimeAgo(u.createdAt),
+        createdAt: u.createdAt,
+      })),
+      // New organizations
+      ...recentOrgs.map((org) => ({
+        id: `org-${org.id}`,
+        type: "org_created" as const,
+        message: `New organization: ${org.name} (${org.plan || 'free'})`,
+        time: formatTimeAgo(org.createdAt),
+        createdAt: org.createdAt,
+      })),
+      // Plan upgrades (non-free new orgs are likely upgrades)
+      ...recentOrgs.filter(o => o.plan && o.plan !== 'free').map((org) => ({
+        id: `upgrade-${org.id}`,
+        type: "upgrade" as const,
+        message: `${org.name} subscribed to ${org.plan} plan`,
+        time: formatTimeAgo(org.createdAt),
+        createdAt: org.createdAt,
+      })),
+      // Recent cutlists
+      ...recentCutlists.map((c) => ({
+        id: `cutlist-${c.id}`,
+        type: "cutlist" as const,
+        message: `${c.organization?.name || 'Unknown'}: ${c.name || 'Untitled'} (${c.status})`,
+        time: formatTimeAgo(c.createdAt),
+        createdAt: c.createdAt,
+      })),
+      // Parse jobs
+      ...recentParseJobs.filter(j => j.status === 'completed' || j.status === 'error').map((j) => ({
+        id: `parse-${j.id}`,
+        type: j.status === 'error' ? "alert" as const : "parse" as const,
+        message: j.status === 'error' 
+          ? `Parse failed: ${j.organization?.name || 'Unknown'} (${j.sourceKind})`
+          : `${j.organization?.name || 'Unknown'}: Parsed ${j.sourceKind}`,
+        time: formatTimeAgo(j.createdAt),
+        createdAt: j.createdAt,
+      })),
+      // Optimization errors (alerts)
+      ...recentOptimizeJobs.map((j) => ({
+        id: `opt-${j.id}`,
+        type: "alert" as const,
+        message: `Optimization failed: ${j.cutlist?.organization?.name || 'Unknown'} - ${j.cutlist?.name || 'Cutlist'}`,
+        time: formatTimeAgo(j.createdAt),
+        createdAt: j.createdAt,
+      })),
+    ];
+
+    // Sort by time and take most recent 10
+    const recentActivity: ActivityItem[] = allActivities
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, 10)
+      .map(({ id, type, message, time }) => ({
+        id,
+        type: type === "org_created" || type === "cutlist" || type === "parse" ? "signup" : type, // Map to supported UI types
+        message,
+        time,
+      }));
 
     return NextResponse.json({
       stats,
