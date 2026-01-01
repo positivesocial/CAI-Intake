@@ -38,6 +38,11 @@ import {
   type ParsedTemplatePart,
 } from "@/lib/ai/template-ocr";
 import {
+  detectTemplateViaText,
+  getTemplateAwareParsingPrompt,
+  type TextBasedTemplateDetection,
+} from "@/lib/ai/template-text-detector";
+import {
   registerTemplatePage,
   checkAutoAccept,
   logTemplateParseAudit,
@@ -322,21 +327,102 @@ export async function POST(request: NextRequest) {
               qrDetectionMs: Date.now() - qrStartTime,
             });
           } else {
-            logger.info("📥 [ParseFile] No QR code found, will try text-based detection during AI parse", {
+            logger.info("📥 [ParseFile] No QR code found, trying AI-based template detection", {
               requestId,
               qrFound: qrDetectionResult.found,
               qrError: qrDetectionResult.error,
               qrDetectionMs: Date.now() - qrStartTime,
             });
             
-            // Mark that we should check for CAI template text during AI parsing
-            parseOptions.checkForTemplateText = true;
+            // ============================================================
+            // FALLBACK: AI-Based Template Detection (when QR fails)
+            // ============================================================
+            try {
+              const textDetectStart = Date.now();
+              const base64Image = Buffer.from(originalBuffer).toString("base64");
+              const detectedMimeType = file.type.startsWith("image/") ? file.type : "image/jpeg";
+              
+              const textDetection = await detectTemplateViaText(base64Image, detectedMimeType);
+              
+              logger.info("📥 [ParseFile] 🔍 AI-based template detection complete", {
+                requestId,
+                isCAITemplate: textDetection.isCAITemplate,
+                confidence: textDetection.confidence.toFixed(2),
+                organizationName: textDetection.organizationName,
+                templateVersion: textDetection.templateVersion,
+                suggestedApproach: textDetection.suggestedApproach,
+                indicators: textDetection.indicators,
+                detectionTimeMs: Date.now() - textDetectStart,
+              });
+              
+              if (textDetection.isCAITemplate && textDetection.confidence >= 0.65) {
+                // Template detected via AI! Use template-aware parsing
+                logger.info("📥 [ParseFile] 🎯 CAI Template detected via AI vision", {
+                  requestId,
+                  confidence: textDetection.confidence.toFixed(2),
+                  orgName: textDetection.organizationName,
+                  version: textDetection.templateVersion,
+                });
+                
+                // Generate a synthetic template ID for tracking
+                const syntheticTemplateId = `CAI-detected-v${textDetection.templateVersion || "1.0"}`;
+                detectedTemplateId = syntheticTemplateId;
+                parseOptions.templateId = syntheticTemplateId;
+                
+                // Use the template-aware parsing prompt
+                deterministicPrompt = getTemplateAwareParsingPrompt(textDetection);
+                parseOptions.deterministicPrompt = deterministicPrompt;
+                
+                // Mark that we detected via text (for analytics)
+                parseOptions.checkForTemplateText = false; // Already detected
+                
+                logger.info("📥 [ParseFile] Using template-aware prompt for AI-detected template", {
+                  requestId,
+                  promptLength: deterministicPrompt.length,
+                });
+              } else {
+                // Not a CAI template or low confidence - use standard OCR
+                parseOptions.checkForTemplateText = true; // Still check post-parse for backup
+              }
+              
+            } catch (textDetectError) {
+              logger.warn("📥 [ParseFile] AI-based template detection failed", {
+                requestId,
+                error: textDetectError instanceof Error ? textDetectError.message : "Unknown error",
+              });
+              parseOptions.checkForTemplateText = true;
+            }
           }
         } catch (qrError) {
-          logger.warn("📥 [ParseFile] QR detection failed (continuing without template)", {
+          logger.warn("📥 [ParseFile] QR detection failed, trying AI-based detection", {
             requestId,
             error: qrError instanceof Error ? qrError.message : "Unknown error",
           });
+          
+          // Even if QR fails, try AI-based detection
+          try {
+            const base64Image = Buffer.from(originalBuffer).toString("base64");
+            const detectedMimeType = file.type.startsWith("image/") ? file.type : "image/jpeg";
+            
+            const textDetection = await detectTemplateViaText(base64Image, detectedMimeType);
+            
+            if (textDetection.isCAITemplate && textDetection.confidence >= 0.65) {
+              const syntheticTemplateId = `CAI-detected-v${textDetection.templateVersion || "1.0"}`;
+              detectedTemplateId = syntheticTemplateId;
+              parseOptions.templateId = syntheticTemplateId;
+              deterministicPrompt = getTemplateAwareParsingPrompt(textDetection);
+              parseOptions.deterministicPrompt = deterministicPrompt;
+              
+              logger.info("📥 [ParseFile] 🎯 CAI Template detected via AI (QR fallback)", {
+                requestId,
+                confidence: textDetection.confidence.toFixed(2),
+              });
+            }
+          } catch {
+            // Continue with generic OCR
+          }
+          
+          parseOptions.checkForTemplateText = true;
         }
       } else {
         // Client already detected template, try to load org config
