@@ -683,6 +683,14 @@ export function expandCompactPartsWithDetails(compactParts: CompactPart[]): Expa
     const length = Math.max(1, Number(cp.l) || 1);
     const width = Math.max(1, Number(cp.w) || 1);
     
+    // Sanitize quantity - must be positive integer <= 1000
+    // Invalid quantities can crash the app with calculations
+    let quantity = Number(cp.q) || 1;
+    if (quantity < 1 || quantity > 1000 || !Number.isFinite(quantity)) {
+      console.warn(`⚠️ [expandCompactParts] Sanitizing invalid qty for row ${cp.r || index + 1}: ${cp.q} → 1`);
+      quantity = 1;
+    }
+    
     // Return AIPartResponse format with length/width at top level
     // This is what the validation and AI providers expect
     return {
@@ -690,7 +698,7 @@ export function expandCompactPartsWithDetails(compactParts: CompactPart[]): Expa
       length,
       width,
       thickness: cp.t || 18,
-      quantity: cp.q || 1,
+      quantity,
       material: cp.m || "",
       label: materialLabel || `Part ${cp.r || index + 1}`,
       confidence: 0.9,

@@ -1884,9 +1884,22 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
     for (const aiPart of aiParts) {
       const validationErrors = validateAIPartResponse(aiPart);
       
+      // Skip parts that are completely invalid (missing dimensions)
       if (validationErrors.length > 0 && !aiPart.length && !aiPart.width) {
         errors.push(`Skipped part "${aiPart.label || "unknown"}": ${validationErrors.join(", ")}`);
         continue;
+      }
+      
+      // Sanitize quantity - must be positive integer <= 1000
+      // Invalid quantities could crash the app with huge numbers
+      let sanitizedQty = aiPart.quantity || 1;
+      if (typeof sanitizedQty !== "number" || sanitizedQty < 1 || sanitizedQty > 1000 || !Number.isFinite(sanitizedQty)) {
+        logger.warn("⚠️ [Anthropic] Sanitizing invalid quantity", {
+          label: aiPart.label,
+          originalQty: aiPart.quantity,
+          sanitizedQty: 1,
+        });
+        sanitizedQty = 1;
       }
 
       // Use dimensions as-is - L represents grain direction in cabinet context
@@ -1897,7 +1910,7 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
       const cutPart: CutPart = {
         part_id: generateId("P"),
         label: aiPart.label || undefined,
-        qty: aiPart.quantity || 1,
+        qty: sanitizedQty,
         size: { L, W },
         thickness_mm: aiPart.thickness || options.defaultThicknessMm || 18,
         material_id: this.mapMaterialToId(aiPart.material) || options.defaultMaterialId || "MAT-WHITE-18",
