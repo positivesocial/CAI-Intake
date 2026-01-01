@@ -5,7 +5,14 @@
  * This format matches the exact CSV structure that CutList Plus FX exports/imports.
  * 
  * CutList Plus CSV Format:
- * Part #,Description,Thick,Length,Width,Copies,Material Name,Banding,<Info>,Notes
+ * Part #,Description,Thick,Length,Width,Copies,Material Name,Can Rotate,Banding,<Info>,Notes
+ * 
+ * Banding format: {W}W-{L}L
+ * - 0W-1L = 1 long edge banded
+ * - 1W-0L = 1 short edge banded
+ * - 1W-1L = 1 each
+ * - 2W-2L = all 4 edges
+ * - None = no edgebanding
  */
 
 import type { ExportableCutlist, UnitSystem } from "./types";
@@ -34,6 +41,7 @@ const CUTLISTPLUS_HEADERS = [
   "Width",
   "Copies",
   "Material Name",
+  "Can Rotate",
   "Banding",
   "<Info>",
   "Notes",
@@ -50,77 +58,73 @@ function escapeCell(value: string, delimiter: string): string {
 }
 
 /**
- * Format edge banding summary from part operations
- * Returns a summary string like "L1,L2,W1,W2" or "All" or edge names
+ * Format edge banding in CutList Plus format: {W}W-{L}L
+ * 
+ * Examples:
+ * - 0W-1L = 1 long edge banded
+ * - 1W-0L = 1 short edge banded  
+ * - 1W-1L = 1 width + 1 length
+ * - 2W-2L = all 4 edges
+ * - None = no edgebanding
  */
-function formatBanding(
-  ops: unknown,
-  cutlist: ExportableCutlist
-): string {
-  if (!ops || typeof ops !== "object") return "";
+function formatBanding(ops: unknown): string {
+  if (!ops || typeof ops !== "object") return "None";
   
   const opsObj = ops as { 
     edging?: { 
       edges?: Record<string, { apply?: boolean; edgeband_id?: string }>;
       summary?: { appliedEdges?: string[] };
     };
-    edgebanding?: Record<string, string>;
+    edgebanding?: Record<string, string | boolean>;
   };
+  
+  let wCount = 0; // Width edges (W1, W2)
+  let lCount = 0; // Length edges (L1, L2)
   
   // Try new format first
   if (opsObj.edging?.edges) {
-    const appliedEdges: string[] = [];
-    const edgeNames: Set<string> = new Set();
-    
     for (const [edge, config] of Object.entries(opsObj.edging.edges)) {
       if (config?.apply) {
-        appliedEdges.push(edge);
-        if (config.edgeband_id) {
-          const edgeband = cutlist.edgebands?.find(e => e.edgeband_id === config.edgeband_id);
-          if (edgeband?.name) {
-            edgeNames.add(edgeband.name);
-          }
+        if (edge === "W1" || edge === "W2") {
+          wCount++;
+        } else if (edge === "L1" || edge === "L2") {
+          lCount++;
         }
       }
     }
-    
-    if (appliedEdges.length === 0) return "";
-    
-    // If all 4 edges, return "All" or the edgeband name
-    if (appliedEdges.length === 4) {
-      if (edgeNames.size === 1) {
-        return `All - ${Array.from(edgeNames)[0]}`;
-      }
-      return "All";
-    }
-    
-    // Return summary like "L1,L2" or with names
-    if (edgeNames.size === 1) {
-      return `${appliedEdges.join(",")} - ${Array.from(edgeNames)[0]}`;
-    }
-    return appliedEdges.join(",");
   }
-  
   // Try legacy format
-  if (opsObj.edgebanding) {
-    const edges = Object.entries(opsObj.edgebanding)
-      .filter(([, value]) => value)
-      .map(([key]) => key);
-    
-    if (edges.length === 0) return "";
-    if (edges.length === 4) return "All";
-    return edges.join(",");
+  else if (opsObj.edgebanding) {
+    for (const [edge, value] of Object.entries(opsObj.edgebanding)) {
+      // Value could be string (edgeband name) or boolean
+      const hasEdge = Boolean(value) && value !== "";
+      if (hasEdge) {
+        if (edge === "W1" || edge === "W2") {
+          wCount++;
+        } else if (edge === "L1" || edge === "L2") {
+          lCount++;
+        }
+      }
+    }
+  }
+  // Try summary format
+  else if (opsObj.edging?.summary?.appliedEdges) {
+    for (const edge of opsObj.edging.summary.appliedEdges) {
+      if (edge === "W1" || edge === "W2") {
+        wCount++;
+      } else if (edge === "L1" || edge === "L2") {
+        lCount++;
+      }
+    }
   }
   
-  // Check summary
-  if (opsObj.edging?.summary?.appliedEdges) {
-    const edges = opsObj.edging.summary.appliedEdges;
-    if (edges.length === 0) return "";
-    if (edges.length === 4) return "All";
-    return edges.join(",");
+  // No edgebanding
+  if (wCount === 0 && lCount === 0) {
+    return "None";
   }
   
-  return "";
+  // Format: {W}W-{L}L
+  return `${wCount}W-${lCount}L`;
 }
 
 /**
@@ -152,9 +156,12 @@ export function generateCutlistPlusExport(
     const width = convertUnit(part.size.W, "mm", targetUnit);
     const thickness = convertUnit(part.thickness_mm, "mm", targetUnit);
     
-    // Format based on unit system
+    // Format based on unit system (no decimals for mm)
     const formatDim = (val: number) => 
       targetUnit === "mm" ? Math.round(val).toString() : val.toFixed(2);
+    
+    // Can Rotate: Yes or No
+    const canRotate = part.allow_rotation === false ? "No" : "Yes";
     
     // Notes - combine all note types
     let notes = "";
@@ -170,37 +177,36 @@ export function generateCutlistPlusExport(
       }
     }
     
-    // Build info field - can include grain, group, etc.
+    // Info field - can include group, etc.
     const infoItems: string[] = [];
-    if (part.allow_rotation === false) {
-      infoItems.push("Grain: L");
-    }
     if (part.group_id) {
-      infoItems.push(`Group: ${part.group_id}`);
+      infoItems.push(part.group_id);
     }
     const info = infoItems.join("; ");
     
     const cells = [
-      partNum.toString(),                                    // Part #
-      escapeCell(part.label ?? part.part_id ?? "", delimiter), // Description
-      formatDim(thickness),                                  // Thick
-      formatDim(length),                                     // Length
-      formatDim(width),                                      // Width
-      part.qty.toString(),                                   // Copies
-      escapeCell(materialName, delimiter),                   // Material Name
-      escapeCell(formatBanding(part.ops, cutlist), delimiter), // Banding
-      escapeCell(info, delimiter),                           // <Info>
-      escapeCell(notes, delimiter),                          // Notes
+      partNum.toString(),                                      // Part #
+      escapeCell(part.label ?? "", delimiter),                 // Description (can be empty)
+      formatDim(thickness),                                    // Thick
+      formatDim(length),                                       // Length
+      formatDim(width),                                        // Width
+      part.qty.toString(),                                     // Copies
+      escapeCell(materialName, delimiter),                     // Material Name
+      canRotate,                                               // Can Rotate (Yes/No)
+      formatBanding(part.ops),                                 // Banding (0W-1L format)
+      escapeCell(info, delimiter),                             // <Info>
+      escapeCell(notes, delimiter),                            // Notes
     ];
     
     lines.push(cells.join(delimiter));
     partNum++;
   }
   
-  // Add empty lines at the end like CutList Plus does
-  lines.push(" ");
-  lines.push(" ");
-  lines.push(" ");
+  // Add trailing empty rows like CutList Plus does (with leading space)
+  const emptyRow = ` ${",".repeat(CUTLISTPLUS_HEADERS.length - 1)}`;
+  lines.push(emptyRow);
+  lines.push(emptyRow);
+  lines.push(emptyRow);
   lines.push("");
   
   return lines.join("\n");
