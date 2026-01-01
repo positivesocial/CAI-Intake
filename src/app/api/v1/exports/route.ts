@@ -204,9 +204,6 @@ export async function POST(request: NextRequest) {
       case "cutlistplus":
         exportData = generateCutlistPlusExport(cutlist, {
           units: exportOptions.units,
-          includeGrain: exportOptions.includeGrain,
-          includeNotes: exportOptions.includeNotes,
-          includeEdgebanding: exportOptions.includeEdging,
         });
         contentType = EXPORT_FORMATS.cutlistplus.mimeType;
         filename = `${safeName}_cutlistplus.csv`;

@@ -32,6 +32,7 @@ export {
 
 export {
   generateCutlistPlusExport,
+  generateCutlistPlusExportLegacy,
   type CutlistPlusExportOptions,
 } from "./cutlistplus-export";
 
