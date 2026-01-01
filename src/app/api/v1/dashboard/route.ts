@@ -3,7 +3,7 @@
  * 
  * GET /api/v1/dashboard - Get dashboard statistics
  * 
- * OPTIMIZED v3: Maximum performance with minimal round-trips
+ * OPTIMIZED v4: Use Prisma ORM for user lookup, validated raw UUIDs for stats
  * - Single $transaction for all queries (1 database round-trip)
  * - CTEs instead of correlated subqueries
  * - Lateral joins for parts counts
@@ -21,6 +21,9 @@ import {
   getTrialDaysRemaining,
 } from "@/lib/subscriptions/service";
 import { getPlan } from "@/lib/subscriptions/plans";
+
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // =============================================================================
 // TYPES
@@ -128,6 +131,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Validate UUID format to prevent SQL injection
+    if (!UUID_REGEX.test(user.id)) {
+      return NextResponse.json({ error: "Invalid user ID format" }, { status: 400 });
+    }
+
     const now = new Date();
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - now.getDay());
@@ -137,18 +145,31 @@ export async function GET(request: NextRequest) {
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // Create proper UUID cast for Prisma raw queries
-    const userId = Prisma.sql`CAST(${user.id} AS uuid)`;
+    // Use Prisma ORM for user lookup (simpler and type-safe)
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        organizationId: true,
+        isSuperAdmin: true,
+        role: { select: { name: true } },
+      },
+    });
+
+    if (!dbUser) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const orgId = dbUser.organizationId;
+    const isSuperAdmin = dbUser.isSuperAdmin || false;
+    const isOrgAdmin = orgId && ["org_admin", "manager"].includes(dbUser.role?.name || "");
+
+    // Create safe UUID literals for raw SQL (validated above)
+    const userIdLiteral = Prisma.raw(`'${user.id}'::uuid`);
+    const orgIdLiteral = orgId ? Prisma.raw(`'${orgId}'::uuid`) : Prisma.raw(`NULL::uuid`);
 
     // =========================================================================
-    // SINGLE TRANSACTION: Execute all queries in one database round-trip
+    // TYPES for raw queries
     // =========================================================================
-    
-    type UserRow = {
-      organization_id: string | null;
-      is_super_admin: boolean;
-      role_name: string | null;
-    };
     
     type CountsRow = {
       user_cutlists_week: bigint;
@@ -200,30 +221,6 @@ export async function GET(request: NextRequest) {
       cutlists_this_week: number;
     };
 
-    // First, get user info to determine what to query
-    const userResult = await prisma.$queryRaw<UserRow[]>`
-      SELECT 
-        u.organization_id,
-        u.is_super_admin,
-        r.name as role_name
-      FROM users u
-      LEFT JOIN roles r ON u.role_id = r.id
-      WHERE u.id = ${userId}
-      LIMIT 1
-    `;
-    
-    if (!userResult.length) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-    
-    const dbUser = userResult[0];
-    const orgId = dbUser.organization_id;
-    const isSuperAdmin = dbUser.is_super_admin || false;
-    const isOrgAdmin = orgId && ["org_admin", "manager"].includes(dbUser.role_name || "");
-
-    // Create org UUID cast (or empty for null)
-    const orgIdSql = orgId ? Prisma.sql`CAST(${orgId} AS uuid)` : Prisma.sql`NULL::uuid`;
-
     // =========================================================================
     // Execute all data queries in a SINGLE transaction
     // Uses CTEs for pre-aggregation instead of correlated subqueries
@@ -237,45 +234,45 @@ export async function GET(request: NextRequest) {
             SELECT 
               COUNT(*) FILTER (WHERE created_at >= ${startOfWeek}) as week_count,
               COUNT(*) FILTER (WHERE created_at >= ${startOfMonth}) as month_count
-            FROM cutlists WHERE user_id = ${userId}
+            FROM cutlists WHERE user_id = ${userIdLiteral}
           ),
           user_parts AS (
             SELECT COUNT(*) as cnt 
             FROM cut_parts cp 
             JOIN cutlists c ON cp.cutlist_id = c.id 
-            WHERE c.user_id = ${userId}
+            WHERE c.user_id = ${userIdLiteral}
           ),
           active_jobs AS (
             SELECT COUNT(*) as cnt 
             FROM optimize_jobs oj 
             JOIN cutlists c ON oj.cutlist_id = c.id 
-            WHERE c.user_id = ${userId} AND oj.status IN ('pending', 'processing')
+            WHERE c.user_id = ${userIdLiteral} AND oj.status IN ('pending', 'processing')
           ),
           file_counts AS (
             SELECT 
               COUNT(*) FILTER (WHERE created_at >= ${startOfWeek}) as week_count,
               COUNT(*) FILTER (WHERE created_at >= ${startOfMonth}) as month_count
             FROM uploaded_files 
-            WHERE organization_id = ${orgIdSql}
+            WHERE organization_id = ${orgIdLiteral}
           ),
           org_counts AS (
             SELECT 
-              COALESCE((SELECT COUNT(*) FROM users WHERE organization_id = ${orgIdSql}), 0) as members,
-              COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgIdSql}), 0) as cutlists,
-              COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE organization_id = ${orgIdSql}), 0) as files,
-              COALESCE((SELECT COUNT(*) FROM invitations WHERE organization_id = ${orgIdSql} AND accepted_at IS NULL AND expires_at > ${now}), 0) as invites
+              COALESCE((SELECT COUNT(*) FROM users WHERE organization_id = ${orgIdLiteral}), 0) as members,
+              COALESCE((SELECT COUNT(*) FROM cutlists WHERE organization_id = ${orgIdLiteral}), 0) as cutlists,
+              COALESCE((SELECT COUNT(*) FROM uploaded_files WHERE organization_id = ${orgIdLiteral}), 0) as files,
+              COALESCE((SELECT COUNT(*) FROM invitations WHERE organization_id = ${orgIdLiteral} AND accepted_at IS NULL AND expires_at > ${now}), 0) as invites
           ),
           org_parts AS (
             SELECT COUNT(*) as cnt 
             FROM cut_parts cp 
             JOIN cutlists c ON cp.cutlist_id = c.id 
-            WHERE c.organization_id = ${orgIdSql}
+            WHERE c.organization_id = ${orgIdLiteral}
           ),
           org_monthly AS (
             SELECT 
               COUNT(*) FILTER (WHERE created_at >= ${lastMonthStart} AND created_at < ${startOfMonth}) as last_month,
               COUNT(*) FILTER (WHERE created_at >= ${startOfMonth}) as this_month
-            FROM cutlists WHERE organization_id = ${orgIdSql}
+            FROM cutlists WHERE organization_id = ${orgIdLiteral}
           ),
           platform_counts AS (
             SELECT 
@@ -329,7 +326,7 @@ export async function GET(request: NextRequest) {
               LEFT JOIN LATERAL (
                 SELECT COUNT(*)::int as cnt FROM cut_parts WHERE cutlist_id = c.id
               ) pc ON true
-              WHERE c.organization_id = ${orgIdSql}
+              WHERE c.organization_id = ${orgIdLiteral}
               ORDER BY GREATEST(c.created_at, c.updated_at) DESC
               LIMIT 5
             ),
@@ -348,7 +345,7 @@ export async function GET(request: NextRequest) {
                 NULL::int as parts_count
               FROM parse_jobs pj
               LEFT JOIN users u ON pj.user_id = u.id
-              WHERE pj.organization_id = ${orgIdSql}
+              WHERE pj.organization_id = ${orgIdLiteral}
               ORDER BY pj.created_at DESC
               LIMIT 3
             ),
@@ -364,7 +361,7 @@ export async function GET(request: NextRequest) {
               FROM uploaded_files uf
               LEFT JOIN cutlists c ON uf.cutlist_id = c.id
               LEFT JOIN users u ON c.user_id = u.id
-              WHERE uf.organization_id = ${orgIdSql}
+              WHERE uf.organization_id = ${orgIdLiteral}
               ORDER BY uf.created_at DESC
               LIMIT 3
             )
@@ -395,7 +392,7 @@ export async function GET(request: NextRequest) {
               LEFT JOIN LATERAL (
                 SELECT COUNT(*)::int as cnt FROM cut_parts WHERE cutlist_id = c.id
               ) pc ON true
-              WHERE c.user_id = ${userId}
+              WHERE c.user_id = ${userIdLiteral}
               ORDER BY GREATEST(c.created_at, c.updated_at) DESC
               LIMIT 5
             ),
@@ -414,7 +411,7 @@ export async function GET(request: NextRequest) {
                 NULL::int as parts_count
               FROM parse_jobs pj
               LEFT JOIN users u ON pj.user_id = u.id
-              WHERE pj.user_id = ${userId}
+              WHERE pj.user_id = ${userIdLiteral}
               ORDER BY pj.created_at DESC
               LIMIT 3
             )
@@ -441,7 +438,7 @@ export async function GET(request: NextRequest) {
             LEFT JOIN LATERAL (
               SELECT COUNT(*)::int as cnt FROM cut_parts WHERE cutlist_id = c.id
             ) pc ON true
-            WHERE c.organization_id = ${orgIdSql}
+            WHERE c.organization_id = ${orgIdLiteral}
             ORDER BY c.created_at DESC
             LIMIT 5
           `
@@ -458,7 +455,7 @@ export async function GET(request: NextRequest) {
             LEFT JOIN LATERAL (
               SELECT COUNT(*)::int as cnt FROM cut_parts WHERE cutlist_id = c.id
             ) pc ON true
-            WHERE c.user_id = ${userId}
+            WHERE c.user_id = ${userIdLiteral}
             ORDER BY c.created_at DESC
             LIMIT 5
           `,
@@ -480,7 +477,7 @@ export async function GET(request: NextRequest) {
               FROM cutlists c 
               WHERE c.user_id = u.id AND c.created_at >= ${startOfWeek}
             ) cc ON true
-            WHERE u.organization_id = ${orgIdSql}
+            WHERE u.organization_id = ${orgIdLiteral}
             ORDER BY u.last_login_at DESC NULLS LAST
             LIMIT 5
           `

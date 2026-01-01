@@ -4,13 +4,16 @@
  * GET /api/v1/dashboard/quick - Get essential user stats only (fast)
  * 
  * This endpoint returns minimal data for instant page load.
- * OPTIMIZED v2: Single query using CTEs, no correlated subqueries.
+ * OPTIMIZED v3: Use Prisma ORM for user lookup, raw SQL for stats.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { createClient } from "@/lib/supabase/server";
+
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,81 +24,79 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Validate UUID format to prevent SQL injection
+    if (!UUID_REGEX.test(user.id)) {
+      return NextResponse.json({ error: "Invalid user ID format" }, { status: 400 });
+    }
+
     const now = new Date();
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - now.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Create UUID from user.id for proper SQL casting
-    const userId = Prisma.sql`CAST(${user.id} AS uuid)`;
+    // Use Prisma ORM for user lookup (simpler and type-safe)
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        organizationId: true,
+        isSuperAdmin: true,
+        role: { select: { name: true } },
+      },
+    });
 
-    // Single query using CTEs - faster than correlated subqueries
-    type QuickStatsRow = {
-      org_id: string | null;
-      is_super_admin: boolean;
-      role_name: string | null;
+    if (!dbUser) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Create safe UUID literal for raw SQL (validated above)
+    const userIdLiteral = Prisma.raw(`'${user.id}'::uuid`);
+
+    // Single query for stats using CTEs
+    type StatsRow = {
       cutlists_week: bigint;
       cutlists_month: bigint;
       active_jobs: bigint;
     };
 
-    const result = await prisma.$queryRaw<QuickStatsRow[]>`
-      WITH user_info AS (
-        SELECT 
-          u.organization_id as org_id,
-          u.is_super_admin,
-          r.name as role_name
-        FROM users u
-        LEFT JOIN roles r ON u.role_id = r.id
-        WHERE u.id = ${userId}
-        LIMIT 1
-      ),
-      cutlist_stats AS (
-        SELECT 
-          COUNT(*) FILTER (WHERE created_at >= ${startOfWeek}) as week_count,
-          COUNT(*) FILTER (WHERE created_at >= ${startOfMonth}) as month_count
-        FROM cutlists
-        WHERE user_id = ${userId}
-      ),
-      active_jobs AS (
-        SELECT COUNT(*) as cnt
-        FROM optimize_jobs oj 
-        JOIN cutlists c ON oj.cutlist_id = c.id 
-        WHERE c.user_id = ${userId}
-          AND oj.status IN ('pending', 'processing')
-      )
+    const statsResult = await prisma.$queryRaw<StatsRow[]>`
+      WITH 
+        cutlist_stats AS (
+          SELECT 
+            COUNT(*) FILTER (WHERE created_at >= ${startOfWeek}) as week_count,
+            COUNT(*) FILTER (WHERE created_at >= ${startOfMonth}) as month_count
+          FROM cutlists
+          WHERE user_id = ${userIdLiteral}
+        ),
+        active_jobs AS (
+          SELECT COUNT(*) as cnt
+          FROM optimize_jobs oj 
+          JOIN cutlists c ON oj.cutlist_id = c.id 
+          WHERE c.user_id = ${userIdLiteral}
+            AND oj.status IN ('pending', 'processing')
+        )
       SELECT 
-        ui.org_id,
-        ui.is_super_admin,
-        ui.role_name,
         COALESCE(cs.week_count, 0) as cutlists_week,
         COALESCE(cs.month_count, 0) as cutlists_month,
         COALESCE(aj.cnt, 0) as active_jobs
-      FROM user_info ui
-      CROSS JOIN cutlist_stats cs
+      FROM cutlist_stats cs
       CROSS JOIN active_jobs aj
     `;
 
-    if (result.length === 0) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    const row = result[0];
-    const isOrgAdmin = row.org_id && ["org_admin", "manager"].includes(row.role_name || "");
+    const stats = statsResult[0] || { cutlists_week: BigInt(0), cutlists_month: BigInt(0), active_jobs: BigInt(0) };
+    const isOrgAdmin = dbUser.organizationId && ["org_admin", "manager"].includes(dbUser.role?.name || "");
 
     return NextResponse.json({
       user: {
-        cutlistsThisWeek: Number(row.cutlists_week),
-        cutlistsThisMonth: Number(row.cutlists_month),
-        activeJobs: Number(row.active_jobs),
+        cutlistsThisWeek: Number(stats.cutlists_week),
+        cutlistsThisMonth: Number(stats.cutlists_month),
+        activeJobs: Number(stats.active_jobs),
       },
-      organizationId: row.org_id,
+      organizationId: dbUser.organizationId,
       isOrgAdmin,
-      isSuperAdmin: row.is_super_admin,
+      isSuperAdmin: dbUser.isSuperAdmin,
     }, {
       headers: {
-        // Cache for 30 seconds - quick stats are relatively stable
         "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
       },
     });
