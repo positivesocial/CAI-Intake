@@ -1891,16 +1891,15 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
         continue;
       }
       
-      // Sanitize quantity - must be positive integer <= 1000
-      // Invalid quantities could crash the app with huge numbers
-      let sanitizedQty = aiPart.quantity || 1;
-      if (typeof sanitizedQty !== "number" || sanitizedQty < 1 || sanitizedQty > 1000 || !Number.isFinite(sanitizedQty)) {
-        logger.warn("⚠️ [Anthropic] Sanitizing invalid quantity", {
+      // Check quantity - skip to modal if invalid (user has override agency)
+      const qty = aiPart.quantity || 1;
+      if (typeof qty !== "number" || qty < 1 || qty > 10000 || !Number.isFinite(qty)) {
+        logger.warn("⚠️ [Anthropic] Skipping part with invalid quantity for user correction", {
           label: aiPart.label,
-          originalQty: aiPart.quantity,
-          sanitizedQty: 1,
+          quantity: aiPart.quantity,
         });
-        sanitizedQty = 1;
+        errors.push(`Skipped part "${aiPart.label || "unknown"}": Invalid quantity ${aiPart.quantity} (user can correct in modal)`);
+        continue;
       }
 
       // Use dimensions as-is - L represents grain direction in cabinet context
@@ -1911,7 +1910,7 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
       const cutPart: CutPart = {
         part_id: generateId("P"),
         label: aiPart.label || undefined,
-        qty: sanitizedQty,
+        qty: qty,
         size: { L, W },
         thickness_mm: aiPart.thickness || options.defaultThicknessMm || 18,
         material_id: this.mapMaterialToId(aiPart.material) || options.defaultMaterialId || "MAT-WHITE-18",

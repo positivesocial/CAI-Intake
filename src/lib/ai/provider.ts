@@ -614,7 +614,7 @@ export function expandSimpleTabularParts(parts: SimpleTabularPart[]): AIPartResp
 export interface SkippedPartInfo {
   row: number;
   reason: string;
-  originalData: { l?: number; w?: number; m?: string; n?: string };
+  originalData: { l?: number; w?: number; q?: number; m?: string; n?: string };
 }
 
 /**
@@ -648,7 +648,9 @@ export function expandCompactPartsWithDetails(compactParts: CompactPart[]): Expa
     // Filter out parts with invalid dimensions (0, undefined, null, or negative)
     const length = typeof cp.l === "number" ? cp.l : 0;
     const width = typeof cp.w === "number" ? cp.w : 0;
+    const qty = typeof cp.q === "number" ? cp.q : 0;
     
+    // Check dimensions
     if (length <= 0 || width <= 0) {
       const reason = length <= 0 && width <= 0 
         ? `Invalid dimensions: L=${cp.l || 0}, W=${cp.w || 0}` 
@@ -659,12 +661,27 @@ export function expandCompactPartsWithDetails(compactParts: CompactPart[]): Expa
       skippedParts.push({
         row: cp.r || idx + 1,
         reason,
-        originalData: { l: cp.l, w: cp.w, m: cp.m, n: cp.n },
+        originalData: { l: cp.l, w: cp.w, q: cp.q, m: cp.m, n: cp.n },
       });
       
       console.warn(`⚠️ [expandCompactParts] Skipping part row ${cp.r || idx + 1}: ${reason}`);
       return false;
     }
+    
+    // Check quantity - skip to modal if invalid (user can override)
+    if (qty <= 0 || qty > 10000 || !Number.isFinite(qty)) {
+      const reason = `Invalid quantity: ${cp.q || 0} (must be 1-10000)`;
+      
+      skippedParts.push({
+        row: cp.r || idx + 1,
+        reason,
+        originalData: { l: cp.l, w: cp.w, q: cp.q, m: cp.m, n: cp.n },
+      });
+      
+      console.warn(`⚠️ [expandCompactParts] Skipping part row ${cp.r || idx + 1}: ${reason}`);
+      return false;
+    }
+    
     return true;
   });
   
@@ -679,17 +696,10 @@ export function expandCompactPartsWithDetails(compactParts: CompactPart[]): Expa
     const hasCNC = notesLower.includes("cnc") || notesLower.includes("r3") || notesLower.includes("radius");
     const hasDrilling = notesLower.includes("drill") || notesLower.includes("hole") || notesLower.includes("h1") || notesLower.includes("h2");
     
-    // Ensure dimensions are valid positive numbers
-    const length = Math.max(1, Number(cp.l) || 1);
-    const width = Math.max(1, Number(cp.w) || 1);
-    
-    // Sanitize quantity - must be positive integer <= 1000
-    // Invalid quantities can crash the app with calculations
-    let quantity = Number(cp.q) || 1;
-    if (quantity < 1 || quantity > 1000 || !Number.isFinite(quantity)) {
-      console.warn(`⚠️ [expandCompactParts] Sanitizing invalid qty for row ${cp.r || index + 1}: ${cp.q} → 1`);
-      quantity = 1;
-    }
+    // Dimensions and quantity are already validated in the filter above
+    const length = Number(cp.l);
+    const width = Number(cp.w);
+    const quantity = Number(cp.q) || 1; // Default to 1 if not specified
     
     // Return AIPartResponse format with length/width at top level
     // This is what the validation and AI providers expect

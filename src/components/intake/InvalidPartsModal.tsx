@@ -51,6 +51,7 @@ export interface SkippedPartInfo {
 interface CorrectedPart extends SkippedPartInfo {
   correctedL: number;
   correctedW: number;
+  correctedQty: number;
   isValid: boolean;
   isSkipped: boolean;
 }
@@ -88,6 +89,7 @@ export function InvalidPartsModal({
           ...sp,
           correctedL: sp.originalData.l || 0,
           correctedW: sp.originalData.w || 0,
+          correctedQty: sp.originalData.q || 1,
           isValid: false,
           isSkipped: false,
         }))
@@ -95,10 +97,10 @@ export function InvalidPartsModal({
     }
   }, [open, skippedParts]);
 
-  // Update dimension and check validity
-  const updateDimension = (
+  // Update field and check validity
+  const updateField = (
     index: number,
-    field: "correctedL" | "correctedW",
+    field: "correctedL" | "correctedW" | "correctedQty",
     value: string
   ) => {
     const numValue = parseFloat(value) || 0;
@@ -106,8 +108,8 @@ export function InvalidPartsModal({
       prev.map((p, i) => {
         if (i !== index) return p;
         const updated = { ...p, [field]: numValue };
-        // Check if both dimensions are now valid
-        updated.isValid = updated.correctedL > 0 && updated.correctedW > 0;
+        // Check if dimensions are valid (qty can be any positive value - user has override agency)
+        updated.isValid = updated.correctedL > 0 && updated.correctedW > 0 && updated.correctedQty > 0;
         return updated;
       })
     );
@@ -126,8 +128,8 @@ export function InvalidPartsModal({
   const addSinglePart = (index: number) => {
     const part = correctedParts[index];
     if (!part.isValid) {
-      toast.error("Invalid dimensions", {
-        description: "Both Length and Width must be greater than 0",
+      toast.error("Invalid values", {
+        description: "Length, Width, and Qty must all be greater than 0",
       });
       return;
     }
@@ -136,7 +138,7 @@ export function InvalidPartsModal({
       label: part.originalData.n || `Part (Row ${part.row})`,
       size: { L: part.correctedL, W: part.correctedW },
       thickness_mm: part.originalData.t || 18,
-      qty: part.originalData.q || 1,
+      qty: part.correctedQty, // Use user-corrected qty (no limits)
       material: part.originalData.m || "",
       notes: `Originally skipped: ${part.reason}`,
     }]);
@@ -149,7 +151,7 @@ export function InvalidPartsModal({
     );
 
     toast.success("Part added to inbox", {
-      description: `Row ${part.row} added with dimensions ${part.correctedL} × ${part.correctedW}`,
+      description: `Row ${part.row}: ${part.correctedL} × ${part.correctedW} × ${part.correctedQty} pcs`,
     });
   };
 
@@ -159,7 +161,7 @@ export function InvalidPartsModal({
     
     if (validParts.length === 0) {
       toast.error("No valid parts to add", {
-        description: "Please correct the dimensions first",
+        description: "Please correct the values first (L, W, and Qty must be > 0)",
       });
       return;
     }
@@ -169,7 +171,7 @@ export function InvalidPartsModal({
         label: part.originalData.n || `Part (Row ${part.row})`,
         size: { L: part.correctedL, W: part.correctedW },
         thickness_mm: part.originalData.t || 18,
-        qty: part.originalData.q || 1,
+        qty: part.correctedQty, // Use user-corrected qty (no limits)
         material: part.originalData.m || "",
         notes: `Originally skipped: ${part.reason}`,
       }))
@@ -264,14 +266,14 @@ export function InvalidPartsModal({
                     {part.reason}
                   </div>
 
-                  {/* Dimension inputs */}
-                  <div className="flex items-center gap-2">
+                  {/* Dimension and quantity inputs */}
+                  <div className="flex items-center gap-2 flex-wrap">
                     <div className="flex items-center gap-1">
                       <span className="text-xs text-gray-500 w-6">L:</span>
                       <Input
                         type="number"
                         value={part.correctedL || ""}
-                        onChange={(e) => updateDimension(index, "correctedL", e.target.value)}
+                        onChange={(e) => updateField(index, "correctedL", e.target.value)}
                         placeholder="Length"
                         className={cn(
                           "w-20 h-8 text-sm",
@@ -286,7 +288,7 @@ export function InvalidPartsModal({
                       <Input
                         type="number"
                         value={part.correctedW || ""}
-                        onChange={(e) => updateDimension(index, "correctedW", e.target.value)}
+                        onChange={(e) => updateField(index, "correctedW", e.target.value)}
                         placeholder="Width"
                         className={cn(
                           "w-20 h-8 text-sm",
@@ -295,16 +297,27 @@ export function InvalidPartsModal({
                         disabled={part.isSkipped}
                       />
                     </div>
+                    <span className="text-gray-400">×</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-500 w-8">Qty:</span>
+                      <Input
+                        type="number"
+                        value={part.correctedQty || ""}
+                        onChange={(e) => updateField(index, "correctedQty", e.target.value)}
+                        placeholder="Qty"
+                        className={cn(
+                          "w-16 h-8 text-sm",
+                          part.correctedQty <= 0 && "border-red-300 focus:border-red-500"
+                        )}
+                        disabled={part.isSkipped}
+                        min={1}
+                      />
+                    </div>
                     
-                    {/* Additional info */}
+                    {/* Material info */}
                     {part.originalData.m && (
                       <Badge variant="secondary" className="text-xs">
                         {part.originalData.m}
-                      </Badge>
-                    )}
-                    {part.originalData.q && part.originalData.q > 1 && (
-                      <Badge variant="secondary" className="text-xs">
-                        ×{part.originalData.q}
                       </Badge>
                     )}
                   </div>
