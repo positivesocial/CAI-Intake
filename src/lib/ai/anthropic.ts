@@ -978,10 +978,25 @@ OUTPUT: Start with [ and end with ] - NO markdown, NO explanation. Just the JSON
         qualityScore: qualityMetrics.qualityScore,
         needsReview: reviewResult.needsReview,
         reviewFlags: reviewFlags.length,
+        skippedParts: validation.skippedParts?.length || 0,
         processingTimeMs: Date.now() - startTime,
       });
 
-      return this.processResults(parts, rawResponse, startTime, options);
+      const result = this.processResults(parts, rawResponse, startTime, options);
+      
+      // Pass through skipped parts and warnings from validation for user review
+      if (validation.skippedParts && validation.skippedParts.length > 0) {
+        result.skippedParts = validation.skippedParts;
+        logger.warn("⚠️ [Anthropic] Parts skipped due to invalid dimensions", {
+          requestId,
+          skippedCount: validation.skippedParts.length,
+        });
+      }
+      if (validation.warnings && validation.warnings.length > 0) {
+        result.warnings = validation.warnings;
+      }
+      
+      return result;
       
     } catch (error) {
       audit.addError(error instanceof Error ? error.message : "Unknown error");
@@ -1228,12 +1243,23 @@ OUTPUT: Raw JSON array starting with [ and ending with ] - NO markdown, NO expla
       logger.info("✅ [Anthropic] Native PDF parsing complete", {
         requestId,
         partsFound: validation.parts.length,
+        skippedParts: validation.skippedParts?.length || 0,
         processingTimeMs: Date.now() - startTime,
       });
 
       // Use processResults which handles normalization internally
       // Cast to AIPartResponse[] as validation.parts is compatible
-      return this.processResults(validation.parts as AIPartResponse[], rawResponse, startTime, safeOptions);
+      const result = this.processResults(validation.parts as AIPartResponse[], rawResponse, startTime, safeOptions);
+      
+      // Pass through skipped parts and warnings from validation for user review
+      if (validation.skippedParts && validation.skippedParts.length > 0) {
+        result.skippedParts = validation.skippedParts;
+      }
+      if (validation.warnings && validation.warnings.length > 0) {
+        result.warnings = validation.warnings;
+      }
+      
+      return result;
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
