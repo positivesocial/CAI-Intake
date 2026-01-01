@@ -8,7 +8,11 @@
  * - First line: Sep=, (separator declaration)
  * - All values quoted with double quotes
  * - Dimensions include unit suffix (e.g., "795 mm")
- * - Complex hole/groove patterns in specific format
+ * 
+ * Key Column Formats:
+ * - Edging: Material/edgeband name (or empty)
+ * - Holes: 'x,y,diameter,depth;x,y,diameter,depth' (position, dimension, depth for each hole)
+ * - Grooving: 'width,depth,offset,length,start,end' (groove parameters)
  */
 
 import type { ExportableCutlist, UnitSystem } from "./types";
@@ -99,26 +103,68 @@ function formatDimension(value: number, unit: UnitSystem): string {
   }
 }
 
+// Types for operations
+interface EdgeConfig {
+  apply?: boolean;
+  edgeband_id?: string;
+  thickness_mm?: number;
+}
+
+interface HoleData {
+  x: number;
+  y: number;
+  dia_mm: number;
+  depth_mm?: number;
+}
+
+interface HoleOp {
+  pattern_id?: string;
+  holes?: HoleData[];
+  face?: "front" | "back" | "edge";
+  notes?: string;
+  // Extended properties for edge-specific holes
+  ref_edge?: string;
+}
+
+interface GrooveOp {
+  groove_id?: string;
+  profile_id?: string;
+  side?: string;        // L1, L2, W1, W2
+  edge?: string;        // Alternative: L, W, L1, L2, W1, W2
+  offset_mm?: number;
+  length_mm?: number | null;
+  depth_mm?: number;
+  width_mm?: number;
+  face?: string;
+  notes?: string;
+}
+
+interface PartOps {
+  edging?: {
+    edges?: Record<string, EdgeConfig>;
+    summary?: { appliedEdges?: string[] };
+  };
+  edgebanding?: Record<string, string>;
+  holes?: HoleOp[];
+  grooves?: GrooveOp[];
+  routing?: unknown[];
+  custom_cnc_ops?: unknown[];
+}
+
 /**
  * Get edgeband name from part operations
+ * MaxCut columns: Edging Length 1 (L1), Edging Length 2 (L2), Edging Width 1 (W1), Edging Width 2 (W2)
  */
 function getEdgebandName(
-  ops: unknown, 
+  ops: PartOps | undefined, 
   edge: "L1" | "L2" | "W1" | "W2",
   cutlist: ExportableCutlist
 ): string {
-  if (!ops || typeof ops !== "object") return "";
+  if (!ops) return "";
   
-  const opsObj = ops as { 
-    edging?: { 
-      edges?: Record<string, { apply?: boolean; edgeband_id?: string }> 
-    };
-    edgebanding?: Record<string, string>;
-  };
-  
-  // Try new format first
-  if (opsObj.edging?.edges?.[edge]?.apply) {
-    const edgebandId = opsObj.edging.edges[edge].edgeband_id;
+  // Try new format first: ops.edging.edges
+  if (ops.edging?.edges?.[edge]?.apply) {
+    const edgebandId = ops.edging.edges[edge].edgeband_id;
     if (edgebandId) {
       const edgeband = cutlist.edgebands?.find(e => e.edgeband_id === edgebandId);
       return edgeband?.name || edgebandId;
@@ -126,9 +172,9 @@ function getEdgebandName(
     return "Edge"; // Default name if apply is true but no ID
   }
   
-  // Try legacy format
-  if (opsObj.edgebanding?.[edge]) {
-    return opsObj.edgebanding[edge];
+  // Try legacy format: ops.edgebanding
+  if (ops.edgebanding?.[edge]) {
+    return ops.edgebanding[edge];
   }
   
   return "";
@@ -148,40 +194,57 @@ function getRotationMode(allowRotation: boolean | undefined): string {
 
 /**
  * Format hole patterns for MaxCut
- * MaxCut format: '25 mm,100 mm,15 mm,35 mm;25 mm,900 mm,15 mm,35 mm'
- * Each hole: x,y,diameter,depth separated by semicolons
+ * 
+ * MaxCut format: 'x,y,diameter,depth;x,y,diameter,depth'
+ * - x: Position along the edge (mm from one end)
+ * - y: Position perpendicular to edge (distance from panel face)
+ * - diameter: Hole diameter in mm
+ * - depth: Hole depth in mm
+ * 
+ * Multiple holes separated by semicolons
+ * Entire pattern wrapped in single quotes
+ * 
+ * Example: '25 mm,100 mm,15 mm,35 mm;25 mm,900 mm,15 mm,35 mm'
+ * = Two holes at x=25, y=100 and x=25, y=900, both 15mm diameter, 35mm deep
  */
-function formatHolePatterns(ops: unknown, edge: "L1" | "L2" | "W1" | "W2"): string {
-  if (!ops || typeof ops !== "object") return "";
+function formatHolePatterns(
+  ops: PartOps | undefined, 
+  edge: "L1" | "L2" | "W1" | "W2"
+): string {
+  if (!ops?.holes || ops.holes.length === 0) return "";
   
-  const opsObj = ops as { 
-    holes?: Array<{
-      x: number;
-      y: number;
-      dia_mm: number;
-      depth_mm?: number;
-      face?: string;
-    }>;
-  };
+  // Collect all holes that belong to this edge
+  const edgeHoles: HoleData[] = [];
   
-  if (!opsObj.holes || opsObj.holes.length === 0) return "";
+  for (const holeOp of ops.holes) {
+    // Check if this hole operation belongs to this edge
+    // Option 1: ref_edge property specifies the edge
+    if (holeOp.ref_edge) {
+      const refEdge = holeOp.ref_edge.toUpperCase();
+      if (refEdge === edge || 
+          (edge.startsWith("L") && refEdge === "L") ||
+          (edge.startsWith("W") && refEdge === "W")) {
+        if (holeOp.holes) {
+          edgeHoles.push(...holeOp.holes);
+        }
+      }
+      continue;
+    }
+    
+    // Option 2: face === "edge" means edge drilling - we need to infer which edge
+    // For now, if face is "edge" and no ref_edge, put all holes in L1
+    // (In practice, the application should set ref_edge for edge drilling)
+    if (holeOp.face === "edge" && edge === "L1") {
+      if (holeOp.holes) {
+        edgeHoles.push(...holeOp.holes);
+      }
+    }
+  }
   
-  // Filter holes by edge/face
-  const edgeToFace: Record<string, string[]> = {
-    "L1": ["L1", "front", "edge"],
-    "L2": ["L2", "back"],
-    "W1": ["W1", "left"],
-    "W2": ["W2", "right"],
-  };
-  
-  const relevantHoles = opsObj.holes.filter(h => 
-    edgeToFace[edge].includes(h.face || "front")
-  );
-  
-  if (relevantHoles.length === 0) return "";
+  if (edgeHoles.length === 0) return "";
   
   // Format: 'x,y,dia,depth;x,y,dia,depth'
-  const patterns = relevantHoles.map(h => 
+  const patterns = edgeHoles.map(h => 
     `${Math.round(h.x)} mm,${Math.round(h.y)} mm,${Math.round(h.dia_mm)} mm,${Math.round(h.depth_mm || 35)} mm`
   );
   
@@ -190,32 +253,39 @@ function formatHolePatterns(ops: unknown, edge: "L1" | "L2" | "W1" | "W2"): stri
 
 /**
  * Format groove patterns for MaxCut
- * MaxCut format: '18 mm,5 mm,10 mm,*,0 mm,0 mm'
- * Pattern: width,depth,offset,length(*=full),start,end
+ * 
+ * MaxCut format: 'width,depth,offset,length,start,end'
+ * - width: Groove width in mm
+ * - depth: Groove depth in mm  
+ * - offset: Distance from panel edge to groove center
+ * - length: Groove length (* for full length, or specific value)
+ * - start: Start offset from edge (usually 0 mm)
+ * - end: End offset from edge (usually 0 mm)
+ * 
+ * Example: '18 mm,5 mm,10 mm,*,0 mm,0 mm'
+ * = 18mm wide, 5mm deep groove, 10mm from edge, full length, no start/end offsets
  */
-function formatGroovePatterns(ops: unknown, edge: "L1" | "L2" | "W1" | "W2"): string {
-  if (!ops || typeof ops !== "object") return "";
+function formatGroovePatterns(
+  ops: PartOps | undefined, 
+  edge: "L1" | "L2" | "W1" | "W2"
+): string {
+  if (!ops?.grooves || ops.grooves.length === 0) return "";
   
-  const opsObj = ops as { 
-    grooves?: Array<{
-      width_mm?: number;
-      depth_mm?: number;
-      offset_mm?: number;
-      length_mm?: number | null;
-      edge?: string;
-    }>;
-  };
-  
-  if (!opsObj.grooves || opsObj.grooves.length === 0) return "";
-  
-  // Filter grooves by edge
-  const relevantGrooves = opsObj.grooves.filter(g => {
+  // Filter grooves by edge (side property)
+  const relevantGrooves = ops.grooves.filter(g => {
+    // Check 'side' property first (new format)
+    const side = g.side?.toUpperCase() || "";
+    if (side === edge) return true;
+    // Also accept L/W for L1/W1
+    if (edge === "L1" && side === "L") return true;
+    if (edge === "W1" && side === "W") return true;
+    
+    // Check 'edge' property (legacy format)
     const grooveEdge = g.edge?.toUpperCase() || "";
-    // Match edge patterns: L1, L2, W1, W2, L, W
-    if (edge === "L1" && (grooveEdge === "L1" || grooveEdge === "L")) return true;
-    if (edge === "L2" && grooveEdge === "L2") return true;
-    if (edge === "W1" && (grooveEdge === "W1" || grooveEdge === "W")) return true;
-    if (edge === "W2" && grooveEdge === "W2") return true;
+    if (grooveEdge === edge) return true;
+    if (edge === "L1" && grooveEdge === "L") return true;
+    if (edge === "W1" && grooveEdge === "W") return true;
+    
     return false;
   });
   
@@ -226,7 +296,9 @@ function formatGroovePatterns(ops: unknown, edge: "L1" | "L2" | "W1" | "W2"): st
     const width = Math.round(g.width_mm || 18);
     const depth = Math.round(g.depth_mm || 5);
     const offset = Math.round(g.offset_mm || 10);
+    // * means full length, otherwise specific length value
     const length = g.length_mm ? `${Math.round(g.length_mm)} mm` : "*";
+    // Start and end offsets (usually 0 for standard grooves)
     return `${width} mm,${depth} mm,${offset} mm,${length},0 mm,0 mm`;
   });
   
@@ -264,6 +336,9 @@ export function generateMaxcutExport(
     const length = convertUnit(part.size.L, "mm", targetUnit);
     const width = convertUnit(part.size.W, "mm", targetUnit);
     
+    // Cast ops to our typed interface
+    const ops = part.ops as PartOps | undefined;
+    
     // Build row with all columns
     const row: string[] = [
       quoteCell("Input Panel"),                                    // Type
@@ -274,10 +349,10 @@ export function generateMaxcutExport(
       quoteCell(typeof part.notes === "string" ? part.notes : ""), // Notes
       quoteCell(getRotationMode(part.allow_rotation)),             // Can Rotate
       quoteCell(materialName),                                     // Material
-      quoteCell(getEdgebandName(part.ops, "L1", cutlist)),         // Edging Length 1
-      quoteCell(getEdgebandName(part.ops, "L2", cutlist)),         // Edging Length 2
-      quoteCell(getEdgebandName(part.ops, "W1", cutlist)),         // Edging Width 1
-      quoteCell(getEdgebandName(part.ops, "W2", cutlist)),         // Edging Width 2
+      quoteCell(getEdgebandName(ops, "L1", cutlist)),              // Edging Length 1
+      quoteCell(getEdgebandName(ops, "L2", cutlist)),              // Edging Length 2
+      quoteCell(getEdgebandName(ops, "W1", cutlist)),              // Edging Width 1
+      quoteCell(getEdgebandName(ops, "W2", cutlist)),              // Edging Width 2
       quoteCell("True"),                                           // Include Edging Thickness
       quoteCell(""),                                               // Note 1
       quoteCell(""),                                               // Note 2
@@ -288,14 +363,14 @@ export function generateMaxcutExport(
       quoteCell(importId.toString()),                              // Import ID
       quoteCell(importId.toString()),                              // Parent ID
       quoteCell(""),                                               // Library Item Name
-      quoteCell(opts.includeHoles ? formatHolePatterns(part.ops, "L1") : ""), // Holes Length 1
-      quoteCell(opts.includeHoles ? formatHolePatterns(part.ops, "L2") : ""), // Holes Length 2
-      quoteCell(opts.includeHoles ? formatHolePatterns(part.ops, "W1") : ""), // Holes Width 1
-      quoteCell(opts.includeHoles ? formatHolePatterns(part.ops, "W2") : ""), // Holes Width 2
-      quoteCell(opts.includeGrooving ? formatGroovePatterns(part.ops, "L1") : ""), // Grooving Length 1
-      quoteCell(opts.includeGrooving ? formatGroovePatterns(part.ops, "L2") : ""), // Grooving Length 2
-      quoteCell(opts.includeGrooving ? formatGroovePatterns(part.ops, "W1") : ""), // Grooving Width 1
-      quoteCell(opts.includeGrooving ? formatGroovePatterns(part.ops, "W2") : ""), // Grooving Width 2
+      quoteCell(opts.includeHoles ? formatHolePatterns(ops, "L1") : ""), // Holes Length 1
+      quoteCell(opts.includeHoles ? formatHolePatterns(ops, "L2") : ""), // Holes Length 2
+      quoteCell(opts.includeHoles ? formatHolePatterns(ops, "W1") : ""), // Holes Width 1
+      quoteCell(opts.includeHoles ? formatHolePatterns(ops, "W2") : ""), // Holes Width 2
+      quoteCell(opts.includeGrooving ? formatGroovePatterns(ops, "L1") : ""), // Grooving Length 1
+      quoteCell(opts.includeGrooving ? formatGroovePatterns(ops, "L2") : ""), // Grooving Length 2
+      quoteCell(opts.includeGrooving ? formatGroovePatterns(ops, "W1") : ""), // Grooving Width 1
+      quoteCell(opts.includeGrooving ? formatGroovePatterns(ops, "W2") : ""), // Grooving Width 2
       quoteCell(""),                                               // Material Tag
       quoteCell(""),                                               // Edging Length 1 Tag
       quoteCell(""),                                               // Edging Length 2 Tag
@@ -358,6 +433,7 @@ export function generateMaxcutExportSimple(
       units === "mm" ? Math.round(val).toString() : val.toFixed(2);
     
     const grainCode = part.allow_rotation === false ? "L" : "";
+    const ops = part.ops as PartOps | undefined;
     
     const cells = [
       part.label ?? part.part_id ?? "Part",
@@ -367,10 +443,10 @@ export function generateMaxcutExportSimple(
       materialName,
       formatDim(thickness),
       grainCode,
-      getEdgebandName(part.ops, "L1", cutlist),
-      getEdgebandName(part.ops, "L2", cutlist),
-      getEdgebandName(part.ops, "W1", cutlist),
-      getEdgebandName(part.ops, "W2", cutlist),
+      getEdgebandName(ops, "L1", cutlist),
+      getEdgebandName(ops, "L2", cutlist),
+      getEdgebandName(ops, "W1", cutlist),
+      getEdgebandName(ops, "W2", cutlist),
     ];
     
     lines.push(cells.map(c => {
