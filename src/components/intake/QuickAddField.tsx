@@ -1,40 +1,81 @@
 "use client";
 
 import * as React from "react";
-import { Zap, Plus, ArrowRight, Copy, Check, Info } from "lucide-react";
+import { Zap, Plus, Copy, Check, Info, Keyboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIntakeStore } from "@/lib/store";
 import { generateId } from "@/lib/utils";
-import { cn } from "@/lib/utils";
 import type { CutPart } from "@/lib/schema";
 
 interface QuickAddFieldProps {
-  /** Callback when a part is successfully parsed - receives parsed part data */
   onPartParsed?: (part: CutPart) => void;
-  /** 
-   * If true (default), adds directly to the parts list (store).
-   * If false, only calls onPartParsed callback - use this when embedding
-   * in ManualEntryForm to add to the Excel-like table instead.
-   */
   addToStore?: boolean;
 }
 
 /**
- * Canonical format for quick parsing:
- * LABEL L W [T] [QTY] [EB:edges] [GR:side] [H:pattern] [CNC:program] [NOTE:text]
+ * QUICK ADD FORMAT v2 - Ultra-fast entry
+ * 
+ * Basic: L W [Qty]
+ * Full:  L W [Qty] [ops...] ["Label"]
+ * 
+ * Dimensions can use 'x' separator: 720x560x2
+ * 
+ * Operations (order doesn't matter):
+ * - Edging:  4e, 2L, 2W, L1, L2, W1, W2, all
+ * - Groove:  gL, gW, gL1, gL2, gW1, gW2
+ * - Holes:   h, h32, h:pattern
+ * - CNC:     c, c:program
+ * 
+ * Label: quoted at end "My Label"
  * 
  * Examples:
- * - "Side panel 720 560"
- * - "Shelf 600 400 18 x4"
- * - "Top 800 600 x2 EB:L1,L2"
- * - "Base 1000 500 18 x1 GR:W2 H:32mm"
+ * - 720 560           → 720×560, qty 1
+ * - 720x560x2         → 720×560, qty 2
+ * - 720 560 2 4e      → with all edges
+ * - 720 560 2L gW     → 2 long edges + groove
+ * - 600 400 2 4e gW h "Shelf" → full spec
  */
-const CANONICAL_FORMAT = "LABEL L W [T] [QTY] [EB:edges] [GR:side] [H:pattern] [CNC:prog]";
 
-// Parse canonical format
-function parseCanonical(input: string, defaults: {
+// Edge banding shortcodes
+const EDGE_PATTERNS: Record<string, string[]> = {
+  "4e": ["L1", "L2", "W1", "W2"],
+  "all": ["L1", "L2", "W1", "W2"],
+  "2l": ["L1", "L2"],
+  "2w": ["W1", "W2"],
+  "l1": ["L1"],
+  "l2": ["L2"],
+  "w1": ["W1"],
+  "w2": ["W2"],
+  "1l": ["L1"],
+  "1w": ["W1"],
+  "l": ["L1", "L2"],  // Both long edges
+  "w": ["W1", "W2"],  // Both width edges
+  // Combined patterns
+  "l1w1": ["L1", "W1"],
+  "l1l2": ["L1", "L2"],
+  "w1w2": ["W1", "W2"],
+  "3e": ["L1", "L2", "W1"], // 3 edges (common for cabinet parts)
+};
+
+// Groove patterns - g prefix
+const GROOVE_PATTERN = /^g(l1?|l2|w1?|w2)$/i;
+
+// Hole patterns - h prefix
+const HOLE_PATTERN = /^h(:?\d*m?m?|:\w+)?$/i;
+
+// CNC patterns - c prefix  
+const CNC_PATTERN = /^c(:\w+)?$/i;
+
+// Quantity patterns
+const QTY_PATTERN = /^(\d+)$/;
+
+// Label pattern (quoted string at end)
+const LABEL_PATTERN = /"([^"]+)"$/;
+
+function parseQuickFormat(input: string, defaults: {
   materialId: string;
   thickness: number;
   edgebandId: string;
@@ -46,103 +87,96 @@ function parseCanonical(input: string, defaults: {
     custom_cnc?: boolean;
   };
 }): CutPart | null {
-  const trimmed = input.trim();
+  let trimmed = input.trim();
   if (!trimmed) return null;
 
-  // Main pattern: Label followed by L W, then optional modifiers
-  // Flexible pattern that captures label, dimensions, and modifiers
-  const tokens = trimmed.split(/\s+/);
-  
-  if (tokens.length < 3) return null;
-  
+  // Extract label if present (quoted string at end)
   let label = "";
-  let L = 0;
-  let W = 0;
-  let thickness = defaults.thickness;
+  const labelMatch = trimmed.match(LABEL_PATTERN);
+  if (labelMatch) {
+    label = labelMatch[1];
+    trimmed = trimmed.slice(0, labelMatch.index).trim();
+  }
+
+  // Normalize: replace 'x' with space for dimension parsing
+  // Handle formats like "720x560x2" → "720 560 2"
+  const normalized = trimmed.replace(/(\d)x(\d)/gi, "$1 $2");
+  
+  // Split into tokens
+  const tokens = normalized.split(/\s+/).filter(t => t.length > 0);
+  
+  if (tokens.length < 2) return null;
+
+  // First two tokens must be dimensions
+  const L = parseFloat(tokens[0]);
+  const W = parseFloat(tokens[1]);
+  
+  if (isNaN(L) || isNaN(W) || L <= 0 || W <= 0) return null;
+
+  // Parse remaining tokens
   let qty = 1;
   let edging: string[] = [];
   let grooveSide = "";
   let holePattern = "";
   let cncProgram = "";
-  let note = "";
-  
-  let i = 0;
-  
-  // Extract label (non-numeric tokens at start)
-  while (i < tokens.length && !/^\d+(\.\d+)?$/.test(tokens[i]) && !tokens[i].startsWith("x") && !tokens[i].includes(":")) {
-    label += (label ? " " : "") + tokens[i];
-    i++;
-  }
-  
-  // Extract L
-  if (i < tokens.length && /^\d+(\.\d+)?$/.test(tokens[i])) {
-    L = parseFloat(tokens[i]);
-    i++;
-  } else {
-    return null; // L is required
-  }
-  
-  // Extract W
-  if (i < tokens.length && /^\d+(\.\d+)?$/.test(tokens[i])) {
-    W = parseFloat(tokens[i]);
-    i++;
-  } else {
-    return null; // W is required
-  }
-  
-  // Process remaining tokens (thickness, qty, modifiers)
-  while (i < tokens.length) {
-    const token = tokens[i];
+
+  for (let i = 2; i < tokens.length; i++) {
+    const token = tokens[i].toLowerCase();
     
-    // Thickness (plain number, typically 16, 18, 19, 25, etc.)
-    if (/^\d+(\.\d+)?$/.test(token)) {
-      const num = parseFloat(token);
-      // Only consider it thickness if it's a reasonable thickness value
-      if (num >= 3 && num <= 50) {
-        thickness = num;
+    // Check for quantity (plain number)
+    if (QTY_PATTERN.test(token)) {
+      const num = parseInt(token);
+      if (num >= 1 && num <= 9999) {
+        qty = num;
       }
+      continue;
     }
-    // Quantity: x2, x4, qty2, q3
-    else if (/^[xq](\d+)$/i.test(token)) {
-      const match = token.match(/^[xq](\d+)$/i);
-      if (match) qty = parseInt(match[1]);
+    
+    // Check for edge patterns
+    if (EDGE_PATTERNS[token]) {
+      edging = [...new Set([...edging, ...EDGE_PATTERNS[token]])];
+      continue;
     }
-    else if (/^qty(\d+)$/i.test(token)) {
-      const match = token.match(/^qty(\d+)$/i);
-      if (match) qty = parseInt(match[1]);
+    
+    // Check for groove (g prefix)
+    if (GROOVE_PATTERN.test(token)) {
+      const side = token.slice(1).toUpperCase();
+      // Normalize: gL → L1, gW → W1, gL2 → L2, etc.
+      if (side === "L" || side === "L1") grooveSide = "L1";
+      else if (side === "L2") grooveSide = "L2";
+      else if (side === "W" || side === "W1") grooveSide = "W1";
+      else if (side === "W2") grooveSide = "W2";
+      continue;
     }
-    // Edge banding: EB:L1,L2 or EB:all
-    else if (/^EB:/i.test(token)) {
-      const edges = token.slice(3).toUpperCase();
-      if (edges === "ALL") {
-        edging = ["L1", "L2", "W1", "W2"];
+    
+    // Check for holes (h prefix)
+    if (HOLE_PATTERN.test(token)) {
+      if (token.includes(":")) {
+        holePattern = token.slice(2); // h:32mm → 32mm
+      } else if (token.length > 1) {
+        holePattern = token.slice(1); // h32 → 32
       } else {
-        edging = edges.split(",").filter(e => ["L1", "L2", "W1", "W2"].includes(e));
+        holePattern = "SYS32"; // Default system 32
       }
-    }
-    // Groove: GR:L1 or GR:W2
-    else if (/^GR:/i.test(token)) {
-      grooveSide = token.slice(3).toUpperCase();
-    }
-    // Holes: H:32mm or H:system
-    else if (/^H:/i.test(token)) {
-      holePattern = token.slice(2);
-    }
-    // CNC: CNC:program_name
-    else if (/^CNC:/i.test(token)) {
-      cncProgram = token.slice(4);
-    }
-    // Note: NOTE:text or N:text
-    else if (/^(NOTE|N):/i.test(token)) {
-      note = token.replace(/^(NOTE|N):/i, "");
+      continue;
     }
     
-    i++;
+    // Check for CNC (c prefix)
+    if (CNC_PATTERN.test(token)) {
+      if (token.includes(":")) {
+        cncProgram = token.slice(2);
+      } else {
+        cncProgram = "default";
+      }
+      continue;
+    }
+    
+    // If unrecognized and no label yet, treat as label
+    if (!label && i === tokens.length - 1 && !/^\d/.test(token)) {
+      label = tokens[i]; // Keep original case for label
+    }
   }
-  
-  // Validate minimum requirements
-  if (L <= 0 || W <= 0) return null;
-  
+
   // Build ops based on capabilities
   const ops: CutPart["ops"] = {};
   
@@ -170,7 +204,7 @@ function parseCanonical(input: string, defaults: {
   // Holes
   if (holePattern && defaults.capabilities.cnc_holes) {
     ops.holes = [{
-      pattern_id: holePattern.includes("32") ? "SYS32" : undefined,
+      pattern_id: holePattern.includes("32") ? "SYS32" : holePattern,
       face: "front" as const,
       notes: holePattern,
     }];
@@ -190,10 +224,9 @@ function parseCanonical(input: string, defaults: {
     label: label || undefined,
     qty,
     size: { L, W },
-    thickness_mm: thickness,
+    thickness_mm: defaults.thickness,
     material_id: defaults.materialId,
     allow_rotation: true,
-    notes: note ? { operator: note } : undefined,
     ops: Object.keys(ops).length > 0 ? ops : undefined,
     audit: {
       source_method: "manual",
@@ -206,7 +239,7 @@ function parseCanonical(input: string, defaults: {
 export function QuickAddField({ onPartParsed, addToStore = true }: QuickAddFieldProps) {
   const [input, setInput] = React.useState("");
   const [lastAdded, setLastAdded] = React.useState<string | null>(null);
-  const [copied, setCopied] = React.useState(false);
+  const [showHelp, setShowHelp] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   
   const { currentCutlist, addPart } = useIntakeStore();
@@ -216,26 +249,16 @@ export function QuickAddField({ onPartParsed, addToStore = true }: QuickAddField
   const defaultEdgebandId = currentCutlist.edgebands?.[0]?.edgeband_id || "EB-WHITE-0.8";
   const defaultThickness = currentCutlist.materials[0]?.thickness_mm || 18;
   
-  // Build dynamic format string based on capabilities
-  const formatHint = React.useMemo(() => {
-    let format = "LABEL L W [T] [QTY]";
-    if (capabilities.edging) format += " [EB:edges]";
-    if (capabilities.grooves) format += " [GR:side]";
-    if (capabilities.cnc_holes) format += " [H:pattern]";
-    if (capabilities.cnc_routing || capabilities.custom_cnc) format += " [CNC:prog]";
-    return format;
-  }, [capabilities]);
-  
-  // Build example based on capabilities
-  const example = React.useMemo(() => {
-    let ex = "Side panel 720 560 18 x2";
-    if (capabilities.edging) ex += " EB:L1,L2";
-    if (capabilities.grooves) ex += " GR:W2";
+  // Dynamic placeholder based on capabilities
+  const placeholder = React.useMemo(() => {
+    let ex = "720 560 2";
+    if (capabilities.edging) ex += " 4e";
+    if (capabilities.grooves) ex += " gW";
     return ex;
   }, [capabilities]);
   
   const handleQuickAdd = React.useCallback(() => {
-    const part = parseCanonical(input, {
+    const part = parseQuickFormat(input, {
       materialId: defaultMaterialId,
       thickness: defaultThickness,
       edgebandId: defaultEdgebandId,
@@ -243,17 +266,14 @@ export function QuickAddField({ onPartParsed, addToStore = true }: QuickAddField
     });
     
     if (part) {
-      // Only add to store if explicitly requested (standalone mode)
       if (addToStore) {
         addPart(part);
       }
-      // Always call the callback if provided (for Excel table integration)
       onPartParsed?.(part);
       setLastAdded(part.label || `${part.size.L}×${part.size.W}`);
       setInput("");
       inputRef.current?.focus();
       
-      // Clear lastAdded after 2 seconds
       setTimeout(() => setLastAdded(null), 2000);
     }
   }, [input, defaultMaterialId, defaultThickness, defaultEdgebandId, capabilities, addPart, onPartParsed, addToStore]);
@@ -265,31 +285,82 @@ export function QuickAddField({ onPartParsed, addToStore = true }: QuickAddField
     }
   };
   
-  const copyFormat = () => {
-    navigator.clipboard.writeText(example);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  
   return (
-    <div className="space-y-3">
-      {/* Format display */}
+    <div className="space-y-2">
+      {/* Header with help toggle */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Zap className="h-4 w-4 text-[var(--cai-teal)]" />
           <span className="text-sm font-medium">Quick Add</span>
-          <Badge variant="outline" className="text-xs font-mono">
-            {formatHint}
+          <Badge variant="outline" className="text-xs font-mono px-1.5">
+            L W Qty
           </Badge>
         </div>
-        <button
-          onClick={copyFormat}
-          className="flex items-center gap-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
-        >
-          {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-          {copied ? "Copied!" : "Copy example"}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => setShowHelp(!showHelp)}
+              className="flex items-center gap-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+            >
+              <Keyboard className="h-3.5 w-3.5" />
+              {showHelp ? "Hide" : "Shortcuts"}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Keyboard shortcuts reference</TooltipContent>
+        </Tooltip>
       </div>
+      
+      {/* Expanded help */}
+      {showHelp && (
+        <div className="p-3 rounded-lg bg-[var(--muted)]/50 border text-xs space-y-2 animate-in fade-in slide-in-from-top-1">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+            <div className="font-medium text-[var(--foreground)]">Format</div>
+            <div className="font-mono text-[var(--muted-foreground)]">L W [Qty] [ops] ["Label"]</div>
+            
+            <div className="font-medium text-[var(--foreground)]">Alt format</div>
+            <div className="font-mono text-[var(--muted-foreground)]">LxWxQty</div>
+          </div>
+          
+          <div className="pt-2 border-t grid grid-cols-2 gap-x-4 gap-y-1">
+            <div className="text-[var(--foreground)]">
+              <span className="font-medium">Edge banding:</span>
+            </div>
+            <div className="font-mono text-[var(--muted-foreground)]">
+              4e all 2L 2W L1 L2 W1 W2
+            </div>
+            
+            <div className="text-[var(--foreground)]">
+              <span className="font-medium">Groove:</span>
+            </div>
+            <div className="font-mono text-[var(--muted-foreground)]">
+              gL gW gL1 gL2 gW1 gW2
+            </div>
+            
+            <div className="text-[var(--foreground)]">
+              <span className="font-medium">Holes:</span>
+            </div>
+            <div className="font-mono text-[var(--muted-foreground)]">
+              h h32 h:pattern
+            </div>
+            
+            <div className="text-[var(--foreground)]">
+              <span className="font-medium">CNC:</span>
+            </div>
+            <div className="font-mono text-[var(--muted-foreground)]">
+              c c:program
+            </div>
+          </div>
+          
+          <div className="pt-2 border-t space-y-1">
+            <div className="font-medium text-[var(--foreground)]">Examples:</div>
+            <div className="font-mono text-[var(--muted-foreground)] space-y-0.5">
+              <div>720 560 2</div>
+              <div>720x560x4 4e gW</div>
+              <div>600 400 2 2L gW h "Shelf"</div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Input with add button */}
       <div className="flex gap-2">
@@ -299,13 +370,13 @@ export function QuickAddField({ onPartParsed, addToStore = true }: QuickAddField
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={example}
-            className="font-mono text-sm pr-20"
+            placeholder={placeholder}
+            className="font-mono text-sm h-9"
           />
           {lastAdded && (
             <div className="absolute right-2 top-1/2 -translate-y-1/2">
               <Badge variant="success" className="text-xs animate-in fade-in slide-in-from-right-2">
-                Added!
+                ✓ Added
               </Badge>
             </div>
           )}
@@ -315,47 +386,34 @@ export function QuickAddField({ onPartParsed, addToStore = true }: QuickAddField
           disabled={!input.trim()}
           variant="primary"
           size="sm"
-          className="shrink-0"
+          className="shrink-0 h-9"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-4 w-4 mr-1" />
           Add
         </Button>
       </div>
       
-      {/* Quick reference */}
-      <div className="flex flex-wrap gap-2 text-xs text-[var(--muted-foreground)]">
-        <span className="flex items-center gap-1">
-          <Info className="h-3 w-3" />
-          Format:
-        </span>
-        <code className="bg-[var(--muted)] px-1.5 py-0.5 rounded">x2</code>
-        <span>qty</span>
+      {/* Compact inline hints */}
+      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--muted-foreground)]">
+        <span className="opacity-70">Quick:</span>
         {capabilities.edging && (
-          <>
-            <code className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">EB:L1,L2</code>
-            <span>edging</span>
-          </>
+          <code className="bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1 py-0.5 rounded">4e</code>
+        )}
+        {capabilities.edging && (
+          <code className="bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1 py-0.5 rounded">2L</code>
         )}
         {capabilities.grooves && (
-          <>
-            <code className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">GR:W2</code>
-            <span>groove</span>
-          </>
+          <code className="bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1 py-0.5 rounded">gW</code>
         )}
         {capabilities.cnc_holes && (
-          <>
-            <code className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded">H:32mm</code>
-            <span>holes</span>
-          </>
+          <code className="bg-purple-500/10 text-purple-600 dark:text-purple-400 px-1 py-0.5 rounded">h</code>
         )}
         {(capabilities.cnc_routing || capabilities.custom_cnc) && (
-          <>
-            <code className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">CNC:prog</code>
-            <span>program</span>
-          </>
+          <code className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1 py-0.5 rounded">c</code>
         )}
+        <span className="opacity-50">|</span>
+        <span className="opacity-70">Enter to add</span>
       </div>
     </div>
   );
 }
-
