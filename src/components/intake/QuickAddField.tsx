@@ -5,7 +5,7 @@ import { Zap, Plus, Copy, Check, Info, Keyboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { useIntakeStore } from "@/lib/store";
 import { generateId } from "@/lib/utils";
 import type { CutPart } from "@/lib/schema";
@@ -296,18 +296,20 @@ export function QuickAddField({ onPartParsed, addToStore = true }: QuickAddField
             L W Qty
           </Badge>
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => setShowHelp(!showHelp)}
-              className="flex items-center gap-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
-            >
-              <Keyboard className="h-3.5 w-3.5" />
-              {showHelp ? "Hide" : "Shortcuts"}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Keyboard shortcuts reference</TooltipContent>
-        </Tooltip>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowHelp(!showHelp)}
+                className="flex items-center gap-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+              >
+                <Keyboard className="h-3.5 w-3.5" />
+                {showHelp ? "Hide" : "Shortcuts"}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Keyboard shortcuts reference</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
       
       {/* Expanded help */}
