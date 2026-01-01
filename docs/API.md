@@ -1,8 +1,8 @@
 # CAI Intake API Documentation
 
 <p align="center">
-  <strong>REST API Reference v2.0</strong><br>
-  <em>Last Updated: January 2025</em>
+  <strong>REST API Reference v2.1</strong><br>
+  <em>Last Updated: January 2026</em>
 </p>
 
 ---
@@ -61,7 +61,7 @@ All responses include standard headers:
 
 | Header | Description |
 |--------|-------------|
-| `X-API-Version` | Current API version (1.0.0) |
+| `X-API-Version` | Current API version (2.1.0) |
 | `X-RateLimit-Limit` | Maximum requests per minute |
 | `X-RateLimit-Remaining` | Remaining requests |
 | `X-RateLimit-Reset` | Unix timestamp for limit reset |
@@ -85,15 +85,61 @@ Returns system health status including database and external service connectivit
 ```json
 {
   "status": "healthy",
-  "version": "1.0.0",
-  "timestamp": "2024-12-29T10:00:00Z",
+  "version": "2.1.0",
+  "timestamp": "2026-01-01T10:00:00Z",
   "uptime_seconds": 86400,
   "services": {
     "api": { "status": "healthy" },
     "database": { "status": "healthy", "latency_ms": 5 },
     "storage": { "status": "healthy", "latency_ms": 12 },
-    "ai": { "status": "healthy", "message": "Anthropic" }
+    "ai": { "status": "healthy", "message": "Anthropic Claude 4.5 Sonnet" }
   }
+}
+```
+
+---
+
+### Dashboard
+
+#### Get Dashboard Data
+
+```http
+GET /dashboard
+```
+
+Returns comprehensive dashboard statistics including cutlists, activity, and usage metrics.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "stats": {
+    "totalCutlists": 156,
+    "activeCutlists": 24,
+    "partsProcessed": 4580,
+    "cutlistsThisWeek": 12
+  },
+  "recentCutlists": [...],
+  "recentActivity": [...]
+}
+```
+
+#### Get Quick Dashboard Stats
+
+```http
+GET /dashboard/quick
+```
+
+Returns lightweight dashboard stats for fast loading.
+
+**Response:**
+
+```json
+{
+  "cutlists": { "total": 156, "thisWeek": 12 },
+  "parts": { "total": 4580 },
+  "materials": { "total": 28 }
 }
 ```
 
@@ -113,7 +159,7 @@ GET /cutlists
 |-----------|------|-------------|
 | `page` | integer | Page number (default: 1) |
 | `limit` | integer | Items per page (default: 20, max: 100) |
-| `status` | string | Filter by status: draft, pending, processing, completed, archived |
+| `status` | string | Filter by status: draft, completed, exported, archived |
 | `search` | string | Search by name or reference |
 | `sort` | string | Sort field: name, createdAt, updatedAt, status |
 | `order` | string | Sort order: asc, desc |
@@ -126,7 +172,7 @@ GET /cutlists
     {
       "id": "cl_abc123",
       "name": "Kitchen Cabinet Project",
-      "status": "active",
+      "status": "completed",
       "partsCount": 24,
       "totalPieces": 48,
       "materialsCount": 3,
@@ -159,7 +205,7 @@ GET /cutlists/{id}
     "doc_id": "DOC-abc123",
     "name": "Kitchen Cabinet Project",
     "description": "Main kitchen cabinets",
-    "status": "active",
+    "status": "completed",
     "project_name": "Kitchen Renovation",
     "customer_name": "John Smith",
     "capabilities": {
@@ -167,31 +213,11 @@ GET /cutlists/{id}
       "grooves": true,
       "cnc_holes": false
     },
-    "parts": [
-      {
-        "id": "pt_xyz789",
-        "part_id": "SIDE-001",
-        "label": "Side Panel",
-        "size": { "L": 720, "W": 560 },
-        "thickness_mm": 18,
-        "qty": 2,
-        "material_id": "mat_white_melamine",
-        "allow_rotation": false,
-        "group_id": "cabinet-1",
-        "ops": {
-          "edging": { "L1": "eb_white", "L2": "eb_white" }
-        },
-        "notes": { "production": "Handle with care" }
-      }
-    ],
+    "parts": [...],
+    "materials": [...],
+    "edgebands": [...],
     "parts_count": 24,
-    "source_files": [
-      {
-        "id": "file_abc",
-        "original_name": "cutlist.pdf",
-        "url": "https://..."
-      }
-    ],
+    "source_files": [...],
     "created_at": "2024-12-20T10:30:00Z",
     "updated_at": "2024-12-20T15:45:00Z"
   }
@@ -212,11 +238,11 @@ POST /cutlists
   "description": "Optional description",
   "project_name": "Kitchen Renovation",
   "customer_name": "Jane Doe",
+  "status": "draft",
   "capabilities": {
     "edging": true,
     "grooves": false,
-    "cnc_holes": false,
-    "advanced_grouping": true
+    "cnc_holes": false
   },
   "parts": [
     {
@@ -228,7 +254,9 @@ POST /cutlists
       "material_id": "mat_white_melamine",
       "allow_rotation": true
     }
-  ]
+  ],
+  "materials": [...],
+  "edgebands": [...]
 }
 ```
 
@@ -264,22 +292,6 @@ Creates a copy of an existing cutlist with all its parts.
 }
 ```
 
-**Response:** `201 Created`
-
-```json
-{
-  "cutlist": {
-    "id": "cl_new789",
-    "doc_id": "DOC-new789",
-    "name": "Kitchen Cabinet Project (Copy)",
-    "status": "draft",
-    "parts_count": 24
-  },
-  "original_id": "cl_abc123",
-  "message": "Cutlist duplicated successfully"
-}
-```
-
 #### Get Cutlist Statistics
 
 ```http
@@ -298,27 +310,11 @@ Returns detailed statistics for a cutlist.
     "total_pieces": 48,
     "total_area_sqm": 12.5,
     "total_perimeter_m": 156.8,
-    "materials": [
-      {
-        "material_id": "mat_white",
-        "thickness_mm": 18,
-        "unique_parts": 20,
-        "total_pieces": 40,
-        "total_area_sqm": 10.2
-      }
-    ],
-    "edge_banding": [
-      { "position": "L1", "total_length_m": 42.5, "piece_count": 30 }
-    ],
-    "operations": [
-      { "type": "drilling", "count": 48 }
-    ],
+    "materials": [...],
+    "edge_banding": [...],
+    "operations": [...],
     "parts_locked_rotation": 12,
-    "parts_with_notes": 5,
-    "groups": [
-      { "group_id": "cabinet-1", "count": 8 },
-      { "group_id": null, "count": 16 }
-    ]
+    "parts_with_notes": 5
   }
 }
 ```
@@ -339,61 +335,16 @@ GET /cutlists/{cutlist_id}/parts
 POST /cutlists/{cutlist_id}/parts
 ```
 
-**Request Body:**
-
-```json
-{
-  "parts": [
-    {
-      "part_id": "SHELF-001",
-      "label": "Shelf",
-      "size": { "L": 500, "W": 300 },
-      "thickness_mm": 18,
-      "qty": 4,
-      "material_id": "mat_white_melamine",
-      "allow_rotation": true,
-      "group_id": "cabinet-1"
-    }
-  ]
-}
-```
-
 #### Bulk Update Parts
 
 ```http
 PATCH /cutlists/{cutlist_id}/parts
 ```
 
-**Request Body:**
-
-```json
-{
-  "updates": [
-    {
-      "part_id": "SHELF-001",
-      "material_id": "mat_oak",
-      "allow_rotation": false
-    },
-    {
-      "part_id": "SHELF-002",
-      "qty": 6
-    }
-  ]
-}
-```
-
 #### Delete Parts
 
 ```http
 DELETE /cutlists/{cutlist_id}/parts
-```
-
-**Request Body:**
-
-```json
-{
-  "part_ids": ["SHELF-001", "SHELF-002"]
-}
 ```
 
 ---
@@ -414,31 +365,6 @@ Search across cutlists, materials, edgebands, and parts.
 | `types` | string | Comma-separated types: cutlists,materials,edgebands,parts |
 | `limit` | integer | Maximum results (default: 20, max: 50) |
 
-**Response:**
-
-```json
-{
-  "query": "white melamine",
-  "results": [
-    {
-      "id": "mat_white",
-      "type": "material",
-      "title": "White Melamine 18mm",
-      "subtitle": "MAT-WHITE-18 - 18mm",
-      "metadata": { "thickness_mm": 18 }
-    },
-    {
-      "id": "cl_abc123",
-      "type": "cutlist",
-      "title": "Kitchen Cabinets",
-      "subtitle": "JOB-2024-001"
-    }
-  ],
-  "total": 2,
-  "types": ["cutlists", "materials"]
-}
-```
-
 ---
 
 ### Bulk Operations
@@ -449,54 +375,18 @@ POST /bulk
 
 Execute multiple operations in a single request.
 
-**Request Body:**
-
-```json
-{
-  "operations": [
-    {
-      "operation": "cutlists.archive",
-      "ids": ["cl_abc123", "cl_def456"]
-    },
-    {
-      "operation": "parts.update_material",
-      "ids": ["pt_001", "pt_002"],
-      "data": { "material_id": "mat_oak" }
-    }
-  ]
-}
-```
-
 **Supported Operations:**
 
 | Operation | Description |
 |-----------|-------------|
 | `cutlists.archive` | Archive cutlists |
 | `cutlists.delete` | Delete cutlists |
-| `cutlists.update_status` | Update status |
+| `cutlists.update_status` | Update status (draft, completed, exported) |
 | `parts.delete` | Delete parts |
 | `parts.update_material` | Update material |
 | `parts.update_rotation` | Update rotation setting |
 | `materials.delete` | Delete materials |
 | `edgebands.delete` | Delete edgebands |
-
-**Response:**
-
-```json
-{
-  "success": true,
-  "results": [
-    { "operation": "cutlists.archive", "success": true, "affected": 2 },
-    { "operation": "parts.update_material", "success": true, "affected": 2 }
-  ],
-  "summary": {
-    "total_operations": 2,
-    "successful": 2,
-    "failed": 0,
-    "total_affected": 4
-  }
-}
-```
 
 ---
 
@@ -507,6 +397,8 @@ Execute multiple operations in a single request.
 ```http
 POST /parse-text
 ```
+
+Parse cutlist data from plain text using AI.
 
 **Request Body:**
 
@@ -521,57 +413,101 @@ POST /parse-text
 }
 ```
 
-**Response:**
-
-```json
-{
-  "parts": [
-    {
-      "label": "Side panel",
-      "size": { "L": 720, "W": 560 },
-      "thickness_mm": 18,
-      "qty": 2,
-      "material_id": "mat_white_melamine",
-      "allow_rotation": false,
-      "ops": {
-        "edging": { "L1": true, "W1": true, "W2": true }
-      },
-      "confidence": 0.95
-    }
-  ],
-  "parse_method": "ai",
-  "processing_time_ms": 450
-}
-```
-
 #### Parse File
 
 ```http
 POST /parse-file
 ```
 
+Parse cutlist data from uploaded files (PDF, images, spreadsheets).
+
 **Request Body:** `multipart/form-data`
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `file` | file | PDF, image, or spreadsheet |
+| `file` | file | PDF, image (JPG/PNG), Excel, or CSV |
 | `options` | JSON | Parse options (optional) |
+| `skipCache` | boolean | Skip OCR cache for fresh parse |
 
-**Response:**
+**Supported File Types:**
+- PDF documents (including scanned)
+- Images (JPG, PNG, WebP)
+- Excel (.xlsx, .xls)
+- CSV files
 
-```json
-{
-  "job_id": "pj_abc123",
-  "status": "processing",
-  "estimated_time_ms": 5000
-}
+#### Main Parse Endpoint
+
+```http
+POST /parse
 ```
+
+Unified parsing endpoint that handles both text and file parsing.
+
+#### Get Parse Progress
+
+```http
+GET /parse/progress
+```
+
+Get progress updates for long-running parse operations.
 
 #### Get Parse Job
 
 ```http
 GET /parse-jobs/{id}
 ```
+
+#### List Parse Jobs
+
+```http
+GET /parse-jobs
+```
+
+---
+
+### CSV Wizard
+
+Smart CSV parsing with automatic format detection.
+
+#### Detect CSV Format
+
+```http
+POST /csv-wizard/detect
+```
+
+Automatically detect column mappings and data types in a CSV file.
+
+**Request Body:** `multipart/form-data`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `file` | file | CSV file to analyze |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "detectedFormat": {
+    "delimiter": ",",
+    "hasHeaders": true,
+    "columns": [
+      { "index": 0, "name": "Label", "suggestedMapping": "label" },
+      { "index": 1, "name": "Length", "suggestedMapping": "length" },
+      { "index": 2, "name": "Width", "suggestedMapping": "width" }
+    ]
+  },
+  "preview": [...]
+}
+```
+
+#### Preview CSV Import
+
+```http
+POST /csv-wizard/preview
+```
+
+Preview how CSV data will be imported with custom column mappings.
 
 ---
 
@@ -603,19 +539,11 @@ POST /exports
 |--------|-----------|-------------|
 | `json` | .json | Native CAI format |
 | `csv` | .csv | Universal CSV |
-| `maxcut` | .csv | MaxCut CSV |
-| `cutlistplus` | .csv | CutList Plus CSV |
-| `cutrite` | .xml | CutRite XML |
-| `optimik` | .csv | Optimik CSV |
-| `cai2d` | .json | CAI 2D format |
-
-#### List Export Formats
-
-```http
-GET /exports
-```
-
-Returns available export formats and their metadata.
+| `maxcut` | .csv | MaxCut panel optimizer |
+| `cutlistplus` | .csv | CutList Plus FX |
+| `cutrite` | .xml | CutRite/Weinig XML |
+| `optimik` | .csv | Optimik panel optimizer |
+| `cai2d` | .json | CAI 2D Optimizer |
 
 ---
 
@@ -656,6 +584,34 @@ POST /materials
 }
 ```
 
+#### Get Material
+
+```http
+GET /materials/{id}
+```
+
+#### Update Material
+
+```http
+PUT /materials/{id}
+```
+
+#### Delete Material
+
+```http
+DELETE /materials/{id}
+```
+
+#### Import Materials
+
+```http
+POST /materials/import
+```
+
+Bulk import materials from CSV/Excel.
+
+**Request Body:** `multipart/form-data`
+
 ---
 
 ### Edgebands
@@ -681,11 +637,191 @@ POST /edgebands
   "thickness_mm": 2,
   "width_mm": 22,
   "material": "ABS",
-  "color_code": "#FFFFFF",
-  "waste_factor_pct": 1,
-  "overhang_mm": 0
+  "color_code": "#FFFFFF"
 }
 ```
+
+#### Get Edgeband
+
+```http
+GET /edgebands/{id}
+```
+
+#### Update Edgeband
+
+```http
+PUT /edgebands/{id}
+```
+
+#### Delete Edgeband
+
+```http
+DELETE /edgebands/{id}
+```
+
+---
+
+### Operations Management
+
+#### Edgeband Operations
+
+```http
+GET /operations/edgeband
+POST /operations/edgeband
+GET /operations/edgeband/{id}
+PUT /operations/edgeband/{id}
+DELETE /operations/edgeband/{id}
+```
+
+#### Groove Operations
+
+```http
+GET /operations/groove
+POST /operations/groove
+GET /operations/groove/{id}
+PUT /operations/groove/{id}
+DELETE /operations/groove/{id}
+```
+
+**Create Groove Profile:**
+
+```json
+{
+  "name": "Standard Groove",
+  "width_mm": 4,
+  "depth_mm": 8,
+  "position": "center",
+  "shortcode": "G4X8"
+}
+```
+
+#### Drilling/Hole Operations
+
+```http
+GET /operations/drilling
+POST /operations/drilling
+GET /operations/drilling/{id}
+PUT /operations/drilling/{id}
+DELETE /operations/drilling/{id}
+```
+
+**Create Hole Pattern:**
+
+```json
+{
+  "name": "32mm System",
+  "pattern_type": "line",
+  "hole_diameter_mm": 5,
+  "hole_depth_mm": 12,
+  "spacing_mm": 32,
+  "shortcode": "H32"
+}
+```
+
+#### CNC Operations
+
+```http
+GET /operations/cnc
+POST /operations/cnc
+GET /operations/cnc/{id}
+PUT /operations/cnc/{id}
+DELETE /operations/cnc/{id}
+```
+
+**Create CNC Program:**
+
+```json
+{
+  "name": "Hinge Bore",
+  "program_id": "HINGE35",
+  "description": "35mm hinge boring",
+  "machine_type": "cnc_router",
+  "shortcode": "CNC-HNG"
+}
+```
+
+#### Operation Types
+
+```http
+GET /operations/types
+POST /operations/types
+GET /operations/types/{id}
+PUT /operations/types/{id}
+DELETE /operations/types/{id}
+```
+
+#### Seed Default Operations
+
+```http
+POST /operations/seed
+```
+
+Seeds organization with default operation templates.
+
+---
+
+### Shortcodes
+
+Organization-specific shortcodes for quick data entry.
+
+#### List Shortcodes
+
+```http
+GET /shortcodes
+```
+
+**Response:**
+
+```json
+{
+  "shortcodes": [
+    {
+      "id": "sc_abc",
+      "code": "EB1",
+      "type": "edgeband",
+      "target_id": "eb_white_2mm",
+      "description": "White ABS 2mm"
+    }
+  ]
+}
+```
+
+#### Create Shortcode
+
+```http
+POST /shortcodes
+```
+
+**Request Body:**
+
+```json
+{
+  "code": "EB1",
+  "type": "edgeband",
+  "target_id": "eb_white_2mm",
+  "description": "White ABS 2mm"
+}
+```
+
+#### Update Shortcode
+
+```http
+PUT /shortcodes/{id}
+```
+
+#### Delete Shortcode
+
+```http
+DELETE /shortcodes/{id}
+```
+
+#### Template Shortcodes
+
+```http
+GET /template-shortcodes
+```
+
+Get shortcodes for use in CAI templates.
 
 ---
 
@@ -716,11 +852,143 @@ GET /files
 GET /files/{id}
 ```
 
+#### Get File Proxy (for PDFs)
+
+```http
+GET /files/proxy/{id}
+```
+
+Proxy endpoint for serving PDF files with proper headers.
+
 #### Delete File
 
 ```http
 DELETE /files/{id}
 ```
+
+---
+
+### PDF Preview
+
+```http
+POST /pdf-preview
+```
+
+Generate preview images from PDF files.
+
+**Request Body:**
+
+```json
+{
+  "file_id": "file_abc123",
+  "page": 1,
+  "width": 800
+}
+```
+
+---
+
+### Panel Optimization
+
+#### Run Optimization
+
+```http
+POST /optimize
+```
+
+Submit a cutlist for panel cutting optimization.
+
+**Request Body:**
+
+```json
+{
+  "cutlist_id": "cl_abc123",
+  "settings": {
+    "blade_thickness_mm": 4,
+    "edge_trim_mm": 10,
+    "algorithm": "guillotine"
+  }
+}
+```
+
+#### List Optimization Jobs
+
+```http
+GET /optimize-jobs
+```
+
+#### Get Optimization Job
+
+```http
+GET /optimize-jobs/{id}
+```
+
+#### Export Optimization Results
+
+```http
+POST /optimize/export/pdf
+POST /optimize/export/labels
+```
+
+Export cutting patterns as PDF or part labels.
+
+---
+
+### Organization Settings
+
+#### Get Organization Settings
+
+```http
+GET /organizations/settings
+```
+
+#### Update Organization Settings
+
+```http
+PUT /organizations/settings
+```
+
+**Request Body:**
+
+```json
+{
+  "default_units": "mm",
+  "default_thickness_mm": 18,
+  "enable_auto_training": true,
+  "ocr_provider": "anthropic"
+}
+```
+
+#### Get Branding Settings
+
+```http
+GET /organizations/branding
+```
+
+#### Update Branding
+
+```http
+PUT /organizations/branding
+```
+
+**Request Body:**
+
+```json
+{
+  "company_name": "ABC Cabinets",
+  "logo_url": "https://...",
+  "primary_color": "#0066CC",
+  "secondary_color": "#004499"
+}
+```
+
+#### Upload Branding Assets
+
+```http
+POST /organizations/branding/upload
+```
+
+Upload logo and other branding assets.
 
 ---
 
@@ -730,38 +998,6 @@ DELETE /files/{id}
 
 ```http
 GET /team
-```
-
-**Response:**
-
-```json
-{
-  "members": [
-    {
-      "id": "user_abc",
-      "name": "John Smith",
-      "email": "john@example.com",
-      "role": "manager",
-      "status": "active",
-      "lastActive": "5m ago",
-      "cutlistsThisWeek": 12
-    }
-  ],
-  "invitations": [
-    {
-      "id": "inv_xyz",
-      "email": "jane@example.com",
-      "role": "operator",
-      "status": "pending",
-      "expiresAt": "2024-12-28T00:00:00Z"
-    }
-  ],
-  "stats": {
-    "total": 5,
-    "active": 4,
-    "pendingInvites": 1
-  }
-}
 ```
 
 #### Invite Team Member
@@ -779,6 +1015,13 @@ POST /team
 }
 ```
 
+**Available Roles:**
+- `owner` - Full access, can delete organization
+- `admin` - Full access except billing
+- `manager` - Can manage cutlists and team
+- `operator` - Can create and edit cutlists
+- `viewer` - Read-only access
+
 #### Get Team Member
 
 ```http
@@ -789,15 +1032,6 @@ GET /team/{id}
 
 ```http
 PUT /team/{id}
-```
-
-**Request Body:**
-
-```json
-{
-  "role": "manager",
-  "is_active": true
-}
 ```
 
 #### Remove Team Member
@@ -816,7 +1050,7 @@ DELETE /team/{id}
 GET /invitations/{token}
 ```
 
-No authentication required. Returns invitation details for the sign-up page.
+No authentication required.
 
 #### Accept Invitation
 
@@ -824,7 +1058,134 @@ No authentication required. Returns invitation details for the sign-up page.
 POST /invitations/{token}
 ```
 
-Requires authentication. Adds the current user to the organization.
+Requires authentication.
+
+---
+
+### Authentication & Profile
+
+#### Get User Profile
+
+```http
+GET /auth/profile
+```
+
+**Response:**
+
+```json
+{
+  "id": "user_abc",
+  "email": "user@example.com",
+  "name": "John Smith",
+  "avatar_url": "https://...",
+  "organization": {
+    "id": "org_xyz",
+    "name": "ABC Cabinets",
+    "role": "admin"
+  }
+}
+```
+
+#### Update Profile
+
+```http
+PUT /auth/profile
+```
+
+**Request Body:**
+
+```json
+{
+  "name": "John Smith",
+  "preferences": {
+    "theme": "dark",
+    "notifications": true
+  }
+}
+```
+
+#### Upload Avatar
+
+```http
+POST /auth/avatar
+```
+
+**Request Body:** `multipart/form-data`
+
+---
+
+### Billing
+
+#### Create Checkout Session
+
+```http
+POST /billing/checkout
+```
+
+Create a Stripe checkout session for subscription upgrade.
+
+**Request Body:**
+
+```json
+{
+  "plan_id": "professional",
+  "billing_interval": "monthly"
+}
+```
+
+#### Get Billing Portal
+
+```http
+GET /billing/portal
+```
+
+Get a link to the Stripe billing portal.
+
+#### Get Billing History
+
+```http
+GET /billing/history
+```
+
+Returns list of past invoices and payments.
+
+---
+
+### Subscription
+
+#### Get Subscription
+
+```http
+GET /subscription
+```
+
+**Response:**
+
+```json
+{
+  "subscription": {
+    "planId": "professional",
+    "planName": "Professional",
+    "status": "active",
+    "billingInterval": "monthly",
+    "currentPeriodEnd": "2026-02-01T00:00:00Z",
+    "trialDaysRemaining": 0,
+    "cancelAtPeriodEnd": false
+  },
+  "usage": {
+    "cutlistsCreated": 45,
+    "partsProcessed": 1250,
+    "aiParsesUsed": 120,
+    "storageUsedMb": 156
+  },
+  "limits": {
+    "maxCutlistsPerMonth": 500,
+    "maxPartsPerCutlist": 1000,
+    "maxTeamMembers": 10,
+    "maxStorageMb": 10240
+  }
+}
+```
 
 ---
 
@@ -853,20 +1214,6 @@ POST /webhooks
 }
 ```
 
-**Response:** `201 Created`
-
-```json
-{
-  "webhook": {
-    "id": "wh_abc123",
-    "url": "https://your-server.com/webhook",
-    "events": ["cutlist.created", "cutlist.updated"],
-    "secret": "whsec_xxxxx..."
-  },
-  "message": "Webhook created. Store the secret securely."
-}
-```
-
 #### Supported Events
 
 | Event | Description |
@@ -891,8 +1238,6 @@ POST /webhooks
 POST /webhooks/{id}
 ```
 
-Sends a test event to the webhook endpoint.
-
 #### Update Webhook
 
 ```http
@@ -903,37 +1248,6 @@ PUT /webhooks/{id}
 
 ```http
 DELETE /webhooks/{id}
-```
-
-#### Webhook Payload
-
-```json
-{
-  "event": "cutlist.created",
-  "timestamp": "2024-12-21T10:00:00Z",
-  "data": {
-    "cutlist_id": "cl_abc123",
-    "name": "New Project"
-  }
-}
-```
-
-#### Webhook Security
-
-Verify webhook signatures using the `X-CAI-Signature` header:
-
-```javascript
-const crypto = require('crypto');
-
-function verifyWebhook(payload, signature, secret) {
-  const [timestamp, v1] = signature.split(',').map(s => s.split('=')[1]);
-  const signaturePayload = `${timestamp}.${payload}`;
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(signaturePayload)
-    .digest('hex');
-  return v1 === expected;
-}
 ```
 
 ---
@@ -952,17 +1266,6 @@ GET /api-keys
 POST /api-keys
 ```
 
-**Request Body:**
-
-```json
-{
-  "name": "Production Integration",
-  "description": "For MaxCut sync",
-  "scopes": ["cutlists:read", "cutlists:write", "exports:read"],
-  "expires_at": "2025-12-31T23:59:59Z"
-}
-```
-
 **Available Scopes:**
 
 | Scope | Description |
@@ -979,21 +1282,6 @@ POST /api-keys
 | `parse:execute` | Run parse operations |
 | `webhooks:manage` | Manage webhooks |
 
-**Response:** `201 Created`
-
-```json
-{
-  "api_key": {
-    "id": "key_abc123",
-    "name": "Production Integration",
-    "key": "cai_live_xxxxx...",
-    "prefix": "xxxxx",
-    "scopes": ["cutlists:read", "cutlists:write"]
-  },
-  "message": "Store the key securely. It's only shown once."
-}
-```
-
 #### Revoke API Key
 
 ```http
@@ -1002,45 +1290,239 @@ DELETE /api-keys/{id}
 
 ---
 
-### Subscription
-
-#### Get Subscription
+### Reports
 
 ```http
-GET /subscription
+GET /reports
 ```
+
+Generate usage and analytics reports.
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `type` | string | Report type: usage, activity, exports |
+| `start_date` | date | Start of date range |
+| `end_date` | date | End of date range |
+| `format` | string | Output format: json, csv |
+
+---
+
+### OCR Metrics
+
+```http
+GET /ocr/metrics
+```
+
+Get OCR performance metrics and accuracy statistics.
 
 **Response:**
 
 ```json
 {
-  "subscription": {
-    "planId": "professional",
-    "planName": "Professional",
-    "status": "active",
-    "billingInterval": "monthly",
-    "currentPeriodEnd": "2025-01-20T00:00:00Z",
-    "trialDaysRemaining": 0,
-    "cancelAtPeriodEnd": false
-  },
-  "usage": {
-    "cutlistsCreated": 45,
-    "partsProcessed": 1250,
-    "aiParsesUsed": 120,
-    "ocrPagesUsed": 85,
-    "storageUsedMb": 156
-  },
-  "limits": {
-    "maxCutlistsPerMonth": 500,
-    "maxPartsPerCutlist": 1000,
-    "maxTeamMembers": 10,
-    "maxStorageMb": 10240
-  },
-  "plan": {
-    "features": ["AI Parsing", "OCR", "All Export Formats"]
+  "success": true,
+  "metrics": {
+    "totalParses": 1250,
+    "successRate": 96.5,
+    "avgProcessingTime": 3200,
+    "providerStats": {
+      "anthropic": { "count": 1100, "successRate": 97.2 },
+      "openai": { "count": 150, "successRate": 92.0 }
+    }
   }
 }
 ```
+
+---
+
+### AI Training (Super Admin)
+
+#### Get Training Accuracy
+
+```http
+GET /training/accuracy
+```
+
+Get AI parsing accuracy metrics.
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `view` | string | View type: summary, breakdown |
+| `range` | string | Time range: 7d, 14d, 30d, 90d |
+
+#### List Training Examples
+
+```http
+GET /training/examples
+```
+
+#### Create Training Example
+
+```http
+POST /training/examples
+```
+
+**Request Body:**
+
+```json
+{
+  "sourceType": "image",
+  "sourceText": "...",
+  "correctParts": [...],
+  "category": "sketchcut",
+  "difficulty": "medium"
+}
+```
+
+#### Get Training Example
+
+```http
+GET /training/examples/{id}
+```
+
+#### Update Training Example
+
+```http
+PUT /training/examples/{id}
+```
+
+#### Delete Training Example
+
+```http
+DELETE /training/examples/{id}
+```
+
+#### Bulk Upload Training Examples
+
+```http
+POST /training/bulk-upload
+```
+
+#### Test Parse
+
+```http
+POST /training/test-parse
+```
+
+Test parsing against training examples.
+
+#### Log Accuracy
+
+```http
+POST /training/log-accuracy
+```
+
+Log parsing accuracy for training improvement.
+
+---
+
+### Platform Admin APIs (Super Admin Only)
+
+These endpoints require super admin privileges.
+
+#### Platform Statistics
+
+```http
+GET /platform/stats
+```
+
+Get platform-wide statistics.
+
+#### Platform Analytics
+
+```http
+GET /platform/analytics
+```
+
+Detailed platform analytics including AI costs by provider.
+
+#### List Organizations
+
+```http
+GET /platform/organizations
+POST /platform/organizations
+```
+
+#### List Platform Users
+
+```http
+GET /platform/users
+```
+
+#### Platform Plans
+
+```http
+GET /platform/plans
+POST /platform/plans
+```
+
+#### Platform Revenue
+
+```http
+GET /platform/revenue
+```
+
+Revenue analytics and financial metrics.
+
+#### OCR Audit Log
+
+```http
+GET /platform/ocr-audit
+```
+
+Detailed OCR/AI parsing audit trail.
+
+---
+
+### Admin APIs (Super Admin Only)
+
+#### Clear OCR Cache
+
+```http
+POST /admin/clear-cache
+```
+
+Clear the OCR result cache.
+
+#### Manage Plans
+
+```http
+GET /admin/plans
+POST /admin/plans
+PUT /admin/plans/{id}
+DELETE /admin/plans/{id}
+```
+
+---
+
+### Miscellaneous
+
+#### Contact Form
+
+```http
+POST /contact
+```
+
+Submit contact form message.
+
+#### Transcribe Audio
+
+```http
+POST /transcribe-audio
+```
+
+Transcribe audio notes to text.
+
+#### Template Merge
+
+```http
+POST /template-merge
+```
+
+Merge data with CAI template.
 
 ---
 
@@ -1084,10 +1566,8 @@ GET /subscription
 | `VALIDATION_FAILED` | Field validation errors |
 | `NOT_FOUND` | Resource doesn't exist |
 | `ALREADY_EXISTS` | Resource already exists |
-| `CONFLICT` | Conflicting operation |
 | `RATE_LIMITED` | Too many requests |
 | `QUOTA_EXCEEDED` | Plan limit reached |
-| `AI_NOT_CONFIGURED` | AI provider not set up |
 | `AI_PARSE_FAILED` | AI parsing failed |
 
 ---
@@ -1102,16 +1582,6 @@ API requests are rate-limited based on your plan:
 | Starter | 60 | 2,000 |
 | Professional | 120 | 10,000 |
 | Enterprise | Custom | Custom |
-
-Rate limit headers are included in responses:
-
-```http
-X-RateLimit-Limit: 120
-X-RateLimit-Remaining: 115
-X-RateLimit-Reset: 1703150400
-```
-
-When rate limited, the response includes a `Retry-After` header.
 
 ---
 
@@ -1131,7 +1601,7 @@ const client = new CAIIntake({
 });
 
 // List cutlists
-const { cutlists } = await client.cutlists.list({ status: 'active' });
+const { cutlists } = await client.cutlists.list({ status: 'completed' });
 
 // Parse text
 const { parts } = await client.parse.text('Side panel 720x560 qty 2');
@@ -1155,54 +1625,50 @@ from cai_intake import CAIIntake
 client = CAIIntake(api_key='cai_live_xxxxx')
 
 # List cutlists
-cutlists = client.cutlists.list(status='active')
+cutlists = client.cutlists.list(status='completed')
 
 # Parse text
 parts = client.parse.text('Side panel 720x560 qty 2')
-
-# Create export
-file = client.exports.create(
-    cutlist_id='cl_abc123',
-    format='maxcut'
-)
 ```
 
 ---
 
 ## Changelog
 
-### v1.2.0 (December 2025)
+### v2.1.0 (January 2026)
 
-- Claude Native PDF support for direct PDF parsing
+- Added Dashboard APIs (`/dashboard`, `/dashboard/quick`)
+- Added Operations Management APIs (CNC, Drilling, Groove, Edgeband)
+- Added CSV Wizard for smart CSV parsing
+- Added Shortcodes API for quick data entry
+- Added Organization Settings and Branding APIs
+- Added Panel Optimization APIs
+- Added AI Training System APIs
+- Added Platform Admin APIs
+- Added Billing and Profile APIs
+- Added OCR Metrics endpoint
+- Email-based user lookup for consistent authentication
+- Super admin redirect to platform training page
+
+### v2.0.0 (December 2025)
+
+- Claude 4.5 Sonnet native PDF support
 - Silent auto-training from user corrections
-- Template-aware few-shot selection (SketchCut, MaxCut, CutList Plus)
-- Confidence-based flagging for low-confidence parts
-- Python OCR warm-up system to prevent cold starts
-- Improved resilient AI provider with proper PDF fallback
-- Dashboard optimization with two-phase loading
-- Platform stats API optimization
-
-### v1.1.0 (June 2025)
-
-- Added gallery view for cutlist comparison
-- Added draggable/zoomable source preview
-- Added operations selection improvements
-- Added cutlist status management (draft, completed, exported)
-- Materials import/export functionality
-- Sidebar UI improvements
+- Template-aware few-shot selection
+- Confidence-based flagging
+- Dashboard optimization
+- MaxCut/CutList Plus CSV export improvements
 
 ### v1.0.0 (December 2024)
 
 - Initial stable API release
-- Added health check endpoint
-- Added webhook management endpoints
-- Added API key management
-- Added global search
-- Added bulk operations
-- Added cutlist duplicate and stats endpoints
-- Added team member management
-- Added invitation acceptance
-- OpenAPI 3.1 specification
+- Cutlist CRUD operations
+- Parse text and file endpoints
+- Export formats (JSON, CSV, MaxCut, CutList Plus, CutRite, Optimik)
+- Materials and Edgebands management
+- Team management and invitations
+- Webhook system
+- API key management
 
 ---
 
@@ -1215,4 +1681,4 @@ file = client.exports.create(
 
 ---
 
-*API Version: v1.2.0 | Last updated: December 2025*
+*API Version: v2.1.0 | Last updated: January 2026*
