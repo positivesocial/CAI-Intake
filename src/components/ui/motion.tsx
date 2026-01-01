@@ -489,9 +489,9 @@ export function SkeletonShimmer({
 }
 
 /**
- * Spinning loader
+ * Spinning loader (motion-based)
  */
-export function Spinner({ 
+export function SpinnerMotion({ 
   className,
   size = "md",
 }: { 
@@ -522,9 +522,9 @@ export function Spinner({
 }
 
 /**
- * Dots loading animation
+ * Dots loading animation (motion-based)
  */
-export function LoadingDots({ 
+export function DotsLoader({ 
   className,
 }: { 
   className?: string;

@@ -189,22 +189,23 @@ export default function DashboardLayout({
       <CommandPalette />
 
       {/* Top Navigation Bar */}
-      <nav className="fixed top-0 left-0 right-0 h-16 bg-[var(--card)] border-b border-[var(--border)] z-50">
-        <div className="h-full flex items-center justify-between px-4">
+      <nav className="fixed top-0 left-0 right-0 h-14 sm:h-16 bg-[var(--card)] border-b border-[var(--border)] z-50 safe-area-top">
+        <div className="h-full flex items-center justify-between px-3 sm:px-4">
           {/* Left: Logo & Mobile Menu */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <button
-              className="lg:hidden p-2 hover:bg-[var(--muted)] rounded-lg"
+              className="lg:hidden p-2.5 sm:p-2 hover:bg-[var(--muted)] active:bg-[var(--border)] rounded-lg touch-manipulation transition-colors"
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              aria-label={isSidebarOpen ? "Close menu" : "Open menu"}
             >
               {isSidebarOpen ? (
-                <X className="h-5 w-5" />
+                <X className="h-6 w-6 sm:h-5 sm:w-5" />
               ) : (
-                <Menu className="h-5 w-5" />
+                <Menu className="h-6 w-6 sm:h-5 sm:w-5" />
               )}
             </button>
-            <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-[var(--cai-teal)] flex items-center justify-center">
+            <Link href="/dashboard" className="flex items-center gap-2 touch-manipulation">
+              <div className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg bg-[var(--cai-teal)] flex items-center justify-center">
                 {/* Document/Grid icon - distinct from hamburger menu */}
                 <svg
                   viewBox="0 0 24 24"
@@ -349,7 +350,7 @@ export default function DashboardLayout({
           </button>
 
           {/* Nav Items */}
-          <nav className={cn("flex-1 space-y-1", isCollapsed ? "p-2" : "p-4")}>
+          <nav className={cn("flex-1 space-y-1", isCollapsed ? "p-2" : "p-3 sm:p-4")}>
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
@@ -360,17 +361,20 @@ export default function DashboardLayout({
                   onClick={() => setIsSidebarOpen(false)}
                   title={isCollapsed ? item.label : undefined}
                   className={cn(
-                    "flex items-center rounded-lg transition-colors relative group",
-                    isCollapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
+                    "flex items-center rounded-lg transition-colors relative group touch-manipulation",
+                    // Mobile: larger touch targets
+                    isCollapsed ? "justify-center px-2 py-3 sm:py-2.5" : "gap-3 px-3 py-3 sm:py-2.5",
+                    // Active state with scale effect
+                    "active:scale-[0.98]",
                     isActive
                       ? "bg-[var(--cai-teal)]/10 text-[var(--cai-teal)]"
-                      : "hover:bg-[var(--muted)] text-[var(--foreground)]"
+                      : "hover:bg-[var(--muted)] active:bg-[var(--border)] text-[var(--foreground)]"
                   )}
                 >
-                  <Icon className="h-5 w-5 flex-shrink-0" />
+                  <Icon className="h-6 w-6 sm:h-5 sm:w-5 flex-shrink-0" />
                   {!isCollapsed && (
                     <>
-                      <span className="font-medium">{item.label}</span>
+                      <span className="font-medium text-base sm:text-sm">{item.label}</span>
                       {item.badge && (
                         <Badge variant="teal" className="ml-auto text-xs">
                           {item.badge}
@@ -486,18 +490,25 @@ export default function DashboardLayout({
       {/* Mobile Overlay */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30 lg:hidden animate-fade-in"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       {/* Main Content */}
       <main className={cn(
-        "pt-16 min-h-screen transition-all duration-300 ease-in-out",
-        isCollapsed ? "lg:ml-16" : "lg:ml-64"
+        "min-h-screen transition-all duration-300 ease-in-out",
+        // Account for header height
+        "pt-14 sm:pt-16",
+        // Sidebar margin on desktop
+        isCollapsed ? "lg:ml-16" : "lg:ml-64",
+        // Safe area padding for mobile
+        "pb-safe"
       )}>
         <SubscriptionProvider>
-          {children}
+          <div className="animate-fade-in">
+            {children}
+          </div>
         </SubscriptionProvider>
       </main>
     </div>

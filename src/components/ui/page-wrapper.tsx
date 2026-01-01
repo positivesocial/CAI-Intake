@@ -250,15 +250,15 @@ export function AnimatedNumber({
 }
 
 /**
- * Presence wrapper for conditional rendering
+ * Animated presence wrapper for conditional rendering
  */
-interface PresenceProps {
+interface AnimatedPresenceWrapperProps {
   children: React.ReactNode;
   show: boolean;
   mode?: "sync" | "wait" | "popLayout";
 }
 
-export function Presence({ children, show, mode = "sync" }: PresenceProps) {
+export function AnimatedPresenceWrapper({ children, show, mode = "sync" }: AnimatedPresenceWrapperProps) {
   const { AnimatePresence } = require("framer-motion");
   
   return (

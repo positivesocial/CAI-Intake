@@ -29,10 +29,20 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           type={type}
           id={inputId}
           className={cn(
-            "flex h-10 w-full rounded-lg border bg-[var(--card)] px-3 py-2 text-sm transition-colors",
+            // Base styles
+            "flex w-full rounded-lg border bg-[var(--card)] transition-colors",
+            // Mobile-optimized sizing: taller touch targets on mobile
+            "h-11 sm:h-10 px-3 py-2",
+            // Font size: 16px on mobile prevents iOS zoom
+            "text-base sm:text-sm",
             "placeholder:text-[var(--muted-foreground)]",
+            // Focus states
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cai-teal)] focus-visible:border-transparent",
+            // Disabled state
             "disabled:cursor-not-allowed disabled:opacity-50",
+            // Touch optimization
+            "touch-manipulation",
+            // Error state
             error
               ? "border-[var(--cai-error)] focus-visible:ring-[var(--cai-error)]"
               : "border-[var(--border)]",
@@ -42,10 +52,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           {...props}
         />
         {hint && !error && (
-          <p className="mt-1 text-xs text-[var(--muted-foreground)]">{hint}</p>
+          <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">{hint}</p>
         )}
         {error && (
-          <p className="mt-1 text-xs text-[var(--cai-error)]">{error}</p>
+          <p className="mt-1.5 text-xs text-[var(--cai-error)]">{error}</p>
         )}
       </div>
     );

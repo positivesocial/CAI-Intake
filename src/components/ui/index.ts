@@ -11,6 +11,13 @@ export * from "./dialog";
 export * from "./tabs";
 export * from "./table";
 export * from "./progress";
+export * from "./checkbox";
+export * from "./dropdown-menu";
+export * from "./sheet";
+export * from "./motion";
+export * from "./loading";
+export * from "./page-wrapper";
+export * from "./responsive-table";
 
 
 

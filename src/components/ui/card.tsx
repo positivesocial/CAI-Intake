@@ -10,7 +10,12 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
+      // Base styles
       "rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-sm",
+      // Mobile: reduce border radius slightly for cleaner look
+      "rounded-lg sm:rounded-xl",
+      // Touch optimization
+      "touch-manipulation",
       className
     )}
     {...props}
@@ -24,7 +29,12 @@ const CardHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col space-y-1.5 p-6", className)}
+    className={cn(
+      "flex flex-col space-y-1.5",
+      // Responsive padding: smaller on mobile
+      "p-4 sm:p-6",
+      className
+    )}
     {...props}
   />
 ));
@@ -37,7 +47,9 @@ const CardTitle = React.forwardRef<
   <h3
     ref={ref}
     className={cn(
-      "text-xl font-semibold leading-none tracking-tight",
+      "font-semibold leading-none tracking-tight",
+      // Responsive font size
+      "text-lg sm:text-xl",
       className
     )}
     {...props}
@@ -51,7 +63,12 @@ const CardDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn("text-sm text-[var(--muted-foreground)]", className)}
+    className={cn(
+      "text-[var(--muted-foreground)]",
+      // Responsive font size
+      "text-xs sm:text-sm",
+      className
+    )}
     {...props}
   />
 ));
@@ -61,7 +78,16 @@ const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
+  <div 
+    ref={ref} 
+    className={cn(
+      "pt-0",
+      // Responsive padding
+      "p-4 sm:p-6",
+      className
+    )} 
+    {...props} 
+  />
 ));
 CardContent.displayName = "CardContent";
 
@@ -71,7 +97,13 @@ const CardFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex items-center p-6 pt-0", className)}
+    className={cn(
+      "flex items-center pt-0",
+      // Responsive padding + flex direction on mobile
+      "p-4 sm:p-6",
+      "flex-col gap-2 sm:flex-row sm:gap-0",
+      className
+    )}
     {...props}
   />
 ));

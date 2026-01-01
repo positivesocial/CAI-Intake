@@ -66,7 +66,14 @@ function TabsList({ className, children, ...props }: TabsListProps) {
     <div
       role="tablist"
       className={cn(
-        "inline-flex h-10 items-center justify-center rounded-lg bg-[var(--muted)] p-1 text-[var(--muted-foreground)]",
+        // Base styles
+        "inline-flex items-center justify-center rounded-lg bg-[var(--muted)] p-1 text-[var(--muted-foreground)]",
+        // Mobile: full width, scrollable if needed
+        "w-full sm:w-auto",
+        "overflow-x-auto sm:overflow-visible",
+        "-webkit-overflow-scrolling-touch",
+        // Height
+        "h-11 sm:h-10",
         className
       )}
       {...props}
@@ -96,10 +103,22 @@ function TabsTrigger({
       aria-selected={isSelected}
       onClick={() => onValueChange(value)}
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cai-teal)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        // Base styles
+        "inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-all",
+        // Mobile-optimized sizing
+        "px-4 py-2 sm:px-3 sm:py-1.5",
+        // Font size
+        "text-sm",
+        // Focus states
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cai-teal)] focus-visible:ring-offset-2",
+        // Disabled
+        "disabled:pointer-events-none disabled:opacity-50",
+        // Touch optimization
+        "touch-manipulation active:scale-[0.98]",
+        // Selected/unselected states
         isSelected
           ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm"
-          : "hover:bg-[var(--card)]/50 hover:text-[var(--foreground)]",
+          : "hover:bg-[var(--card)]/50 hover:text-[var(--foreground)] active:bg-[var(--card)]/70",
         className
       )}
       {...props}

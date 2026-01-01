@@ -37,9 +37,19 @@ const SimpleSelect = React.forwardRef<HTMLSelectElement, SimpleSelectProps>(
           <select
             id={selectId}
             className={cn(
-              "flex h-10 w-full rounded-lg border bg-[var(--card)] px-3 py-2 text-sm transition-colors appearance-none cursor-pointer",
+              // Base styles
+              "flex w-full rounded-lg border bg-[var(--card)] transition-colors appearance-none cursor-pointer",
+              // Mobile-optimized sizing
+              "h-11 sm:h-10 px-3 py-2",
+              // Font size: 16px on mobile prevents iOS zoom
+              "text-base sm:text-sm",
+              // Focus states
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cai-teal)] focus-visible:border-transparent",
+              // Disabled state
               "disabled:cursor-not-allowed disabled:opacity-50",
+              // Touch optimization
+              "touch-manipulation",
+              // Error state
               error
                 ? "border-[var(--cai-error)] focus-visible:ring-[var(--cai-error)]"
                 : "border-[var(--border)]",
@@ -59,13 +69,13 @@ const SimpleSelect = React.forwardRef<HTMLSelectElement, SimpleSelectProps>(
               </option>
             ))}
           </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--muted-foreground)] pointer-events-none" />
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 sm:h-4 sm:w-4 text-[var(--muted-foreground)] pointer-events-none" />
         </div>
         {hint && !error && (
-          <p className="mt-1 text-xs text-[var(--muted-foreground)]">{hint}</p>
+          <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">{hint}</p>
         )}
         {error && (
-          <p className="mt-1 text-xs text-[var(--cai-error)]">{error}</p>
+          <p className="mt-1.5 text-xs text-[var(--cai-error)]">{error}</p>
         )}
       </div>
     );
@@ -143,14 +153,23 @@ function SelectTrigger({ children, className }: SelectTriggerProps) {
       type="button"
       onClick={() => setOpen(!open)}
       className={cn(
-        "flex h-10 w-full items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm",
+        // Base styles
+        "flex w-full items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2",
+        // Mobile-optimized sizing
+        "h-11 sm:h-10",
+        // Font size: 16px on mobile prevents iOS zoom
+        "text-base sm:text-sm",
+        // Hover and focus states
         "hover:bg-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--cai-teal)] focus:border-transparent",
+        // Disabled state
         "disabled:cursor-not-allowed disabled:opacity-50",
+        // Touch optimization
+        "touch-manipulation active:scale-[0.99]",
         className
       )}
     >
       {children}
-      <ChevronDown className={cn("h-4 w-4 text-[var(--muted-foreground)] transition-transform shrink-0 ml-2", open && "rotate-180")} />
+      <ChevronDown className={cn("h-5 w-5 sm:h-4 sm:w-4 text-[var(--muted-foreground)] transition-transform shrink-0 ml-2", open && "rotate-180")} />
     </button>
   );
 }
@@ -284,14 +303,23 @@ function SelectItem({ value: itemValue, children, className }: SelectItemProps) 
       type="button"
       onClick={() => onValueChange(itemValue)}
       className={cn(
-        "relative flex w-full items-center rounded-md px-2 py-2 text-sm outline-none cursor-pointer",
-        "hover:bg-[var(--muted)]",
+        // Base styles
+        "relative flex w-full items-center rounded-md outline-none cursor-pointer",
+        // Mobile-optimized sizing: taller touch targets
+        "px-3 py-3 sm:px-2 sm:py-2",
+        // Font size
+        "text-base sm:text-sm",
+        // Hover and active states
+        "hover:bg-[var(--muted)] active:bg-[var(--border)]",
+        // Touch optimization
+        "touch-manipulation",
+        // Selected state
         isSelected && "bg-[var(--cai-teal)]/10 text-[var(--cai-teal)]",
         className
       )}
     >
       <span className="flex-1 text-left">{children}</span>
-      {isSelected && <Check className="h-4 w-4 ml-2 shrink-0" />}
+      {isSelected && <Check className="h-5 w-5 sm:h-4 sm:w-4 ml-2 shrink-0" />}
     </button>
   );
 }

@@ -28,10 +28,21 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         <textarea
           id={textareaId}
           className={cn(
-            "flex min-h-[80px] w-full rounded-lg border bg-[var(--card)] px-3 py-2 text-sm transition-colors resize-y",
+            // Base styles
+            "flex w-full rounded-lg border bg-[var(--card)] transition-colors resize-y",
+            // Mobile-optimized sizing
+            "min-h-[100px] sm:min-h-[80px]",
+            "px-3 py-3 sm:py-2",
+            // Font size: 16px on mobile prevents iOS zoom
+            "text-base sm:text-sm",
             "placeholder:text-[var(--muted-foreground)]",
+            // Focus states
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cai-teal)] focus-visible:border-transparent",
+            // Disabled state
             "disabled:cursor-not-allowed disabled:opacity-50",
+            // Touch optimization
+            "touch-manipulation",
+            // Error state
             error
               ? "border-[var(--cai-error)] focus-visible:ring-[var(--cai-error)]"
               : "border-[var(--border)]",
@@ -41,10 +52,10 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           {...props}
         />
         {hint && !error && (
-          <p className="mt-1 text-xs text-[var(--muted-foreground)]">{hint}</p>
+          <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">{hint}</p>
         )}
         {error && (
-          <p className="mt-1 text-xs text-[var(--cai-error)]">{error}</p>
+          <p className="mt-1.5 text-xs text-[var(--cai-error)]">{error}</p>
         )}
       </div>
     );

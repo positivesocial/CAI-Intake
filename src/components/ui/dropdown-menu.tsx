@@ -83,7 +83,19 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-[var(--accent)] focus:text-[var(--accent-foreground)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      // Base styles
+      "relative flex cursor-default select-none items-center rounded-sm outline-none transition-colors",
+      // Mobile-optimized sizing
+      "px-3 py-2.5 sm:px-2 sm:py-1.5",
+      // Font size
+      "text-base sm:text-sm",
+      // Focus/active states
+      "focus:bg-[var(--accent)] focus:text-[var(--accent-foreground)]",
+      "active:bg-[var(--accent)]",
+      // Disabled state
+      "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      // Touch optimization
+      "touch-manipulation",
       inset && "pl-8",
       className
     )}
