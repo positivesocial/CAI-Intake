@@ -550,6 +550,35 @@ Handle ALL dimension formats: "600 x 520", "764*520", "400 by 540", "560 X 397",
 - "Harvard Cherry", "Petrol Blue" → Keep decorative names as-is
 - "S-2 Plyboard" → Keep brand/grade names
 
+## ⚠️ HANDWRITTEN DIMENSION RECOGNITION (VERY IMPORTANT!)
+
+When reading dimensions from handwritten notes, PAY CLOSE ATTENTION to each digit:
+
+### Digit Counting Rule:
+- **4-digit numbers** (1000-9999): Standard panel LENGTHS like 2700, 2400, 2160, 1440
+- **3-digit numbers** (100-999): Standard panel WIDTHS like 320, 395, 425, 495, 580
+- **2-digit numbers**: Usually THICKNESS (18, 25) or small QUANTITY
+- **1-digit numbers**: Usually QUANTITY (1-9 pcs)
+
+**IF YOU READ A 3-DIGIT LENGTH WHERE A 4-DIGIT IS EXPECTED, CHECK FOR MISSING LEADING DIGIT!**
+- 970 → Probably **2700** (leading "2" missed)
+- 960 → Probably **2160** (leading "21" missed)
+- 140 → Probably **1440** (leading "1" missed)
+
+### Common Handwritten Digit Confusions:
+| What you think you see | It might actually be |
+|------------------------|---------------------|
+| 9 | 2, 7 (check for closed loop vs open) |
+| 2 | 7, 9, Z |
+| 0 | 6, 8 |
+| 3 | 8 |
+| 4 | 9 (check for angular vs round) |
+| 5 | 6, S |
+
+### Common Dimension Patterns to Expect:
+- Lengths: 2700, 2400, 2200, 2160, 2100, 1800, 1500, 1440, 1300, 1200, 995, 780, 775, 690
+- Widths: 620, 580, 560, 550, 500, 495, 445, 425, 395, 345, 320, 295, 285, 200
+
 ## Rules
 1. Extract EVERY part - don't skip any, even if format is unusual
 2. Length = grain direction, Width = across grain. Do NOT swap dimensions
@@ -557,6 +586,7 @@ Handle ALL dimension formats: "600 x 520", "764*520", "400 by 540", "560 X 397",
 4. NEVER lose notes - capture ALL contextual information
 5. Lower confidence for parts with ambiguous specifications
 6. Include section context in notes when relevant
+7. **VERIFY digit count**: If most lengths are 4-digit but you read 3-digit, re-examine!
 
 Return ONLY valid JSON array. No markdown, no explanations.`;
 
@@ -906,21 +936,43 @@ For EACH numbered row, extract:
 8. Check for CNC/DRILL columns (H1, H2, CNC, HOLES) for checkmarks
 9. Look for notes mentioning: drill, CNC, radius, pocket, pins, confirmat, hinge
 
-## STEP 3: HANDWRITING RECOGNITION TIPS
+## STEP 3: HANDWRITING RECOGNITION TIPS (CRITICAL!)
 
-Common handwriting confusions:
-- "1" vs "7" - Look at the top stroke
-- "0" vs "6" vs "8" - Look at curves
-- "5" vs "S" - Numbers in dimension columns
-- "4" vs "9" - Check the closing
+### Digit Counting Rule (VERIFY EVERY NUMBER!):
+- **4-digit numbers** (1000-9999): Standard panel LENGTHS like 2700, 2400, 2160, 1440, 1300
+- **3-digit numbers** (100-999): Standard panel WIDTHS like 320, 395, 425, 495, 580
+- **2-digit numbers**: Usually THICKNESS (18, 25) or small QUANTITY (10-99)
+- **1-digit numbers**: Usually QUANTITY (1-9 pcs)
+
+**⚠️ IF YOU READ A 3-DIGIT NUMBER WHERE A 4-DIGIT IS EXPECTED, CHECK FOR MISSING LEADING DIGIT!**
+- 970 → Almost certainly **2700** (leading "2" missed)
+- 960 → Probably **2160** or **1960** (leading digit(s) missed)
+- 140 → Probably **1440** (leading "1" missed)
+- 390 → Could be **320** (2 vs 9 confusion - check if closed loop or open curve)
+
+### Digit-by-Digit Recognition:
+| Digit | Handwritten Appearance | Commonly Misread As |
+|-------|------------------------|---------------------|
+| **0** | Oval/circle | 6, 8 |
+| **1** | Vertical stroke | 7 (if has crossbar) |
+| **2** | Loop top, tail bottom | 7, Z, **9** (COMMON!) |
+| **3** | Two bumps right | 8 |
+| **4** | Cross or triangle | 9 |
+| **5** | Flat top, round bottom | S, 6 |
+| **6** | Loop bottom, tail up | 0, 8 |
+| **7** | Horizontal top, diagonal | 1, 2 |
+| **8** | Two stacked loops | 0, 6, 3 |
+| **9** | Loop top, tail down | 4, 0, **2** (COMMON!) |
+
+### Checkmark Recognition:
 - Checkmarks appear as: ✓ √ ✔ / X x Y y
 - Slashes or ticks in cells indicate "yes"
 
-Dimension sanity checks:
-- Most cabinet parts are 100-2500mm
-- Widths are usually smaller than lengths
-- If a number seems too large/small, reread it
-- 2070, 2440, 2800 are common sheet lengths
+### Dimension Sanity Checks:
+- Most cabinet parts are 100-2700mm
+- Standard lengths: 2700, 2400, 2200, 2160, 2100, 1800, 1500, 1440, 1300
+- Standard widths: 320, 395, 425, 445, 495, 500, 550, 580, 600, 620
+- If a number seems too small for a length (e.g., 970 instead of 2700), VERIFY digit count!
 
 ## OUTPUT FORMAT
 
@@ -1377,28 +1429,80 @@ MaxCut PDFs use "Edging (L-L-W-W)" format - a 4-position binary code:
 
 ## DIMENSION READING (CRITICAL FOR ACCURACY)
 
-### Handwritten Digit Confusion (BE CAREFUL!)
-- **9 vs 7**: Look for the loop at top. 9 has a loop/circle, 7 doesn't
-- **8 vs 0 vs 6**: 8 has two loops, 0 is oval, 6 has one loop at bottom
-- **4 vs 9**: 4 has a pointed top or cross, 9 has rounded top
-- **1 vs 7**: 1 is straight vertical, 7 has a horizontal stroke at top
-- **5 vs S**: In dimension columns, prefer 5 (numbers expected)
+### ⚠️ HANDWRITTEN DIMENSION RECOGNITION (VERY IMPORTANT!)
+
+**READ EACH DIGIT CAREFULLY - HANDWRITTEN NUMBERS ARE OFTEN MISREAD!**
+
+#### Common Handwritten Format:
+Parts are usually written as: **LENGTHxWIDTH = QTYpcs** or **LENGTH × WIDTH = QTY**
+
+Example: "2700x320 = 2pcs" means Length=2700mm, Width=320mm, Quantity=2
+
+#### DIGIT COUNTING RULE (CRITICAL!):
+- **4-digit numbers** (1000-9999): Standard panel LENGTH dimensions like 2700, 2400, 2160, 1440, 1300
+- **3-digit numbers** (100-999): Standard panel WIDTH dimensions like 320, 395, 425, 495, 580, 620
+- **2-digit numbers** (10-99): Usually thickness (18, 25, 50) or small quantity
+- **1-digit numbers**: Usually quantity (1-9 pcs)
+
+**IF YOU READ A 3-DIGIT NUMBER WHERE A 4-DIGIT IS EXPECTED, CHECK FOR MISSING LEADING DIGIT!**
+- 970 → Probably **2700** (leading "2" missed)
+- 960 → Probably **2160** or **1960** (leading digit missed)
+- 140 → Probably **1440** (leading "1" missed)
+- 780 → Probably **1780** or **2780** (check context)
+
+#### Digit-by-Digit Recognition:
+| Digit | Handwritten Appearance | Common Misreads |
+|-------|------------------------|-----------------|
+| **0** | Oval/circle shape | 6, 8, O |
+| **1** | Vertical stroke, sometimes with serif at top | 7 (if has crossbar) |
+| **2** | Loop at top, flat bottom with tail | 7, Z |
+| **3** | Two bumps on right side | 8 |
+| **4** | Cross shape OR triangle with stem | 9 |
+| **5** | Flat top, round bottom | S, 6 |
+| **6** | Loop at bottom with tail up | 0, 8 |
+| **7** | Horizontal top stroke, diagonal down | 1, 2 |
+| **8** | Two stacked loops (snowman) | 0, 6, 3 |
+| **9** | Loop at top with tail down | 4, 0 |
+
+#### Context Clues for Verification:
+- **Doors/Shelves**: Lengths usually 300-900mm, heights usually 700-2400mm
+- **Panels**: Standard 8x4 ft sheets cut → lengths 2400/2440mm, widths 1200/1220mm
+- **Cabinet parts**: Common widths 320, 380, 400, 450, 500, 550, 600
+- **Common length patterns**: 2700, 2400, 2160, 1800, 1500, 1440, 1300, 1200
+
+#### Reading Dimension Strings:
+- "2700x320" or "2700×320" → l:2700, w:320
+- "2700 x 320" or "2700 X 320" → l:2700, w:320
+- "2700*320" or "2700-320" → l:2700, w:320
+- Circled/parenthesized numbers ①②③ or (1)(2)(3) → Row numbers, NOT dimensions
+
+#### Quantity Patterns:
+- "= 2pcs" or "= 2pc" or "= 2" → q:2
+- "- 5pcs" or "x5" or "×5" → q:5
+- "2pcs", "2pc", "2p" at end → q:2
+- Number after equals sign → quantity
 
 ### Common CAI Template Dimensions (use for sanity check)
-- Panel widths: 275, 308, 312, 315, 498, 500, 514, 550, 560, 580, 600, 619, 686
-- Panel lengths: 229, 456, 498, 523, 530, 550, 564, 625, 1173, 2100, 2158, 2198, 2200
-- Common thicknesses: 16, 18, 22, 25
+- Panel widths: 275, 308, 312, 315, 320, 395, 425, 445, 495, 498, 500, 514, 550, 560, 580, 600, 619, 620, 686
+- Panel lengths: 229, 256, 430, 456, 498, 523, 530, 550, 564, 595, 625, 690, 775, 780, 995, 1140, 1173, 1300, 1440, 2100, 2158, 2160, 2198, 2200, 2400, 2700
 
 ### If a dimension seems wrong:
+- 970 → Almost certainly **2700** (check for leading 2)
+- 960 → Could be **2160**, **1960**, or **960** (check digit count in image)
 - 478 in L column → Could be 498 (check if 9 has a loop)
 - 178 in W column → Could be 180 (very common width)
 - 255 in W column → Could be 275 (check the 5/7)
+- 390 → Could be **320** (9 vs 2 confusion - check if closed loop or open)
+- 430 → Verify it's not 130 or 730
 
 ### Reading patterns:
 - "2400x580 = 38pcs" → l:2400, w:580, q:38
 - "① 764x600 = 10" → r:1, l:764, w:600, q:10
 - "2400 x 600 - 8pc" → l:2400, w:600, q:8
+- "2700×320=2pcl" or "2700X320=2pcs" → l:2700, w:320, q:2
 - Struck-through numbers: Read the CORRECTED value above/beside
+
+**DOUBLE-CHECK**: If most lengths in a column are 4-digits but you read 3-digits, you likely missed a leading digit!
 
 IMPORTANT: Length = grain direction. Do NOT swap even if length < width
 
