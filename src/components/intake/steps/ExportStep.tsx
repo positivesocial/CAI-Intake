@@ -268,9 +268,55 @@ export function ExportStep() {
         
         case "maxcut":
         case "cutlistplus": {
-          // TODO: Implement software-specific exports
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          setExportStatus(`Exported for ${optionId === "maxcut" ? "MaxCut" : "CutList Plus"}!`);
+          // First ensure cutlist is saved to get an ID
+          let cutlistId = savedCutlistId;
+          if (!cutlistId && totalParts > 0) {
+            const saveResult = await saveCutlist(false);
+            if (!saveResult.success || !saveResult.cutlistId) {
+              setExportStatus("Please save the cutlist first before exporting");
+              return;
+            }
+            cutlistId = saveResult.cutlistId;
+          }
+          
+          if (!cutlistId) {
+            setExportStatus("No cutlist to export");
+            return;
+          }
+          
+          // Call the export API
+          const response = await fetch("/api/v1/exports", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              cutlist_id: cutlistId,
+              format: optionId,
+              options: { units: "mm" },
+            }),
+          });
+          
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || "Export failed");
+          }
+          
+          // Get the filename from Content-Disposition header
+          const contentDisposition = response.headers.get("Content-Disposition");
+          const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
+          const filename = filenameMatch?.[1] || `${currentCutlist.name || "cutlist"}_${optionId}.csv`;
+          
+          // Download the file
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
+          setExportStatus(`${optionId === "maxcut" ? "MaxCut" : "CutList Plus"} CSV downloaded!`);
           break;
         }
         
