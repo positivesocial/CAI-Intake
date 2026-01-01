@@ -46,6 +46,9 @@ You may NOT:
 
 (h) Use the AI/ML learning features to train competing models or systems.
 
+(i) Attempt to extract or harvest training data, model weights, or learned
+    patterns from the Software's AI systems.
+
 3. SUBSCRIPTION TERMS
 ---------------------
 Use of this Software requires an active subscription. Your subscription
@@ -57,11 +60,14 @@ agreement governs:
 - Support levels and SLAs
 - Data retention and privacy
 
-Subscription Tiers:
-- Free: 5 cutlists/month, 1 user, basic features
-- Starter ($29/mo): 50 cutlists/month, 3 users, Excel import, edgebanding
-- Professional ($79/mo): 500 cutlists/month, 10 users, full OCR, API access
-- Enterprise (Custom): Unlimited, priority support, custom integrations
+Subscription Tiers (as of January 2025):
+
+| Tier         | Price    | Cutlists | Users | Features                    |
+|--------------|----------|----------|-------|-----------------------------|
+| Free         | $0/mo    | 5/mo     | 1     | Basic entry, CSV export     |
+| Starter      | $29/mo   | 50/mo    | 3     | Excel, Voice, Edgebanding   |
+| Professional | $79/mo   | 500/mo   | 10    | Full OCR, CNC ops, API      |
+| Enterprise   | Custom   | Unlimited| Unlim | SLA, Priority support       |
 
 Upon expiration or termination of your subscription:
 - Your access to the Software will be revoked
@@ -71,11 +77,17 @@ Upon expiration or termination of your subscription:
 4. INTELLECTUAL PROPERTY
 ------------------------
 The Software, including but not limited to its design, code, algorithms,
-AI models, user interface, documentation, and all intellectual property 
-rights therein, remains the exclusive property of PositiveSocial Ltd.
+AI models, training data, learned patterns, user interface, documentation, 
+and all intellectual property rights therein, remains the exclusive property 
+of PositiveSocial Ltd.
 
 No title to or ownership of the Software is transferred to you. All rights
 not expressly granted are reserved by PositiveSocial Ltd.
+
+The following are trademarks of PositiveSocial Ltd:
+- CAI Intake™
+- CabinetAI™
+- "Transforming Chaos into Precision"™
 
 5. DATA AND PRIVACY
 -------------------
@@ -85,21 +97,51 @@ not expressly granted are reserved by PositiveSocial Ltd.
 
 (b) AI Training Data: User corrections and patterns may be used to improve
     parsing accuracy for the customer's organization. Aggregated, anonymized
-    data may be used to improve the overall system.
+    data may be used to improve the overall system. Your data is NEVER used
+    to train models for other customers without explicit consent.
 
 (c) Usage Data: PositiveSocial Ltd may collect and use anonymized,
     aggregated usage data to improve the Software and develop new features.
 
-(d) Security: PositiveSocial Ltd implements industry-standard security
+(d) Data Isolation: Each organization's learned patterns, training examples,
+    and material mappings are isolated from other organizations.
+
+(e) Security: PositiveSocial Ltd implements industry-standard security
     measures to protect Customer Data, including:
     - TLS 1.3 encryption in transit
     - AES-256 encryption at rest
-    - Row-level security policies
+    - Row-level security (RLS) policies
     - Regular security audits
+    - SOC 2 Type II compliance (in progress)
     
     See our Privacy Policy at https://cai-intake.io/privacy for details.
 
-6. WARRANTY DISCLAIMER
+(f) Data Portability: You may export your cutlists and configuration data
+    at any time through the application's export features.
+
+(g) Data Deletion: Upon request or subscription termination, your data
+    will be deleted within 30 days, except as required by law.
+
+6. API TERMS
+------------
+If you have API access (Professional tier and above):
+
+(a) Rate Limits: API usage is subject to rate limits as specified in your
+    subscription tier. Exceeding limits may result in temporary suspension.
+
+(b) Authentication: You are responsible for keeping API keys secure. Any
+    activity using your API keys is your responsibility.
+
+(c) Acceptable Use: You may not use the API to:
+    - Perform automated scraping or data harvesting
+    - Build competing products or services
+    - Circumvent usage limits through multiple accounts
+    - Distribute API access to unauthorized third parties
+
+(d) SLA (Enterprise only): Enterprise customers receive a 99.9% uptime SLA
+    as specified in their service agreement.
+
+7. WARRANTY DISCLAIMER
 ----------------------
 THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -108,7 +150,12 @@ FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
 POSITIVESOCIAL LTD DOES NOT WARRANT THAT THE SOFTWARE WILL BE UNINTERRUPTED,
 ERROR-FREE, OR COMPLETELY SECURE. AI PARSING RESULTS MAY VARY IN ACCURACY.
 
-7. LIMITATION OF LIABILITY
+YOU ACKNOWLEDGE THAT:
+- OCR and AI parsing may produce errors that require verification
+- You are responsible for reviewing parsed data before production use
+- Material waste or manufacturing defects due to data errors are your responsibility
+
+8. LIMITATION OF LIABILITY
 --------------------------
 IN NO EVENT SHALL POSITIVESOCIAL LTD BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
 SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO
@@ -119,7 +166,7 @@ DAMAGES.
 IN NO EVENT SHALL POSITIVESOCIAL LTD'S TOTAL LIABILITY EXCEED THE AMOUNTS
 PAID BY YOU FOR THE SOFTWARE IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.
 
-8. INDEMNIFICATION
+9. INDEMNIFICATION
 ------------------
 You agree to indemnify, defend, and hold harmless PositiveSocial Ltd and its
 officers, directors, employees, and agents from any claims, damages, losses,
@@ -129,18 +176,20 @@ or expenses (including reasonable attorneys' fees) arising from:
 (b) Your violation of this License
 (c) Your violation of any third-party rights
 (d) Cutlist data errors or manufacturing defects
+(e) Unauthorized access due to compromised credentials
 
-9. TERMINATION
---------------
+10. TERMINATION
+---------------
 This License is effective until terminated. PositiveSocial Ltd may terminate
 this License immediately upon notice if you breach any provision hereof.
 
 Upon termination:
 - You must cease all use of the Software
 - You must destroy all copies of the Software in your possession
-- Sections 4, 5, 6, 7, 8, and 10 shall survive termination
+- Your access will be revoked within 24 hours
+- Sections 4, 5, 6, 7, 8, 9, and 11 shall survive termination
 
-10. GENERAL PROVISIONS
+11. GENERAL PROVISIONS
 ----------------------
 (a) Governing Law: This License shall be governed by and construed in
     accordance with the laws of England and Wales, without regard to its
@@ -167,7 +216,10 @@ Upon termination:
 
 (g) Updates: PositiveSocial Ltd may update this License from time to time.
     Continued use of the Software after such updates constitutes acceptance
-    of the new terms.
+    of the new terms. Material changes will be notified via email.
+
+(h) Force Majeure: Neither party shall be liable for delays or failures
+    in performance resulting from causes beyond its reasonable control.
 
 ================================================================================
                               CONTACT INFORMATION
@@ -183,15 +235,23 @@ For technical support:
 
     Email: support@cai-intake.io
     Help Center: https://app.cai-intake.io/help
-    Documentation: https://app.cai-intake.io/docs
+    Documentation: https://docs.cai-intake.io
 
 For sales inquiries:
 
     Email: sales@cai-intake.io
     Website: https://cai-intake.io/pricing
 
+For security issues:
+
+    Email: security@cai-intake.io
+    (We have a responsible disclosure program)
+
 ================================================================================
 
-Version: 1.2.0
-Last Updated: December 2025
+Version: 2.0.0
+Last Updated: January 2025
 
+Previous Versions:
+- v1.2.0 (December 2025)
+- v1.0.0 (Initial release)

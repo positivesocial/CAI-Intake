@@ -1,5 +1,16 @@
 # CAI Intake User Guide
 
+<p align="center">
+  <img src="../public/branding/logo-full.svg" alt="CAI Intake" width="280">
+</p>
+
+<p align="center">
+  <strong>User Guide v2.0</strong><br>
+  <em>Last Updated: January 2025</em>
+</p>
+
+---
+
 Welcome to CAI Intake! This comprehensive guide will help you get started with the platform and make the most of its powerful features for cutlist management.
 
 ## Table of Contents

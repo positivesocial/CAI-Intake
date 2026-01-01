@@ -1,5 +1,12 @@
 # CAI Intake Deployment Guide
 
+<p align="center">
+  <strong>Deployment & Infrastructure Guide v2.0</strong><br>
+  <em>Last Updated: January 2025</em>
+</p>
+
+---
+
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)

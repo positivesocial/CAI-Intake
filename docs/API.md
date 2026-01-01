@@ -1,10 +1,23 @@
 # CAI Intake API Documentation
 
+<p align="center">
+  <strong>REST API Reference v2.0</strong><br>
+  <em>Last Updated: January 2025</em>
+</p>
+
+---
+
 ## Overview
 
 The CAI Intake API provides programmatic access to cutlist management, parsing, and export functionality. This RESTful API uses JSON for request and response bodies.
 
-**OpenAPI Specification**: See [openapi.yaml](./openapi.yaml) for the complete machine-readable specification.
+| Document | Link |
+|----------|------|
+| **OpenAPI Specification** | [openapi.yaml](./openapi.yaml) |
+| **Postman Collection** | Coming soon |
+| **SDK (Node.js)** | Coming soon |
+
+> **API Access**: Available on Professional ($79/mo) and Enterprise plans only.
 
 ## Base URL
 

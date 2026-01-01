@@ -1,5 +1,12 @@
 # CAI Intake Learning System Documentation
 
+<p align="center">
+  <strong>AI Learning System Technical Reference v2.0</strong><br>
+  <em>Last Updated: January 2025</em>
+</p>
+
+---
+
 ## Executive Summary
 
 The CAI Intake Learning System is an adaptive parsing engine that improves its accuracy over time by learning from user corrections, training examples, and parsing outcomes. It uses a combination of **few-shot learning**, **pattern recognition**, **material mapping**, and **client template detection** to provide increasingly accurate cutlist parsing.
