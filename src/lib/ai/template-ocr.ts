@@ -106,6 +106,10 @@ export function registerOrgTemplateConfig(config: OrgTemplateConfig): void {
 /**
  * Get org template config by org_id and version
  * Fetches from database and populates with org's actual shortcodes
+ * 
+ * Supports:
+ * - Exact org ID match
+ * - Prefix match (QR codes use shortened org IDs like "cmjf942j" for "cmjf942je0005pu9g6ujaj2za")
  */
 export async function getOrgTemplateConfig(
   orgId: string, 
@@ -113,7 +117,7 @@ export async function getOrgTemplateConfig(
 ): Promise<OrgTemplateConfig | null> {
   const key = `${orgId}-v${version}`;
   
-  // Check cache
+  // Check cache first
   if (templateConfigCache.has(key)) {
     return templateConfigCache.get(key)!;
   }
@@ -122,40 +126,60 @@ export async function getOrgTemplateConfig(
   const { prisma } = await import("@/lib/db");
   
   try {
-    // Fetch organization
-    const org = await prisma.organization.findUnique({
+    // Strategy 1: Try exact match first
+    let org = await prisma.organization.findUnique({
       where: { id: orgId },
       select: { id: true, name: true },
     });
     
+    // Strategy 2: If not found, try prefix match
+    // QR codes often use shortened IDs (first 8 chars of CUID)
+    if (!org && orgId.length >= 6) {
+      console.log(`[TemplateOCR] Exact match not found for "${orgId}", trying prefix match...`);
+      
+      org = await prisma.organization.findFirst({
+        where: {
+          id: { startsWith: orgId },
+        },
+        select: { id: true, name: true },
+      });
+      
+      if (org) {
+        console.log(`[TemplateOCR] ✅ Prefix match found: "${orgId}" → "${org.id}" (${org.name})`);
+      }
+    }
+    
     if (!org) {
-      console.warn(`[TemplateOCR] Organization not found: ${orgId}`);
+      console.warn(`[TemplateOCR] Organization not found: ${orgId} (tried exact and prefix match)`);
       return null;
     }
+    
+    // Use the ACTUAL org ID for operations lookup (not the QR shortcode)
+    const actualOrgId = org.id;
     
     // Fetch all active operations for this org to build shortcode lists
     const [edgebandOps, grooveOps, drillingOps, cncOps] = await Promise.all([
       prisma.edgebandOperation.findMany({
-        where: { organizationId: orgId, isActive: true },
+        where: { organizationId: actualOrgId, isActive: true },
         select: { code: true, name: true },
       }),
       prisma.grooveOperation.findMany({
-        where: { organizationId: orgId, isActive: true },
+        where: { organizationId: actualOrgId, isActive: true },
         select: { code: true, name: true },
       }),
       prisma.drillingOperation.findMany({
-        where: { organizationId: orgId, isActive: true },
+        where: { organizationId: actualOrgId, isActive: true },
         select: { code: true, name: true },
       }),
       prisma.cncOperation.findMany({
-        where: { organizationId: orgId, isActive: true },
+        where: { organizationId: actualOrgId, isActive: true },
         select: { code: true, name: true },
       }),
     ]);
     
     // Build the config from org's actual operations
     const config: OrgTemplateConfig = {
-      org_id: orgId,
+      org_id: actualOrgId, // Use actual org ID, not the QR shortcode
       org_name: org.name,
       version,
       columns: [
@@ -180,10 +204,16 @@ export async function getOrgTemplateConfig(
       },
     };
     
-    // Cache for future requests
+    // Cache using the QR code key (so future lookups with same QR code hit cache)
     templateConfigCache.set(key, config);
     
-    console.info(`[TemplateOCR] Loaded org config for ${org.name}: ${edgebandOps.length} edgeband, ${grooveOps.length} groove, ${drillingOps.length} drilling, ${cncOps.length} cnc codes`);
+    // Also cache with actual org ID for direct lookups
+    const actualKey = `${actualOrgId}-v${version}`;
+    if (actualKey !== key) {
+      templateConfigCache.set(actualKey, config);
+    }
+    
+    console.info(`[TemplateOCR] ✅ Loaded org config for ${org.name}: ${edgebandOps.length} edgeband, ${grooveOps.length} groove, ${drillingOps.length} drilling, ${cncOps.length} cnc codes`);
     
     return config;
     
