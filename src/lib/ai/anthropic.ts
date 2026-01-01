@@ -1884,8 +1884,9 @@ Default material: ${template.defaultMaterialId || "unknown"}`;
     for (const aiPart of aiParts) {
       const validationErrors = validateAIPartResponse(aiPart);
       
-      // Skip parts that are completely invalid (missing dimensions)
-      if (validationErrors.length > 0 && !aiPart.length && !aiPart.width) {
+      // Skip parts that have invalid dimensions (missing length OR width)
+      // A part needs BOTH valid length AND valid width to be usable
+      if (validationErrors.length > 0 && (!aiPart.length || !aiPart.width)) {
         errors.push(`Skipped part "${aiPart.label || "unknown"}": ${validationErrors.join(", ")}`);
         continue;
       }
