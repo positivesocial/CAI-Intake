@@ -3,6 +3,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
+import { hapticImpact } from "@/lib/haptics";
 
 interface DialogContextValue {
   open: boolean;
@@ -31,6 +32,15 @@ function Dialog({ open = false, onOpenChange, children }: DialogProps) {
   const [internalOpen, setInternalOpen] = React.useState(open);
   const isControlled = onOpenChange !== undefined;
   const isOpen = isControlled ? open : internalOpen;
+  const prevOpen = React.useRef(isOpen);
+
+  // Haptic feedback on open/close
+  React.useEffect(() => {
+    if (isOpen !== prevOpen.current) {
+      hapticImpact(isOpen ? "medium" : "light");
+      prevOpen.current = isOpen;
+    }
+  }, [isOpen]);
 
   const handleOpenChange = React.useCallback(
     (newOpen: boolean) => {
@@ -77,6 +87,8 @@ interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
 
 function DialogContent({ children, className, ...props }: DialogContentProps) {
   const { open, onOpenChange } = useDialogContext();
+  const [isVisible, setIsVisible] = React.useState(false);
+  const [isAnimating, setIsAnimating] = React.useState(false);
 
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -88,6 +100,16 @@ function DialogContent({ children, className, ...props }: DialogContentProps) {
     if (open) {
       document.addEventListener("keydown", handleEscape);
       document.body.style.overflow = "hidden";
+      // Small delay to ensure CSS animation plays correctly
+      requestAnimationFrame(() => {
+        setIsVisible(true);
+        setIsAnimating(true);
+      });
+    } else {
+      setIsAnimating(false);
+      // Wait for exit animation before hiding
+      const timer = setTimeout(() => setIsVisible(false), 200);
+      return () => clearTimeout(timer);
     }
 
     return () => {
@@ -96,21 +118,29 @@ function DialogContent({ children, className, ...props }: DialogContentProps) {
     };
   }, [open, onOpenChange]);
 
-  if (!open) return null;
+  if (!open && !isVisible) return null;
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* Backdrop */}
+      {/* Backdrop with fade animation */}
       <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in-0"
+        className={cn(
+          "fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-200",
+          isAnimating ? "opacity-100" : "opacity-0"
+        )}
         onClick={() => onOpenChange(false)}
       />
 
-      {/* Content */}
+      {/* Content with bounce animation */}
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <div
           className={cn(
-            "relative w-full max-w-lg max-h-[90vh] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-xl animate-in fade-in-0 zoom-in-95",
+            "relative w-full max-w-lg max-h-[90vh] overflow-auto rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-xl transition-all duration-300",
+            isAnimating 
+              ? "opacity-100 scale-100 translate-y-0" 
+              : "opacity-0 scale-95 translate-y-4",
+            // Bounce effect using cubic-bezier
+            "ease-[cubic-bezier(0.34,1.56,0.64,1)]",
             className
           )}
           {...props}
@@ -118,7 +148,7 @@ function DialogContent({ children, className, ...props }: DialogContentProps) {
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-[var(--cai-teal)] focus:ring-offset-2"
+            className="absolute right-4 top-4 rounded-sm opacity-70 transition-all duration-150 hover:opacity-100 hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--cai-teal)] focus:ring-offset-2 touch-manipulation"
           >
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>

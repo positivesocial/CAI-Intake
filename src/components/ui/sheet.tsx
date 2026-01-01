@@ -4,12 +4,14 @@
  * Sheet component - Side sliding panel
  * Custom implementation (no external dependencies)
  * Uses Portal to render outside DOM hierarchy
+ * Enhanced with smooth animations and haptic feedback
  */
 
 import * as React from "react";
 import ReactDOM from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { hapticImpact } from "@/lib/haptics";
 
 interface SheetContextValue {
   open: boolean;
@@ -36,6 +38,15 @@ function Sheet({ open = false, onOpenChange, children }: SheetProps) {
   const [internalOpen, setInternalOpen] = React.useState(open);
   const isControlled = onOpenChange !== undefined;
   const isOpen = isControlled ? open : internalOpen;
+  const prevOpen = React.useRef(isOpen);
+
+  // Haptic feedback on open/close
+  React.useEffect(() => {
+    if (isOpen !== prevOpen.current) {
+      hapticImpact(isOpen ? "medium" : "light");
+      prevOpen.current = isOpen;
+    }
+  }, [isOpen]);
 
   const handleOpenChange = React.useCallback(
     (newOpen: boolean) => {
@@ -98,6 +109,8 @@ const sideClasses = {
 function SheetContent({ children, side = "right", className, ...props }: SheetContentProps) {
   const { open, onOpenChange } = useSheetContext();
   const [mounted, setMounted] = React.useState(false);
+  const [isVisible, setIsVisible] = React.useState(false);
+  const [isAnimating, setIsAnimating] = React.useState(false);
 
   // Only render portal on client
   React.useEffect(() => {
@@ -114,6 +127,18 @@ function SheetContent({ children, side = "right", className, ...props }: SheetCo
     if (open) {
       document.addEventListener("keydown", handleEscape);
       document.body.style.overflow = "hidden";
+      setIsVisible(true);
+      // Trigger animation after visibility
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsAnimating(true);
+        });
+      });
+    } else {
+      setIsAnimating(false);
+      // Wait for exit animation before hiding
+      const timer = setTimeout(() => setIsVisible(false), 300);
+      return () => clearTimeout(timer);
     }
 
     return () => {
@@ -122,7 +147,7 @@ function SheetContent({ children, side = "right", className, ...props }: SheetCo
     };
   }, [open, onOpenChange]);
 
-  if (!open || !mounted) return null;
+  if (!mounted || !isVisible) return null;
 
   // Use Portal to render outside the current DOM hierarchy
   return ReactDOM.createPortal(
@@ -131,25 +156,36 @@ function SheetContent({ children, side = "right", className, ...props }: SheetCo
       <div
         className={cn(
           "fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300",
-          open ? "opacity-100" : "opacity-0"
+          isAnimating ? "opacity-100" : "opacity-0"
         )}
         onClick={() => onOpenChange(false)}
       />
 
-      {/* Sheet Panel */}
+      {/* Sheet Panel with smooth spring-like animation */}
       <div
-        data-state={open ? "open" : "closed"}
+        data-state={isAnimating ? "open" : "closed"}
         className={cn(
-          "fixed z-50 bg-[var(--card)] shadow-xl transition-transform duration-300 ease-out",
+          "fixed z-50 bg-[var(--card)] shadow-xl transition-transform duration-300",
+          // Use a custom easing for bouncy feel
+          "ease-[cubic-bezier(0.32,0.72,0,1)]",
+          // Handle with drag indicator for mobile
+          side === "bottom" && "rounded-t-2xl",
+          side === "top" && "rounded-b-2xl",
           sideClasses[side],
           className
         )}
         {...props}
       >
+        {/* Drag handle indicator for bottom sheets (mobile-like) */}
+        {side === "bottom" && (
+          <div className="flex justify-center pt-2 pb-1">
+            <div className="w-10 h-1 rounded-full bg-[var(--muted-foreground)] opacity-30" />
+          </div>
+        )}
         <button
           type="button"
           onClick={() => onOpenChange(false)}
-          className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-[var(--cai-teal)] focus:ring-offset-2"
+          className="absolute right-4 top-4 rounded-sm opacity-70 transition-all duration-150 hover:opacity-100 hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--cai-teal)] focus:ring-offset-2 touch-manipulation"
         >
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>

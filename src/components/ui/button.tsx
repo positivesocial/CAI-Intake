@@ -3,24 +3,25 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
+import { hapticTap } from "@/lib/haptics";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cai-teal)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cai-teal)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 active:scale-[0.97] touch-manipulation",
   {
     variants: {
       variant: {
         default:
-          "bg-[var(--cai-navy)] text-white hover:bg-[var(--cai-navy-light)] shadow-sm",
+          "bg-[var(--cai-navy)] text-white hover:bg-[var(--cai-navy-light)] shadow-sm active:bg-[var(--cai-navy-dark)]",
         primary:
-          "bg-[var(--cai-teal)] text-[var(--cai-navy)] hover:bg-[var(--cai-teal-light)] shadow-sm font-semibold",
+          "bg-[var(--cai-teal)] text-[var(--cai-navy)] hover:bg-[var(--cai-teal-light)] shadow-sm font-semibold active:bg-[var(--cai-teal-dark)]",
         destructive:
-          "bg-[var(--cai-error)] text-white hover:bg-red-600 shadow-sm",
+          "bg-[var(--cai-error)] text-white hover:bg-red-600 shadow-sm active:bg-red-700",
         outline:
-          "border-2 border-[var(--border)] bg-transparent hover:bg-[var(--muted)] hover:border-[var(--cai-teal)]",
+          "border-2 border-[var(--border)] bg-transparent hover:bg-[var(--muted)] hover:border-[var(--cai-teal)] active:bg-[var(--border)]",
         secondary:
-          "bg-[var(--muted)] text-[var(--foreground)] hover:bg-[var(--border)]",
-        ghost: "hover:bg-[var(--muted)] hover:text-[var(--foreground)]",
-        link: "text-[var(--cai-teal)] underline-offset-4 hover:underline",
+          "bg-[var(--muted)] text-[var(--foreground)] hover:bg-[var(--border)] active:bg-[var(--muted)]",
+        ghost: "hover:bg-[var(--muted)] hover:text-[var(--foreground)] active:bg-[var(--border)]",
+        link: "text-[var(--cai-teal)] underline-offset-4 hover:underline active:opacity-70",
       },
       size: {
         default: "h-10 px-4 py-2",
@@ -41,15 +42,24 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   loading?: boolean;
+  haptic?: boolean;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, loading, children, disabled, ...props }, ref) => {
+  ({ className, variant, size, loading, haptic = true, children, disabled, onClick, ...props }, ref) => {
+    const handleClick = React.useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+      if (haptic && !disabled && !loading) {
+        hapticTap();
+      }
+      onClick?.(e);
+    }, [haptic, disabled, loading, onClick]);
+
     return (
       <button
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         disabled={disabled || loading}
+        onClick={handleClick}
         {...props}
       >
         {loading && (
