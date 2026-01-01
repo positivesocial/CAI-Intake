@@ -282,7 +282,19 @@ export function ExportStep() {
       
       // Mark cutlist as "exported" since an export action was performed
       // This distinguishes from "completed" (just saved) vs "exported" (actually used export feature)
-      await markCutlistExported(optionId);
+      // First, ensure the cutlist is saved (if it hasn't been yet)
+      if (!savedCutlistId && totalParts > 0) {
+        const saveResult = await saveCutlist(false); // Don't mark as completed - we'll mark as exported
+        if (!saveResult.success) {
+          console.warn("Could not save cutlist before marking as exported:", saveResult.error);
+        }
+      }
+      
+      // Now mark as exported (this will use the savedCutlistId from state)
+      const exportResult = await markCutlistExported(optionId);
+      if (!exportResult.success) {
+        console.warn("Could not mark cutlist as exported:", exportResult.error);
+      }
       
     } catch (error) {
       console.error("Export error:", error);

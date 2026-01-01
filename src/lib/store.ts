@@ -1141,19 +1141,30 @@ export const useIntakeStore = create<IntakeState>()(
           }
 
           const data = await response.json();
+          const newCutlistId = data.cutlist.id;
+
+          // If markAsCompleted is true, update the newly created cutlist to "completed"
+          // (new cutlists are created as "draft" by default)
+          if (markAsCompleted && newCutlistId) {
+            await fetch(`/api/v1/cutlists/${newCutlistId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "completed" }),
+            });
+          }
 
           // Log accuracy (non-blocking)
           logAccuracyToServer(state);
 
           set({ 
             isSaving: false, 
-            savedCutlistId: data.cutlist.id,
+            savedCutlistId: newCutlistId,
             lastSavedAt: new Date().toISOString(),
             pendingFileIds: [], // Clear pending files after successful save
             // Clear original parts after logging (they've been compared)
             originalParsedParts: [],
           });
-          return { success: true, cutlistId: data.cutlist.id };
+          return { success: true, cutlistId: newCutlistId };
         } catch (error) {
           console.error("Save cutlist error:", error);
           set({ isSaving: false });

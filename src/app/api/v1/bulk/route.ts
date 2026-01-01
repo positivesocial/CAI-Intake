@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
             }
 
             const status = (op.data?.status as string) || "draft";
-            const validStatuses = ["draft", "pending", "processing", "completed", "archived"];
+            const validStatuses = ["draft", "pending", "processing", "completed", "exported", "archived"];
             
             if (!validStatuses.includes(status)) {
               result.errors = [`Invalid status: ${status}`];
