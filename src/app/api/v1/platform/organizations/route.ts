@@ -20,9 +20,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if super admin using Prisma (users table, not profiles)
+    // Check if super admin using Prisma (users table, not profiles) - use email for lookup since Supabase auth ID may differ from Prisma user ID
     const dbUser = await prisma.user.findUnique({
-      where: { id: authUser.id },
+      where: { email: authUser.email! },
       select: { isSuperAdmin: true },
     });
 
@@ -108,9 +108,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if super admin using Prisma
+    // Check if super admin using Prisma - use email for lookup since Supabase auth ID may differ from Prisma user ID
     const dbUser = await prisma.user.findUnique({
-      where: { id: authUser.id },
+      where: { email: authUser.email! },
       select: { isSuperAdmin: true },
     });
 

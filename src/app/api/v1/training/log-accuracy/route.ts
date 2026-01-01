@@ -26,9 +26,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization
+    // Get user's organization - use email for lookup since Supabase auth ID may differ from Prisma user ID
     const dbUser = await prisma.user.findUnique({
-      where: { id: user.id },
+      where: { email: user.email! },
       select: { organizationId: true },
     });
 

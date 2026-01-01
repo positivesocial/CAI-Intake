@@ -20,9 +20,9 @@ export async function POST() {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // Check if super admin
+    // Check if super admin - use email for lookup since Supabase auth ID may differ from Prisma user ID
     const userData = await prisma.user.findUnique({
-      where: { id: user.id },
+      where: { email: user.email! },
       select: { isSuperAdmin: true },
     });
 

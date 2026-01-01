@@ -150,9 +150,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<OCRAuditRe
       }, { status: 401 });
     }
 
-    // Check if super admin
+    // Check if super admin - use email for lookup since Supabase auth ID may differ from Prisma user ID
     const dbUser = await prisma.user.findUnique({
-      where: { id: authUser.id },
+      where: { email: authUser.email! },
       select: { isSuperAdmin: true },
     });
 
