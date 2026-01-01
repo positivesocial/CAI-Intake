@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
@@ -25,6 +26,9 @@ export async function GET(request: NextRequest) {
     startOfWeek.setDate(now.getDate() - now.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Create UUID from user.id for proper SQL casting
+    const userId = Prisma.sql`CAST(${user.id} AS uuid)`;
 
     // Single query using CTEs - faster than correlated subqueries
     type QuickStatsRow = {
@@ -44,7 +48,7 @@ export async function GET(request: NextRequest) {
           r.name as role_name
         FROM users u
         LEFT JOIN roles r ON u.role_id = r.id
-        WHERE u.id = ${user.id}::uuid
+        WHERE u.id = ${userId}
         LIMIT 1
       ),
       cutlist_stats AS (
@@ -52,13 +56,13 @@ export async function GET(request: NextRequest) {
           COUNT(*) FILTER (WHERE created_at >= ${startOfWeek}) as week_count,
           COUNT(*) FILTER (WHERE created_at >= ${startOfMonth}) as month_count
         FROM cutlists
-        WHERE user_id = ${user.id}::uuid
+        WHERE user_id = ${userId}
       ),
       active_jobs AS (
         SELECT COUNT(*) as cnt
         FROM optimize_jobs oj 
         JOIN cutlists c ON oj.cutlist_id = c.id 
-        WHERE c.user_id = ${user.id}::uuid 
+        WHERE c.user_id = ${userId}
           AND oj.status IN ('pending', 'processing')
       )
       SELECT 
