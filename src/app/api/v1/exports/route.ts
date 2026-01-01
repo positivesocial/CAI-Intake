@@ -194,8 +194,8 @@ export async function POST(request: NextRequest) {
       case "maxcut":
         exportData = generateMaxcutExport(cutlist, {
           units: exportOptions.units,
-          includeGrain: exportOptions.includeGrain,
-          includeEdgebanding: exportOptions.includeEdging,
+          includeHoles: true,
+          includeGrooving: true,
         });
         contentType = EXPORT_FORMATS.maxcut.mimeType;
         filename = `${safeName}_maxcut.csv`;

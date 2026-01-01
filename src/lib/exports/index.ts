@@ -26,6 +26,7 @@ export {
 
 export {
   generateMaxcutExport,
+  generateMaxcutExportSimple,
   type MaxcutExportOptions,
 } from "./maxcut-export";
 
