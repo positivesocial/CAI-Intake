@@ -78,6 +78,8 @@ interface UploadedFile {
     };
   };
   error?: string;
+  /** Internal flag to skip cache on retry */
+  _skipCache?: boolean;
 }
 
 interface BatchStats {
@@ -332,7 +334,8 @@ export function FileUpload() {
           if (!file) break;
           
           try {
-            await processFile(file);
+            // Pass skipCache flag if set (e.g., on retry)
+            await processFile(file, { skipCache: file._skipCache });
           } catch (error) {
             console.error(`📤 [FileUpload] File processing error`, {
               fileId: file.id.substring(0, 8),
@@ -407,12 +410,20 @@ export function FileUpload() {
     setFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
-  // Retry a failed file
-  const retryFile = (id: string) => {
+  // Retry a failed file (with cache bypass to get fresh results)
+  const retryFile = (id: string, forceSkipCache = true) => {
     setFiles((prev) =>
       prev.map((f) =>
         f.id === id
-          ? { ...f, status: "queued" as ProcessingStatus, error: undefined, progress: 0, parsedItems: 0 }
+          ? { 
+              ...f, 
+              status: "queued" as ProcessingStatus, 
+              error: undefined, 
+              progress: 0, 
+              parsedItems: 0,
+              // Mark for cache bypass on retry
+              _skipCache: forceSkipCache,
+            }
           : f
       )
     );
@@ -445,15 +456,17 @@ export function FileUpload() {
   };
 
   // Process a single file
-  const processFile = async (uploadedFile: UploadedFile) => {
+  const processFile = async (uploadedFile: UploadedFile, options?: { skipCache?: boolean }) => {
     const startTime = Date.now();
     const fileId = uploadedFile.id;
+    const skipCache = options?.skipCache ?? false;
     
     console.info(`📤 [FileUpload] Processing file`, {
       fileId: fileId.substring(0, 8),
       name: uploadedFile.file.name,
       type: uploadedFile.type,
       size: `${(uploadedFile.file.size / 1024).toFixed(1)}KB`,
+      skipCache,
     });
     
     // Log processing start
@@ -614,6 +627,9 @@ export function FileUpload() {
             }
             if (qrResult?.orgConfig) {
               formData.append("templateConfig", JSON.stringify(qrResult.orgConfig));
+            }
+            if (skipCache) {
+              formData.append("skipCache", "true");
             }
 
             const response = await fetch("/api/v1/parse-file", {

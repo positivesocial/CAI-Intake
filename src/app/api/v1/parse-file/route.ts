@@ -127,6 +127,8 @@ export async function POST(request: NextRequest) {
     const fileTypeFromForm = formData.get("fileType") as string | null;
     const templateId = formData.get("templateId") as string | null;
     const templateConfigRaw = formData.get("templateConfig") as string | null;
+    const skipCacheRaw = formData.get("skipCache") as string | null;
+    const skipCache = skipCacheRaw === "true" || skipCacheRaw === "1";
 
     if (!file) {
       logger.warn("📥 [ParseFile] No file provided", { requestId });
@@ -673,8 +675,12 @@ export async function POST(request: NextRequest) {
       // NON-STREAMING MODE - With caching for repeated documents
       // ============================================================
       try {
-        // Check cache first for identical images
-        const cachedResult = getCachedResult(originalBuffer);
+        // Check cache first for identical images (unless skipCache is set)
+        const cachedResult = skipCache ? null : getCachedResult(originalBuffer);
+        
+        if (skipCache) {
+          logger.info("📥 [ParseFile] Cache BYPASSED by request", { requestId });
+        }
         
         if (cachedResult) {
           // Cache HIT - return cached result immediately
