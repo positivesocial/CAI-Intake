@@ -226,6 +226,7 @@ export interface IntakeState {
   rejectInboxPart: (partId: string) => void;
   clearInbox: () => void;
   updateInboxPart: (partId: string, updates: Partial<ParsedPartWithStatus>) => void;
+  insertInboxPartAt: (part: ParsedPartWithStatus, index: number) => void;
   
   // Upload batch management
   addUploadBatch: (batch: Omit<UploadBatch, "batch_id" | "uploaded_at">) => string;
@@ -764,6 +765,15 @@ export const useIntakeStore = create<IntakeState>()(
             p.part_id === partId ? { ...p, ...updates } : p
           ),
         })),
+
+      insertInboxPartAt: (part, index) =>
+        set((state) => {
+          const newParts = [...state.inboxParts];
+          // Clamp index to valid range
+          const clampedIndex = Math.max(0, Math.min(index, newParts.length));
+          newParts.splice(clampedIndex, 0, part);
+          return { inboxParts: newParts };
+        }),
 
       // Upload batch management for project tracking
       addUploadBatch: (batch) => {

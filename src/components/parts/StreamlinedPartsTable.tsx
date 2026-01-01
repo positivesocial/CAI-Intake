@@ -24,6 +24,9 @@ import {
   LayoutGrid,
   LayoutList,
   ArrowLeftRight,
+  ArrowUp,
+  ArrowDown,
+  MoreHorizontal,
   ChevronDown,
   Check,
   Package,
@@ -51,7 +54,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useIntakeStore } from "@/lib/store";
 import type { CutPart } from "@/lib/schema";
-import { cn } from "@/lib/utils";
+import { cn, generateId } from "@/lib/utils";
 import { UnifiedOpsPanel } from "./UnifiedOpsPanel";
 import { BulkOpsPanel } from "./BulkOpsPanel";
 import type { OperationsData } from "@/components/operations";
@@ -210,6 +213,11 @@ interface PartRowProps {
   onToggle: () => void;
   onEditOps: () => void;
   onUpdate: (updates: Partial<CutPart>) => void;
+  onInsertAbove: () => void;
+  onInsertBelow: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onSwapDimensions: () => void;
   materials: Array<{ value: string; label: string }>;
 }
 
@@ -220,6 +228,11 @@ function PartRow({
   onToggle,
   onEditOps,
   onUpdate,
+  onInsertAbove,
+  onInsertBelow,
+  onDuplicate,
+  onDelete,
+  onSwapDimensions,
   materials,
 }: PartRowProps) {
   const [editingField, setEditingField] = React.useState<string | null>(null);
@@ -413,6 +426,44 @@ function PartRow({
       <td className="px-1 sm:px-2 py-2" onClick={(e) => e.stopPropagation()}>
         <OpsIndicator part={part} onClick={onEditOps} />
       </td>
+
+      {/* Actions */}
+      <td className="px-1 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-[var(--muted)] transition-colors opacity-0 group-hover:opacity-100"
+            >
+              <MoreHorizontal className="h-4 w-4 text-[var(--muted-foreground)]" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={onInsertAbove}>
+              <ArrowUp className="h-4 w-4 mr-2" />
+              Insert above
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onInsertBelow}>
+              <ArrowDown className="h-4 w-4 mr-2" />
+              Insert below
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onDuplicate}>
+              <Copy className="h-4 w-4 mr-2" />
+              Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onSwapDimensions}>
+              <ArrowLeftRight className="h-4 w-4 mr-2" />
+              Swap L ↔ W
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-600">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </td>
     </tr>
   );
 }
@@ -427,6 +478,11 @@ interface PartCardViewProps {
   onToggle: () => void;
   onEditOps: () => void;
   onUpdate: (updates: Partial<CutPart>) => void;
+  onInsertAbove: () => void;
+  onInsertBelow: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onSwapDimensions: () => void;
   materials: Array<{ value: string; label: string }>;
 }
 
@@ -436,6 +492,11 @@ function PartCardView({
   onToggle,
   onEditOps,
   onUpdate,
+  onInsertAbove,
+  onInsertBelow,
+  onDuplicate,
+  onDelete,
+  onSwapDimensions,
   materials,
 }: PartCardViewProps) {
   const [editingField, setEditingField] = React.useState<string | null>(null);
@@ -565,25 +626,61 @@ function PartCardView({
         </Select>
       </div>
 
-      {/* Ops + Rotation indicator */}
+      {/* Ops + Rotation + Actions */}
       <div className="flex items-center justify-between">
         <OpsIndicator part={part} onClick={onEditOps} />
-        <button
-          type="button"
-          onClick={() => onUpdate({ allow_rotation: !part.allow_rotation })}
-          className={cn(
-            "text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors",
-            part.allow_rotation 
-              ? "text-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/10"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-          )}
-        >
-          {part.allow_rotation ? (
-            <><RotateCcw className="h-3 w-3" /> Rotatable</>
-          ) : (
-            <><Lock className="h-3 w-3" /> Fixed</>
-          )}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onUpdate({ allow_rotation: !part.allow_rotation })}
+            className={cn(
+              "text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors",
+              part.allow_rotation 
+                ? "text-[var(--cai-teal)] hover:bg-[var(--cai-teal)]/10"
+                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+            )}
+          >
+            {part.allow_rotation ? (
+              <><RotateCcw className="h-3 w-3" /> Rotatable</>
+            ) : (
+              <><Lock className="h-3 w-3" /> Fixed</>
+            )}
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-[var(--muted)] transition-colors"
+              >
+                <MoreHorizontal className="h-4 w-4 text-[var(--muted-foreground)]" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={onInsertAbove}>
+                <ArrowUp className="h-4 w-4 mr-2" />
+                Insert above
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onInsertBelow}>
+                <ArrowDown className="h-4 w-4 mr-2" />
+                Insert below
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onDuplicate}>
+                <Copy className="h-4 w-4 mr-2" />
+                Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onSwapDimensions}>
+                <ArrowLeftRight className="h-4 w-4 mr-2" />
+                Swap L ↔ W
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-600">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </div>
   );
@@ -598,6 +695,8 @@ export function StreamlinedPartsTable() {
     currentCutlist,
     removePart,
     updatePart,
+    addPart,
+    insertPartAt,
     selectedPartIds,
     selectPart,
     deselectPart,
@@ -823,6 +922,37 @@ export function StreamlinedPartsTable() {
         updatePart(partId, { ...part, group_id: groupId });
       }
     });
+  };
+
+  // ============================================================
+  // ROW-LEVEL ACTIONS
+  // ============================================================
+
+  // Insert a new empty part at a specific index
+  const handleInsertAt = (index: number) => {
+    const defaultMaterial = currentCutlist.materials[0]?.material_id || "default";
+    const defaultThickness = currentCutlist.materials[0]?.thickness_mm || 18;
+    
+    const newPart: CutPart = {
+      part_id: generateId("P"),
+      label: "",
+      qty: 1,
+      size: { L: 0, W: 0 },
+      thickness_mm: defaultThickness,
+      material_id: defaultMaterial,
+      allow_rotation: true,
+    };
+    insertPartAt(newPart, index);
+  };
+
+  // Duplicate a single part
+  const handleDuplicatePart = (part: CutPart) => {
+    const newPart: CutPart = {
+      ...part,
+      part_id: generateId("P"),
+      label: part.label ? `${part.label} (copy)` : undefined,
+    };
+    addPart(newPart);
   };
 
   // Get unique groups from current parts for bulk group dropdown
@@ -1121,10 +1251,11 @@ export function StreamlinedPartsTable() {
                       <th className="px-1 sm:px-2 py-2 text-center text-xs font-medium text-teal-600">
                         Ops
                       </th>
+                      <th className="w-10 px-1 py-2"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedParts.map((part) => (
+                    {sortedParts.map((part, index) => (
                       <PartRow
                         key={part.part_id}
                         part={part}
@@ -1133,6 +1264,11 @@ export function StreamlinedPartsTable() {
                         onToggle={() => togglePartSelection(part.part_id)}
                         onEditOps={() => setOpsEditingPart(part)}
                         onUpdate={(updates) => updatePart(part.part_id, { ...part, ...updates })}
+                        onInsertAbove={() => handleInsertAt(index)}
+                        onInsertBelow={() => handleInsertAt(index + 1)}
+                        onDuplicate={() => handleDuplicatePart(part)}
+                        onDelete={() => removePart(part.part_id)}
+                        onSwapDimensions={() => handleSwapDimensions(part)}
                         materials={materialOptions}
                       />
                     ))}
@@ -1143,7 +1279,7 @@ export function StreamlinedPartsTable() {
           ) : (
             /* CARD VIEW */
             <div className="p-3 sm:p-4 grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {sortedParts.map((part) => (
+              {sortedParts.map((part, index) => (
                 <PartCardView
                   key={part.part_id}
                   part={part}
@@ -1151,6 +1287,11 @@ export function StreamlinedPartsTable() {
                   onToggle={() => togglePartSelection(part.part_id)}
                   onEditOps={() => setOpsEditingPart(part)}
                   onUpdate={(updates) => updatePart(part.part_id, { ...part, ...updates })}
+                  onInsertAbove={() => handleInsertAt(index)}
+                  onInsertBelow={() => handleInsertAt(index + 1)}
+                  onDuplicate={() => handleDuplicatePart(part)}
+                  onDelete={() => removePart(part.part_id)}
+                  onSwapDimensions={() => handleSwapDimensions(part)}
                   materials={materialOptions}
                 />
               ))}

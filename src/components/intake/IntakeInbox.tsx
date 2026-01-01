@@ -15,6 +15,9 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowLeftRight,
+  ArrowUp,
+  ArrowDown,
+  Plus,
   Layers,
   Pencil,
   Save,
@@ -491,6 +494,8 @@ interface InboxPartRowProps {
   onSwapDimensions: () => void;
   onSplitQuantity: () => void;
   onEditOps: () => void;
+  onInsertAbove: () => void;
+  onInsertBelow: () => void;
   materials: { material_id: string; name: string; thickness_mm: number }[];
   rowIndex: number;
 }
@@ -508,6 +513,8 @@ function InboxPartRow({
   onSwapDimensions,
   onSplitQuantity,
   onEditOps,
+  onInsertAbove,
+  onInsertBelow,
   materials,
   rowIndex,
 }: InboxPartRowProps) {
@@ -772,6 +779,15 @@ function InboxPartRow({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={onInsertAbove}>
+                    <ArrowUp className="h-4 w-4 mr-2" />
+                    Insert row above
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onInsertBelow}>
+                    <ArrowDown className="h-4 w-4 mr-2" />
+                    Insert row below
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={onDuplicate}>
                     <Copy className="h-4 w-4 mr-2" />
                     Duplicate
@@ -1223,6 +1239,7 @@ export function IntakeInbox() {
     clearInbox,
     updateInboxPart,
     addToInbox,
+    insertInboxPartAt,
     sourceFilePreviews,
   } = useIntakeStore();
 
@@ -1632,6 +1649,41 @@ export function IntakeInbox() {
     addToInbox(newParts);
   };
 
+  // Insert empty part above/below
+  const handleInsertAbove = (index: number) => {
+    const defaultMaterial = materials[0]?.material_id || "default";
+    const defaultThickness = materials[0]?.thickness_mm || 18;
+    
+    const newPart: ParsedPartWithStatus = {
+      part_id: generateId("P"),
+      label: "",
+      qty: 1,
+      size: { L: 0, W: 0 },
+      thickness_mm: defaultThickness,
+      material_id: defaultMaterial,
+      allow_rotation: true,
+      _status: "pending",
+    };
+    insertInboxPartAt(newPart, index);
+  };
+
+  const handleInsertBelow = (index: number) => {
+    const defaultMaterial = materials[0]?.material_id || "default";
+    const defaultThickness = materials[0]?.thickness_mm || 18;
+    
+    const newPart: ParsedPartWithStatus = {
+      part_id: generateId("P"),
+      label: "",
+      qty: 1,
+      size: { L: 0, W: 0 },
+      thickness_mm: defaultThickness,
+      material_id: defaultMaterial,
+      allow_rotation: true,
+      _status: "pending",
+    };
+    insertInboxPartAt(newPart, index + 1);
+  };
+
   // Merge duplicate parts
   const handleMergeDuplicates = (partIds: string[], intoPartId: string, newQty: number) => {
     // Update the target part with combined quantity
@@ -1853,6 +1905,8 @@ export function IntakeInbox() {
                     onSwapDimensions={() => handleSwapDimensions(part.part_id)}
                     onSplitQuantity={() => handleSplitQuantity(part)}
                     onEditOps={() => setOpsEditingPart(part)}
+                    onInsertAbove={() => handleInsertAbove(index)}
+                    onInsertBelow={() => handleInsertBelow(index)}
                     materials={materials}
                     rowIndex={index}
                   />
