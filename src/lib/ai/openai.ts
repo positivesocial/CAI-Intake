@@ -1051,10 +1051,25 @@ OUTPUT: Start with [ and end with ] - NO markdown, NO explanation. Just the JSON
         qualityScore: qualityMetrics.qualityScore,
         needsReview: reviewResult.needsReview,
         reviewFlags: reviewFlags.length,
+        skippedParts: validation.skippedParts?.length || 0,
         processingTimeMs: Date.now() - startTime,
       });
 
-      return this.processResults(parts, rawResponse, startTime, options);
+      const result = this.processResults(parts, rawResponse, startTime, options);
+      
+      // Pass through skipped parts and warnings from validation for user review
+      if (validation.skippedParts && validation.skippedParts.length > 0) {
+        result.skippedParts = validation.skippedParts;
+        logger.warn("⚠️ [OpenAI] Parts skipped due to invalid dimensions", {
+          requestId,
+          skippedCount: validation.skippedParts.length,
+        });
+      }
+      if (validation.warnings && validation.warnings.length > 0) {
+        result.warnings = validation.warnings;
+      }
+      
+      return result;
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
