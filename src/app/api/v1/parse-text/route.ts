@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
         organizationId: userData.organization_id,
         userId: user.id,
         provider: provider.name.toLowerCase().includes("anthropic") ? "anthropic" : "openai",
-        model: provider.name.toLowerCase().includes("anthropic") ? "claude-3-5-sonnet-latest" : "gpt-4o",
+        model: provider.name.toLowerCase().includes("anthropic") ? "claude-sonnet-4-5-20250929" : "gpt-4o",
         operation: "parse_text",
         inputTokens: Math.round(text.length / 4), // Rough estimate: ~4 chars per token
         outputTokens: Math.round((aiResult.parts?.length ?? 0) * 30),

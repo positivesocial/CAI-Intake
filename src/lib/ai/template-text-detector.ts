@@ -153,7 +153,7 @@ export async function detectTemplateViaText(
     });
     
     const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5-20250929",
       max_tokens: 1000,
       messages: [
         {
@@ -219,7 +219,7 @@ export async function quickTemplateCheck(
     });
     
     const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5-20250929",
       max_tokens: 200,
       messages: [
         {

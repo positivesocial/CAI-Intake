@@ -14,12 +14,16 @@ import { Decimal } from "@prisma/client/runtime/library";
 // PRICING CONFIGURATION
 // =============================================================================
 
-// Pricing per 1M tokens (as of Dec 2024)
+// Pricing per 1M tokens (as of Jan 2026)
 export const AI_PRICING = {
   anthropic: {
-    "claude-3-5-sonnet-20241022": {
+    "claude-sonnet-4-5-20250929": {
       inputPer1M: 3.00,
       outputPer1M: 15.00,
+    },
+    "claude-opus-4-5-20251124": {
+      inputPer1M: 15.00,
+      outputPer1M: 75.00,
     },
     "claude-3-5-sonnet-latest": {
       inputPer1M: 3.00,
@@ -28,10 +32,6 @@ export const AI_PRICING = {
     "claude-3-haiku-20240307": {
       inputPer1M: 0.25,
       outputPer1M: 1.25,
-    },
-    "claude-3-opus-20240229": {
-      inputPer1M: 15.00,
-      outputPer1M: 75.00,
     },
   },
   openai: {

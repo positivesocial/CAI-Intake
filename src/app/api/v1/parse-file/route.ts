@@ -1015,7 +1015,7 @@ export async function POST(request: NextRequest) {
         organizationId: userOrgId,
         userId: user.id,
         provider: provider.name.toLowerCase().includes("anthropic") ? "anthropic" : "openai",
-        model: provider.name.toLowerCase().includes("anthropic") ? "claude-3-5-sonnet-latest" : "gpt-4o",
+        model: provider.name.toLowerCase().includes("anthropic") ? "claude-sonnet-4-5-20250929" : "gpt-4o",
         operation: fileType === "pdf" ? "parse_pdf" : "parse_image",
         inputTokens: Math.round((file.size / 1024) * 100), // Rough estimate: ~100 tokens per KB
         outputTokens: Math.round((aiResult.parts?.length ?? 0) * 30), // Rough estimate: ~30 tokens per part
