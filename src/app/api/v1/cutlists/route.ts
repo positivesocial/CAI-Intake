@@ -307,6 +307,14 @@ export async function POST(request: NextRequest) {
         });
       }
     }
+
+    // Reject cutlists with no parts
+    if (!body.parts || body.parts.length === 0) {
+      return NextResponse.json(
+        { error: "Cannot create a cutlist with no parts" },
+        { status: 400 }
+      );
+    }
     
     // Log incoming data for debugging
     logger.info("Creating cutlist", {

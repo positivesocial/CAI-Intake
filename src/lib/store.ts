@@ -1118,6 +1118,11 @@ export const useIntakeStore = create<IntakeState>()(
           return { success: false, error: "Already saving" };
         }
 
+        // Prevent saving empty cutlists
+        if (state.currentCutlist.parts.length === 0) {
+          return { success: false, error: "Cannot save a cutlist with no parts" };
+        }
+
         set({ isSaving: true });
 
         try {
@@ -1246,6 +1251,11 @@ export const useIntakeStore = create<IntakeState>()(
         const state = get();
         if (state.isSaving) {
           return { success: false, error: "Already saving" };
+        }
+
+        // Prevent saving empty cutlists as drafts
+        if (state.currentCutlist.parts.length === 0) {
+          return { success: false, error: "Cannot save a cutlist with no parts" };
         }
 
         set({ isSaving: true });

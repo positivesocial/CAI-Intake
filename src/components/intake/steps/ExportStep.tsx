@@ -424,7 +424,7 @@ export function ExportStep() {
           </Button>
           <Button
             onClick={handleSaveDraft}
-            disabled={isSaving}
+            disabled={totalParts === 0 || isSaving}
             variant="outline"
             size="sm"
           >
