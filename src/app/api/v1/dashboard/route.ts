@@ -3,7 +3,7 @@
  * 
  * GET /api/v1/dashboard - Get dashboard statistics
  * 
- * OPTIMIZED v4: Use Prisma ORM for user lookup, validated raw UUIDs for stats
+ * OPTIMIZED v5: All ID columns are TEXT (Prisma String), no UUID casts needed.
  * - Single $transaction for all queries (1 database round-trip)
  * - CTEs instead of correlated subqueries
  * - Lateral joins for parts counts
@@ -21,9 +21,6 @@ import {
   getTrialDaysRemaining,
 } from "@/lib/subscriptions/service";
 import { getPlan } from "@/lib/subscriptions/plans";
-
-// UUID validation regex
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // =============================================================================
 // TYPES
@@ -131,11 +128,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Validate UUID format to prevent SQL injection
-    if (!UUID_REGEX.test(user.id)) {
-      return NextResponse.json({ error: "Invalid user ID format" }, { status: 400 });
-    }
-
     const now = new Date();
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - now.getDay());
@@ -163,9 +155,10 @@ export async function GET(request: NextRequest) {
     const isSuperAdmin = dbUser.isSuperAdmin || false;
     const isOrgAdmin = orgId && ["org_admin", "manager"].includes(dbUser.role?.name || "");
 
-    // Create safe UUID literals for raw SQL (validated above)
-    const userIdLiteral = Prisma.raw(`'${user.id}'::uuid`);
-    const orgIdLiteral = orgId ? Prisma.raw(`'${orgId}'::uuid`) : Prisma.raw(`NULL::uuid`);
+    // All ID columns are TEXT in PostgreSQL (Prisma String type)
+    // No ::uuid cast needed - just use string comparison
+    const userIdLiteral = Prisma.raw(`'${user.id}'`);
+    const orgIdLiteral = orgId ? Prisma.raw(`'${orgId}'`) : Prisma.raw(`NULL`);
 
     // =========================================================================
     // TYPES for raw queries

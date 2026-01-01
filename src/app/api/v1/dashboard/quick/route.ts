@@ -4,16 +4,13 @@
  * GET /api/v1/dashboard/quick - Get essential user stats only (fast)
  * 
  * This endpoint returns minimal data for instant page load.
- * OPTIMIZED v3: Use Prisma ORM for user lookup, raw SQL for stats.
+ * OPTIMIZED v5: All ID columns are TEXT (Prisma String), no UUID casts needed.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { createClient } from "@/lib/supabase/server";
-
-// UUID validation regex
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,11 +19,6 @@ export async function GET(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Validate UUID format to prevent SQL injection
-    if (!UUID_REGEX.test(user.id)) {
-      return NextResponse.json({ error: "Invalid user ID format" }, { status: 400 });
     }
 
     const now = new Date();
@@ -49,8 +41,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Create safe UUID literal for raw SQL (validated above)
-    const userIdLiteral = Prisma.raw(`'${user.id}'::uuid`);
+    // All ID columns are TEXT in PostgreSQL (Prisma String type)
+    // No ::uuid cast needed - just use string comparison
+    const userIdLiteral = Prisma.raw(`'${user.id}'`);
 
     // Single query for stats using CTEs
     type StatsRow = {
