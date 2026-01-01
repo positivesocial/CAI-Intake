@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2, Copy, ArrowDown, Keyboard, GripVertical, Check, ChevronDown } from "lucide-react";
+import { Plus, Trash2, Copy, ArrowDown, ArrowUp, Keyboard, GripVertical, Check, ChevronDown, MoreHorizontal } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -405,6 +405,17 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
 
       case "Enter":
         e.preventDefault();
+        // Shift+Enter = insert row below
+        if (e.shiftKey) {
+          insertRowBelow(rowIndex);
+          return;
+        }
+        // Ctrl/Cmd+Enter = insert row above
+        if (e.ctrlKey || e.metaKey) {
+          insertRowAbove(rowIndex);
+          return;
+        }
+        // Normal Enter = add part if valid, then move to next row
         const row = rows[rowIndex];
         if (row.L && row.W && parseFloat(row.L) > 0 && parseFloat(row.W) > 0) {
           handleAddPart(rowIndex);
@@ -495,6 +506,26 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
     const rowToCopy = rows[rowIndex];
     const newRow = { ...rowToCopy, id: generateId("ROW"), label: rowToCopy.label ? `${rowToCopy.label} (copy)` : "" };
     setRows((prev) => [...prev.slice(0, rowIndex + 1), newRow, ...prev.slice(rowIndex + 1)]);
+  };
+
+  const insertRowAbove = (rowIndex: number) => {
+    const newRow = createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband);
+    setRows((prev) => [...prev.slice(0, rowIndex), newRow, ...prev.slice(rowIndex)]);
+    // Focus the new row's first editable cell
+    setTimeout(() => {
+      const ref = inputRefs.current.get(`${rowIndex}-label`);
+      ref?.focus();
+    }, 50);
+  };
+
+  const insertRowBelow = (rowIndex: number) => {
+    const newRow = createEmptyRow(defaultMaterial, defaultThickness, defaultEdgeband);
+    setRows((prev) => [...prev.slice(0, rowIndex + 1), newRow, ...prev.slice(rowIndex + 1)]);
+    // Focus the new row's first editable cell
+    setTimeout(() => {
+      const ref = inputRefs.current.get(`${rowIndex + 1}-label`);
+      ref?.focus();
+    }, 50);
   };
 
   const validateRow = (row: RowData): boolean => {
@@ -799,12 +830,18 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+          <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)] flex-wrap">
             <GripVertical className="h-3 w-3" />
-            <span>Drag columns to reorder</span>
-            <span className="mx-1">•</span>
+            <span>Drag columns</span>
+            <span className="mx-1 opacity-50">•</span>
             <Keyboard className="h-3 w-3" />
-            <span>Tab/↑↓ to navigate</span>
+            <span>Tab/↑↓ navigate</span>
+            <span className="mx-1 opacity-50">•</span>
+            <span className="font-mono text-[10px] bg-[var(--muted)] px-1 rounded">⇧↵</span>
+            <span>insert below</span>
+            <span className="mx-1 opacity-50">•</span>
+            <span className="font-mono text-[10px] bg-[var(--muted)] px-1 rounded">⌘↵</span>
+            <span>insert above</span>
           </div>
         </div>
       </CardHeader>
@@ -887,6 +924,22 @@ export const ManualEntryForm = React.forwardRef<ManualEntryFormRef, ManualEntryF
                           title="Add this part (Enter)"
                         >
                           <Plus className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => insertRowAbove(rowIndex)}
+                          className="p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)]"
+                          title="Insert row above (Shift+Enter)"
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => insertRowBelow(rowIndex)}
+                          className="p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)]"
+                          title="Insert row below"
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"

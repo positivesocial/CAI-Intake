@@ -194,6 +194,10 @@ export interface IntakeState {
   // Parts management
   addPart: (part: CutPart) => void;
   addParts: (parts: CutPart[]) => void;
+  insertPartAt: (part: CutPart, index: number) => void;
+  insertPartsAt: (parts: CutPart[], index: number) => void;
+  movePart: (fromIndex: number, toIndex: number) => void;
+  movePartById: (partId: string, toIndex: number) => void;
   updatePart: (partId: string, updates: Partial<CutPart>) => void;
   removePart: (partId: string) => void;
   clearParts: () => void;
@@ -497,6 +501,62 @@ export const useIntakeStore = create<IntakeState>()(
           },
           ...pushUndoAction(state, { type: "ADD_PARTS", parts }),
         })),
+
+      insertPartAt: (part, index) =>
+        set((state) => {
+          const newParts = [...state.currentCutlist.parts];
+          // Clamp index to valid range
+          const insertIndex = Math.max(0, Math.min(index, newParts.length));
+          newParts.splice(insertIndex, 0, part);
+          return {
+            currentCutlist: {
+              ...state.currentCutlist,
+              parts: newParts,
+            },
+            ...pushUndoAction(state, { type: "ADD_PART", part }),
+          };
+        }),
+
+      insertPartsAt: (parts, index) =>
+        set((state) => {
+          const newParts = [...state.currentCutlist.parts];
+          // Clamp index to valid range
+          const insertIndex = Math.max(0, Math.min(index, newParts.length));
+          newParts.splice(insertIndex, 0, ...parts);
+          return {
+            currentCutlist: {
+              ...state.currentCutlist,
+              parts: newParts,
+            },
+            ...pushUndoAction(state, { type: "ADD_PARTS", parts }),
+          };
+        }),
+
+      movePart: (fromIndex, toIndex) =>
+        set((state) => {
+          const parts = [...state.currentCutlist.parts];
+          if (fromIndex < 0 || fromIndex >= parts.length) return state;
+          if (toIndex < 0 || toIndex >= parts.length) return state;
+          if (fromIndex === toIndex) return state;
+          
+          const [movedPart] = parts.splice(fromIndex, 1);
+          parts.splice(toIndex, 0, movedPart);
+          
+          return {
+            currentCutlist: {
+              ...state.currentCutlist,
+              parts,
+            },
+            // Note: no undo action for move - could add if needed
+          };
+        }),
+
+      movePartById: (partId, toIndex) => {
+        const state = get();
+        const fromIndex = state.currentCutlist.parts.findIndex(p => p.part_id === partId);
+        if (fromIndex === -1) return;
+        get().movePart(fromIndex, toIndex);
+      },
 
       updatePart: (partId, updates) => {
         const state = get();
