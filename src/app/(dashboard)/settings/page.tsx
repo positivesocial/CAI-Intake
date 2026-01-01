@@ -95,7 +95,7 @@ const SETTINGS_SECTIONS = [
     icon: Brain,
     description: "Training examples and accuracy metrics (Platform-wide)",
     superAdminOnly: true,
-    href: "/settings/training",
+    href: "/platform/training", // Super admins use the platform training page
   },
   {
     id: "organization",
@@ -1089,7 +1089,7 @@ export default function SettingsPage() {
 
             {/* AI Training Section (Super Admin Only - Platform-wide) */}
             {activeSection === "training" && isSuperAdmin() && (
-              <Link href="/settings/training">
+              <Link href="/platform/training">
                 <Card className="cursor-pointer hover:shadow-md transition-shadow">
                   <CardContent className="pt-6">
                     <div className="flex items-center gap-4">

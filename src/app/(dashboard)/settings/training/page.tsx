@@ -104,10 +104,16 @@ export default function TrainingDashboard() {
     setMounted(true);
   }, []);
 
-  // Redirect non-super-admins
+  // Redirect to appropriate page based on user role
   useEffect(() => {
-    if (mounted && !authLoading && isAuthenticated && !isSuperAdmin()) {
-      router.push("/settings");
+    if (mounted && !authLoading && isAuthenticated) {
+      if (!isSuperAdmin()) {
+        // Non-super-admins go back to settings
+        router.push("/settings");
+      } else {
+        // Super admins should use the platform training page
+        router.push("/platform/training");
+      }
     }
   }, [mounted, authLoading, isAuthenticated, isSuperAdmin, router]);
 
