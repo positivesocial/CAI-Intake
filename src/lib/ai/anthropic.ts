@@ -14,11 +14,9 @@ import Anthropic from "@anthropic-ai/sdk";
 /**
  * Claude model to use for all operations.
  * 
- * Available models (as of Dec 2025):
- * - claude-sonnet-4-5-20250929: FASTEST - Sonnet 4.5, excellent for OCR/vision (recommended)
+ * Available models (as of Jan 2026):
+ * - claude-sonnet-4-5-20250929: RECOMMENDED - Sonnet 4.5, excellent for OCR/vision
  * - claude-opus-4-5-20251124: Opus 4.5, most capable but slower
- * - claude-sonnet-4-5-20250929: Previous Sonnet 3.5, good balance of speed/quality
- * - claude-3-opus-20240229: Previous Opus 3, capable but older
  * 
  * Using Sonnet 4.5 for best OCR speed while maintaining quality.
  * Update this constant to switch models across all operations.
@@ -1019,7 +1017,7 @@ OUTPUT: Start with [ and end with ] - NO markdown, NO explanation. Just the JSON
    * Claude can now process PDFs directly without converting to images!
    * This uses the "document" content type with media_type: "application/pdf"
    * 
-   * Supported models: Claude Opus 4, Sonnet 4, Sonnet 3.7, Sonnet 3.5, Haiku 3.5
+   * Supported models: Claude Sonnet 4.5, Claude Opus 4.5
    * Limits: 32MB max file size, 100 pages max
    */
   async parseDocument(

@@ -58,7 +58,7 @@ const PROVIDERS: ProviderInfo[] = [
   },
   {
     id: "anthropic",
-    name: "Claude 3.5 Sonnet",
+    name: "Claude 4.5 Sonnet",
     icon: <Brain className="h-4 w-4" />,
     color: "text-purple-600",
     description: "Best for complex, messy, or handwritten data",

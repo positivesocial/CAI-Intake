@@ -839,7 +839,7 @@ export default function SettingsPage() {
                     <div className="grid grid-cols-2 gap-3">
                       {[
                         { id: "openai", name: "OpenAI", model: "GPT-4o" },
-                        { id: "anthropic", name: "Anthropic", model: "Claude 3.5 Sonnet" },
+                        { id: "anthropic", name: "Anthropic", model: "Claude 4.5 Sonnet" },
                       ].map((provider) => (
                         <button
                           key={provider.id}
