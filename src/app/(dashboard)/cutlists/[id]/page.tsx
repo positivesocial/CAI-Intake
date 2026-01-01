@@ -278,16 +278,16 @@ export default function CutlistDetailPage() {
                   Generic CSV
                 </button>
                 <button onClick={() => handleExport("cutlistplus")} className="block w-full px-4 py-2 text-left text-sm hover:bg-[var(--muted)]">
-                  CutList Plus
+                  CutList Plus (.csv)
                 </button>
                 <button onClick={() => handleExport("maxcut")} className="block w-full px-4 py-2 text-left text-sm hover:bg-[var(--muted)]">
-                  MaxCut (.mcp)
+                  MaxCut (.csv)
                 </button>
                 <button onClick={() => handleExport("cutrite")} className="block w-full px-4 py-2 text-left text-sm hover:bg-[var(--muted)]">
                   CutRite (.xml)
                 </button>
                 <button onClick={() => handleExport("optimik")} className="block w-full px-4 py-2 text-left text-sm hover:bg-[var(--muted)]">
-                  Optimik
+                  Optimik (.csv)
                 </button>
                 <button onClick={() => handleExport("cai2d")} className="block w-full px-4 py-2 text-left text-sm hover:bg-[var(--muted)]">
                   CAI 2D

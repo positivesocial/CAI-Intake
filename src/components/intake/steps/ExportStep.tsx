@@ -8,6 +8,7 @@ import {
   FileJson,
   FileSpreadsheet,
   FileText,
+  FileCode,
   Check,
   CheckCircle2,
   ExternalLink,
@@ -170,19 +171,31 @@ export function ExportStep() {
     },
     {
       id: "maxcut",
-      label: "Export for MaxCut",
-      description: "Compatible with MaxCut software",
+      label: "Export for MaxCut (.csv)",
+      description: "MaxCut panel optimization software",
       icon: <FileSpreadsheet className="h-5 w-5" />,
     },
     {
       id: "cutlistplus",
-      label: "Export for CutList Plus",
-      description: "Import into CutList Plus fx",
+      label: "Export for CutList Plus (.csv)",
+      description: "CutList Plus fx software",
       icon: <FileText className="h-5 w-5" />,
     },
     {
+      id: "cutrite",
+      label: "Export for CutRite (.xml)",
+      description: "Weinig professional optimizer",
+      icon: <FileCode className="h-5 w-5" />,
+    },
+    {
+      id: "optimik",
+      label: "Export for Optimik (.csv)",
+      description: "Optimik panel optimization",
+      icon: <FileSpreadsheet className="h-5 w-5" />,
+    },
+    {
       id: "csv",
-      label: "Export as CSV",
+      label: "Export as Generic CSV",
       description: "Simple spreadsheet format",
       icon: <FileSpreadsheet className="h-5 w-5" />,
     },
@@ -267,7 +280,9 @@ export function ExportStep() {
         }
         
         case "maxcut":
-        case "cutlistplus": {
+        case "cutlistplus":
+        case "cutrite":
+        case "optimik": {
           // First ensure cutlist is saved to get an ID
           let cutlistId = savedCutlistId;
           if (!cutlistId && totalParts > 0) {
@@ -300,10 +315,19 @@ export function ExportStep() {
             throw new Error(error.error || "Export failed");
           }
           
+          // Determine file extension and display name
+          const formatInfo: Record<string, { ext: string; name: string }> = {
+            maxcut: { ext: "csv", name: "MaxCut" },
+            cutlistplus: { ext: "csv", name: "CutList Plus" },
+            cutrite: { ext: "xml", name: "CutRite" },
+            optimik: { ext: "csv", name: "Optimik" },
+          };
+          const info = formatInfo[optionId] || { ext: "csv", name: optionId };
+          
           // Get the filename from Content-Disposition header
           const contentDisposition = response.headers.get("Content-Disposition");
           const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
-          const filename = filenameMatch?.[1] || `${currentCutlist.name || "cutlist"}_${optionId}.csv`;
+          const filename = filenameMatch?.[1] || `${currentCutlist.name || "cutlist"}_${optionId}.${info.ext}`;
           
           // Download the file
           const blob = await response.blob();
@@ -316,7 +340,7 @@ export function ExportStep() {
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
           
-          setExportStatus(`${optionId === "maxcut" ? "MaxCut" : "CutList Plus"} CSV downloaded!`);
+          setExportStatus(`${info.name} file downloaded!`);
           break;
         }
         
