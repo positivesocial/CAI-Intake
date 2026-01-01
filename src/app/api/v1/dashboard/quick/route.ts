@@ -4,7 +4,7 @@
  * GET /api/v1/dashboard/quick - Get essential user stats only (fast)
  * 
  * This endpoint returns minimal data for instant page load.
- * OPTIMIZED: Single raw SQL query for all data.
+ * OPTIMIZED v2: Single query using CTEs, no correlated subqueries.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     startOfWeek.setHours(0, 0, 0, 0);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // Single raw SQL for everything
+    // Single query using CTEs - faster than correlated subqueries
     type QuickStatsRow = {
       org_id: string | null;
       is_super_admin: boolean;
@@ -37,18 +37,40 @@ export async function GET(request: NextRequest) {
     };
 
     const result = await prisma.$queryRaw<QuickStatsRow[]>`
+      WITH user_info AS (
+        SELECT 
+          u.organization_id as org_id,
+          u.is_super_admin,
+          r.name as role_name
+        FROM users u
+        LEFT JOIN roles r ON u.role_id = r.id
+        WHERE u.id = ${user.id}::uuid
+        LIMIT 1
+      ),
+      cutlist_stats AS (
+        SELECT 
+          COUNT(*) FILTER (WHERE created_at >= ${startOfWeek}) as week_count,
+          COUNT(*) FILTER (WHERE created_at >= ${startOfMonth}) as month_count
+        FROM cutlists
+        WHERE user_id = ${user.id}::uuid
+      ),
+      active_jobs AS (
+        SELECT COUNT(*) as cnt
+        FROM optimize_jobs oj 
+        JOIN cutlists c ON oj.cutlist_id = c.id 
+        WHERE c.user_id = ${user.id}::uuid 
+          AND oj.status IN ('pending', 'processing')
+      )
       SELECT 
-        u.organization_id as org_id,
-        u.is_super_admin,
-        r.name as role_name,
-        (SELECT COUNT(*) FROM cutlists WHERE user_id = ${user.id} AND created_at >= ${startOfWeek}) as cutlists_week,
-        (SELECT COUNT(*) FROM cutlists WHERE user_id = ${user.id} AND created_at >= ${startOfMonth}) as cutlists_month,
-        (SELECT COUNT(*) FROM optimize_jobs oj 
-         JOIN cutlists c ON oj.cutlist_id = c.id 
-         WHERE c.user_id = ${user.id} AND oj.status IN ('pending', 'processing')) as active_jobs
-      FROM users u
-      LEFT JOIN roles r ON u.role_id = r.id
-      WHERE u.id = ${user.id}
+        ui.org_id,
+        ui.is_super_admin,
+        ui.role_name,
+        COALESCE(cs.week_count, 0) as cutlists_week,
+        COALESCE(cs.month_count, 0) as cutlists_month,
+        COALESCE(aj.cnt, 0) as active_jobs
+      FROM user_info ui
+      CROSS JOIN cutlist_stats cs
+      CROSS JOIN active_jobs aj
     `;
 
     if (result.length === 0) {
@@ -81,4 +103,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
