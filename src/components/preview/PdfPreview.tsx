@@ -49,13 +49,30 @@ export function PdfPreview({ url, fileName, fileId, className }: PdfPreviewProps
       return;
     }
     
+    // Track if component unmounted to avoid state updates
+    let isMounted = true;
+    
     async function renderBlobPdf() {
       try {
-        setLoading(true);
+        if (isMounted) setLoading(true);
         
-        // Fetch the blob and convert to base64
-        const response = await fetch(url);
-        const blob = await response.blob();
+        // Fetch the blob - this can fail if blob URL is invalid/revoked
+        let blob: Blob;
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Blob fetch failed: ${response.status}`);
+          }
+          blob = await response.blob();
+        } catch (fetchError) {
+          console.warn("Cannot fetch blob URL, using native embed:", fetchError);
+          // Fall back to native browser PDF rendering immediately
+          if (isMounted) {
+            setUseNativeEmbed(true);
+            setLoading(false);
+          }
+          return;
+        }
         
         // Create FormData to send to our PDF conversion endpoint
         const formData = new FormData();
@@ -63,42 +80,61 @@ export function PdfPreview({ url, fileName, fileId, className }: PdfPreviewProps
         formData.append("action", "preview");
         
         // Use our existing PDF-to-images conversion
-        const convertResponse = await fetch("/api/v1/pdf-preview", {
-          method: "POST",
-          body: formData,
-        });
+        let convertResponse: Response;
+        try {
+          convertResponse = await fetch("/api/v1/pdf-preview", {
+            method: "POST",
+            body: formData,
+          });
+        } catch (conversionError) {
+          console.warn("PDF conversion request failed, using native embed");
+          if (isMounted) {
+            setUseNativeEmbed(true);
+            setLoading(false);
+          }
+          return;
+        }
         
         if (!convertResponse.ok) {
           console.warn("PDF-to-images conversion failed, using native embed");
           // Fall back to native browser PDF rendering
-          setUseNativeEmbed(true);
-          setLoading(false);
+          if (isMounted) {
+            setUseNativeEmbed(true);
+            setLoading(false);
+          }
           return;
         }
         
         const data = await convertResponse.json();
         
-        if (data.success && data.images && data.images.length > 0) {
-          // Images are base64 encoded PNG
-          setPageImages(data.images.map((img: string) => 
-            img.startsWith("data:") ? img : `data:image/png;base64,${img}`
-          ));
-          setCurrentPage(0);
-        } else {
-          console.warn("PDF conversion returned no images, using native embed");
-          setUseNativeEmbed(true);
+        if (isMounted) {
+          if (data.success && data.images && data.images.length > 0) {
+            // Images are base64 encoded PNG
+            setPageImages(data.images.map((img: string) => 
+              img.startsWith("data:") ? img : `data:image/png;base64,${img}`
+            ));
+            setCurrentPage(0);
+          } else {
+            console.warn("PDF conversion returned no images, using native embed");
+            setUseNativeEmbed(true);
+          }
+          setLoading(false);
         }
-        
-        setLoading(false);
       } catch (error) {
         console.error("PDF preview error:", error);
         // Fall back to native browser embed
-        setUseNativeEmbed(true);
-        setLoading(false);
+        if (isMounted) {
+          setUseNativeEmbed(true);
+          setLoading(false);
+        }
       }
     }
     
     renderBlobPdf();
+    
+    return () => {
+      isMounted = false;
+    };
   }, [url, fileName, useBlobRendering]);
 
   // Handle iframe load error (for non-blob URLs)
