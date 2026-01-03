@@ -51,6 +51,14 @@ import {
 import { convertPdfToImages } from "@/lib/pdf/pdf-to-images";
 import { getCachedResult, cacheResult, getCacheStats, type CachedOCRResult } from "@/lib/ai/ocr-cache";
 import { logAIUsage } from "@/lib/ai/usage-tracker";
+import { 
+  convertToSupportedFormat, 
+  validateFileType, 
+  getUnsupportedFormatError,
+  isFormatSupported,
+  detectFormat,
+  UNSUPPORTED_FORMATS,
+} from "@/lib/file-converter";
 
 // ============================================================
 // SERVERLESS FUNCTION CONFIGURATION
@@ -182,51 +190,20 @@ export async function POST(request: NextRequest) {
     }
     
     // ============================================================
-    // CHECK FOR UNSUPPORTED IMAGE FORMATS (HEIC, HEIF, TIFF, etc.)
+    // CHECK FOR COMPLETELY UNSUPPORTED FILE TYPES
+    // (Convertible formats like HEIC will be converted later)
     // ============================================================
-    const unsupportedFormats = [
-      { mime: "image/heic", name: "HEIC", tip: "On iPhone: Settings > Camera > Formats > Most Compatible" },
-      { mime: "image/heif", name: "HEIF", tip: "On iPhone: Settings > Camera > Formats > Most Compatible" },
-      { mime: "image/tiff", name: "TIFF", tip: "Convert to JPEG or PNG before uploading" },
-      { mime: "image/bmp", name: "BMP", tip: "Convert to JPEG or PNG before uploading" },
-      { mime: "image/x-icon", name: "ICO", tip: "Convert to PNG before uploading" },
-    ];
+    const fileValidation = validateFileType(mimeType, file.name);
     
-    // Also check by file extension for cases where MIME type isn't set correctly
-    const fileExt = file.name.toLowerCase().split('.').pop();
-    const extensionMap: Record<string, string> = {
-      "heic": "image/heic",
-      "heif": "image/heif", 
-      "tiff": "image/tiff",
-      "tif": "image/tiff",
-      "bmp": "image/bmp",
-    };
-    
-    const effectiveMimeType = mimeType || extensionMap[fileExt || ""] || "";
-    const unsupportedFormat = unsupportedFormats.find(
-      f => f.mime === effectiveMimeType || f.mime === extensionMap[fileExt || ""]
-    );
-    
-    if (unsupportedFormat) {
-      logger.warn("📥 [ParseFile] Unsupported image format", {
+    if (!fileValidation.valid && fileValidation.error) {
+      logger.warn("📥 [ParseFile] Unsupported file format", {
         requestId,
         fileName: file.name,
-        mimeType: effectiveMimeType,
-        format: unsupportedFormat.name,
+        mimeType,
+        format: fileValidation.error.details.format,
       });
       
-      return NextResponse.json(
-        { 
-          error: `${unsupportedFormat.name} format is not supported. Please convert your image to JPEG or PNG before uploading.`,
-          code: "UNSUPPORTED_FORMAT",
-          details: {
-            format: unsupportedFormat.name,
-            tip: unsupportedFormat.tip,
-            supportedFormats: ["JPEG", "PNG", "GIF", "WebP", "PDF"],
-          }
-        },
-        { status: 415 } // 415 Unsupported Media Type
-      );
+      return NextResponse.json(fileValidation.error, { status: 415 });
     }
 
     // Get AI provider
@@ -298,8 +275,9 @@ export async function POST(request: NextRequest) {
       });
       
       const imageLoadStart = Date.now();
-      const originalBuffer = await file.arrayBuffer();
-      const originalSizeKB = originalBuffer.byteLength / 1024;
+      let originalBuffer = await file.arrayBuffer();
+      let originalSizeKB = originalBuffer.byteLength / 1024;
+      let workingMimeType = file.type;
       
       logger.info("📥 [ParseFile] Image loaded", { 
         requestId,
@@ -308,6 +286,59 @@ export async function POST(request: NextRequest) {
         mimeType: file.type,
         loadTimeMs: Date.now() - imageLoadStart,
       });
+      
+      // ============================================================
+      // FILE FORMAT CONVERSION (HEIC, TIFF, BMP → JPEG/PNG)
+      // ============================================================
+      if (!isFormatSupported(file.type)) {
+        logger.info("📥 [ParseFile] Attempting file format conversion", {
+          requestId,
+          originalFormat: file.type,
+          fileName: file.name,
+        });
+        
+        const conversionResult = await convertToSupportedFormat(
+          Buffer.from(originalBuffer),
+          file.type,
+          file.name
+        );
+        
+        if (!conversionResult.success) {
+          logger.warn("📥 [ParseFile] File conversion failed", {
+            requestId,
+            originalFormat: conversionResult.originalFormat,
+            error: conversionResult.error,
+          });
+          
+          return NextResponse.json(
+            {
+              error: conversionResult.error || `Could not process ${conversionResult.originalFormat} file.`,
+              code: "CONVERSION_FAILED",
+              details: {
+                format: conversionResult.originalFormat,
+                tip: conversionResult.tip || "Please convert your file to JPEG or PNG before uploading",
+                supportedFormats: ["JPEG", "PNG", "GIF", "WebP", "PDF"],
+              },
+            },
+            { status: 415 }
+          );
+        }
+        
+        // Use converted buffer
+        originalBuffer = conversionResult.buffer.buffer.slice(
+          conversionResult.buffer.byteOffset,
+          conversionResult.buffer.byteOffset + conversionResult.buffer.byteLength
+        );
+        workingMimeType = conversionResult.mimeType;
+        originalSizeKB = conversionResult.buffer.byteLength / 1024;
+        
+        logger.info("📥 [ParseFile] ✅ File converted successfully", {
+          requestId,
+          from: conversionResult.convertedFrom || conversionResult.originalFormat,
+          to: conversionResult.mimeType,
+          newSizeKB: originalSizeKB.toFixed(1),
+        });
+      }
       
       // ============================================================
       // SERVER-SIDE QR TEMPLATE DETECTION
@@ -390,7 +421,7 @@ export async function POST(request: NextRequest) {
             try {
               const textDetectStart = Date.now();
               const base64Image = Buffer.from(originalBuffer).toString("base64");
-              const detectedMimeType = file.type.startsWith("image/") ? file.type : "image/jpeg";
+              const detectedMimeType = workingMimeType.startsWith("image/") ? workingMimeType : "image/jpeg";
               
               const textDetection = await detectTemplateViaText(base64Image, detectedMimeType);
               
@@ -452,7 +483,7 @@ export async function POST(request: NextRequest) {
           // Even if QR fails, try AI-based detection
           try {
             const base64Image = Buffer.from(originalBuffer).toString("base64");
-            const detectedMimeType = file.type.startsWith("image/") ? file.type : "image/jpeg";
+            const detectedMimeType = workingMimeType.startsWith("image/") ? workingMimeType : "image/jpeg";
             
             const textDetection = await detectTemplateViaText(base64Image, detectedMimeType);
             
