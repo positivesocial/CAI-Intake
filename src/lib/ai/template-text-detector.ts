@@ -26,12 +26,23 @@ async function compressForDetection(
   imageBase64: string,
   mimeType: string
 ): Promise<{ base64: string; mimeType: string }> {
+  // Check for unsupported formats first
+  const unsupportedFormats = ["image/heic", "image/heif", "image/tiff", "image/bmp"];
+  if (unsupportedFormats.includes(mimeType.toLowerCase())) {
+    console.warn(`[TemplateTextDetector] Unsupported format: ${mimeType}, skipping detection`);
+    throw new Error(`Unsupported image format: ${mimeType}. Please use JPEG, PNG, GIF, or WebP.`);
+  }
+  
   // Check size - Anthropic limit is 5MB, base64 is ~33% larger than binary
   const estimatedBytes = (imageBase64.length * 3) / 4;
   const MAX_SIZE = 4 * 1024 * 1024; // 4MB to be safe (leaves room for encoding overhead)
   
-  if (estimatedBytes <= MAX_SIZE) {
-    return { base64: imageBase64, mimeType };
+  // Also validate the mimeType is one Anthropic accepts
+  const validMimeTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+  const normalizedMimeType = validMimeTypes.includes(mimeType) ? mimeType : "image/jpeg";
+  
+  if (estimatedBytes <= MAX_SIZE && validMimeTypes.includes(mimeType)) {
+    return { base64: imageBase64, mimeType: normalizedMimeType };
   }
   
   console.log(`[TemplateTextDetector] Image too large (${(estimatedBytes / 1024 / 1024).toFixed(1)}MB), compressing...`);
@@ -58,9 +69,15 @@ async function compressForDetection(
     
     return { base64: newBase64, mimeType: "image/jpeg" };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    // Check if it's a HEIC/HEIF specific error
+    if (errorMsg.includes("heif") || errorMsg.includes("heic") || errorMsg.includes("compression format")) {
+      console.error("[TemplateTextDetector] HEIC/HEIF format not supported by sharp");
+      throw new Error("HEIC/HEIF images are not supported. Please convert to JPEG or PNG before uploading.");
+    }
     console.error("[TemplateTextDetector] Compression failed:", error);
     // Return original and let it fail at API level
-    return { base64: imageBase64, mimeType };
+    return { base64: imageBase64, mimeType: normalizedMimeType };
   }
 }
 

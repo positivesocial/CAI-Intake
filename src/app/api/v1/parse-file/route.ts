@@ -180,6 +180,54 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    
+    // ============================================================
+    // CHECK FOR UNSUPPORTED IMAGE FORMATS (HEIC, HEIF, TIFF, etc.)
+    // ============================================================
+    const unsupportedFormats = [
+      { mime: "image/heic", name: "HEIC", tip: "On iPhone: Settings > Camera > Formats > Most Compatible" },
+      { mime: "image/heif", name: "HEIF", tip: "On iPhone: Settings > Camera > Formats > Most Compatible" },
+      { mime: "image/tiff", name: "TIFF", tip: "Convert to JPEG or PNG before uploading" },
+      { mime: "image/bmp", name: "BMP", tip: "Convert to JPEG or PNG before uploading" },
+      { mime: "image/x-icon", name: "ICO", tip: "Convert to PNG before uploading" },
+    ];
+    
+    // Also check by file extension for cases where MIME type isn't set correctly
+    const fileExt = file.name.toLowerCase().split('.').pop();
+    const extensionMap: Record<string, string> = {
+      "heic": "image/heic",
+      "heif": "image/heif", 
+      "tiff": "image/tiff",
+      "tif": "image/tiff",
+      "bmp": "image/bmp",
+    };
+    
+    const effectiveMimeType = mimeType || extensionMap[fileExt || ""] || "";
+    const unsupportedFormat = unsupportedFormats.find(
+      f => f.mime === effectiveMimeType || f.mime === extensionMap[fileExt || ""]
+    );
+    
+    if (unsupportedFormat) {
+      logger.warn("📥 [ParseFile] Unsupported image format", {
+        requestId,
+        fileName: file.name,
+        mimeType: effectiveMimeType,
+        format: unsupportedFormat.name,
+      });
+      
+      return NextResponse.json(
+        { 
+          error: `${unsupportedFormat.name} format is not supported. Please convert your image to JPEG or PNG before uploading.`,
+          code: "UNSUPPORTED_FORMAT",
+          details: {
+            format: unsupportedFormat.name,
+            tip: unsupportedFormat.tip,
+            supportedFormats: ["JPEG", "PNG", "GIF", "WebP", "PDF"],
+          }
+        },
+        { status: 415 } // 415 Unsupported Media Type
+      );
+    }
 
     // Get AI provider
     logger.debug("📥 [ParseFile] Initializing AI provider", { requestId });
