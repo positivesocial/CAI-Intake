@@ -323,11 +323,6 @@ export async function POST(request: NextRequest) {
         // Return early with the result
         const totalTimeMs = Date.now() - requestStartTime;
         
-        // Resolve operations if we have an organization
-        if (aiResult?.parts && aiResult.parts.length > 0 && user.user_metadata?.organization_id) {
-          await resolveOperationsForParts(aiResult.parts, user.user_metadata.organization_id);
-        }
-        
         return NextResponse.json({
           success: true,
           parts: aiResult?.parts || [],
@@ -336,7 +331,7 @@ export async function POST(request: NextRequest) {
             sourceFormat: extractionResult.originalFormat,
             textExtraction: true,
           },
-          confidence: aiResult?.confidence || 0,
+          confidence: aiResult?.totalConfidence || 0,
           warnings: aiResult?.warnings || [],
           processingTimeMs: totalTimeMs,
         });
