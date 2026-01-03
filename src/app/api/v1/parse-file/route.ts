@@ -317,7 +317,7 @@ export async function POST(request: NextRequest) {
           requestId,
           format: extractionResult.originalFormat,
           partsFound: aiResult?.parts?.length || 0,
-          confidence: aiResult?.confidence?.toFixed(2),
+          confidence: aiResult?.totalConfidence?.toFixed(2),
         });
         
         // Return early with the result
