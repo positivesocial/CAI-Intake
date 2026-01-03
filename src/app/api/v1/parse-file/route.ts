@@ -57,6 +57,8 @@ import {
   getUnsupportedFormatError,
   isFormatSupported,
   detectFormat,
+  supportsTextExtraction,
+  extractTextFromDocument,
   UNSUPPORTED_FORMATS,
 } from "@/lib/file-converter";
 
@@ -266,6 +268,98 @@ export async function POST(request: NextRequest) {
     };
 
     let aiResult;
+
+    // ============================================================
+    // DOCUMENT TEXT EXTRACTION (DOCX, TXT, HTML, RTF)
+    // These are converted to text and processed via text parsing
+    // ============================================================
+    if (supportsTextExtraction(mimeType, file.name)) {
+      logger.info("📥 [ParseFile] Processing document file for text extraction", {
+        requestId,
+        fileName: file.name,
+        mimeType,
+      });
+      
+      const documentBuffer = Buffer.from(await file.arrayBuffer());
+      const extractionResult = await extractTextFromDocument(documentBuffer, mimeType, file.name);
+      
+      if (!extractionResult.success) {
+        logger.warn("📥 [ParseFile] Document text extraction failed", {
+          requestId,
+          format: extractionResult.originalFormat,
+          error: extractionResult.error,
+        });
+        
+        return NextResponse.json(
+          {
+            error: extractionResult.error || `Could not extract text from ${extractionResult.originalFormat} file.`,
+            code: "TEXT_EXTRACTION_FAILED",
+            details: {
+              format: extractionResult.originalFormat,
+              tip: extractionResult.tip || "Please try converting to PDF or copying the text directly",
+            },
+          },
+          { status: 422 }
+        );
+      }
+      
+      logger.info("📥 [ParseFile] Document text extracted, parsing via text AI", {
+        requestId,
+        format: extractionResult.originalFormat,
+        textLength: extractionResult.text.length,
+      });
+      
+      // Parse the extracted text using AI
+      try {
+        aiResult = await provider.parseText(extractionResult.text, parseOptions);
+        
+        logger.info("📥 [ParseFile] ✅ Document text parsing completed", {
+          requestId,
+          format: extractionResult.originalFormat,
+          partsFound: aiResult?.parts?.length || 0,
+          confidence: aiResult?.confidence?.toFixed(2),
+        });
+        
+        // Return early with the result
+        const totalTimeMs = Date.now() - requestStartTime;
+        
+        // Resolve operations if we have an organization
+        if (aiResult?.parts && aiResult.parts.length > 0 && user.user_metadata?.organization_id) {
+          await resolveOperationsForParts(aiResult.parts, user.user_metadata.organization_id);
+        }
+        
+        return NextResponse.json({
+          success: true,
+          parts: aiResult?.parts || [],
+          meta: {
+            ...aiResult?.meta,
+            sourceFormat: extractionResult.originalFormat,
+            textExtraction: true,
+          },
+          confidence: aiResult?.confidence || 0,
+          warnings: aiResult?.warnings || [],
+          processingTimeMs: totalTimeMs,
+        });
+        
+      } catch (parseError) {
+        logger.error("📥 [ParseFile] Document text parsing failed", {
+          requestId,
+          error: parseError instanceof Error ? parseError.message : "Unknown error",
+        });
+        
+        return NextResponse.json(
+          {
+            error: "Failed to parse document content. The text may not be in a recognizable cutlist format.",
+            code: "PARSE_FAILED",
+            details: {
+              format: extractionResult.originalFormat,
+              tip: "Make sure your document contains a cutlist with parts, dimensions, and quantities",
+            },
+          },
+          { status: 422 }
+        );
+      }
+    }
 
     if (fileType === "image") {
       // Process image - use AI vision directly
