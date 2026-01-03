@@ -327,7 +327,6 @@ export async function POST(request: NextRequest) {
           success: true,
           parts: aiResult?.parts || [],
           meta: {
-            ...aiResult?.meta,
             sourceFormat: extractionResult.originalFormat,
             textExtraction: true,
           },
