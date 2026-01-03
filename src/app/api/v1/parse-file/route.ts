@@ -61,6 +61,7 @@ import {
   extractTextFromDocument,
   UNSUPPORTED_FORMATS,
 } from "@/lib/file-converter";
+import { convertTextToPdf } from "@/lib/text-to-pdf";
 
 // ============================================================
 // SERVERLESS FUNCTION CONFIGURATION
@@ -268,10 +269,16 @@ export async function POST(request: NextRequest) {
     };
 
     let aiResult;
+    
+    // Track the final buffer and mime type for storage (may be converted)
+    let storageBuffer: ArrayBuffer | undefined;
+    let storageMimeType: string = file.type || "application/octet-stream";
+    let storageSizeBytes: number = file.size;
 
     // ============================================================
     // DOCUMENT TEXT EXTRACTION (DOCX, TXT, HTML, RTF)
     // These are converted to text and processed via text parsing
+    // The extracted text is saved as a PDF for viewing in compare mode
     // ============================================================
     if (supportsTextExtraction(mimeType, file.name)) {
       logger.info("📥 [ParseFile] Processing document file for text extraction", {
@@ -320,8 +327,86 @@ export async function POST(request: NextRequest) {
           confidence: aiResult?.totalConfidence?.toFixed(2),
         });
         
-        // Return early with the result
         const totalTimeMs = Date.now() - requestStartTime;
+        let uploadedFileId: string | undefined;
+        
+        // Convert extracted text to PDF and store it for viewing in compare mode
+        try {
+          const serviceClient = getServiceClient();
+          const { data: userData } = await serviceClient
+            .from("users")
+            .select("organization_id")
+            .eq("id", user.id)
+            .single();
+          
+          if (userData?.organization_id) {
+            // Convert text to PDF
+            const pdfResult = convertTextToPdf(extractionResult.text, {
+              title: `Cutlist - ${file.name}`,
+              originalFilename: file.name,
+              originalFormat: extractionResult.originalFormat,
+            });
+            
+            if (pdfResult.success) {
+              const timestamp = Date.now();
+              const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.[^.]+$/, "") + ".pdf";
+              const storagePath = `${userData.organization_id}/${timestamp}_${sanitizedName}`;
+              
+              // Upload PDF to storage
+              const { error: storageError } = await serviceClient.storage
+                .from("cutlist-files")
+                .upload(storagePath, pdfResult.buffer, {
+                  contentType: "application/pdf",
+                  upsert: false,
+                });
+              
+              if (!storageError) {
+                // Create uploaded_files record
+                const fileId = crypto.randomUUID();
+                const { error: dbError } = await serviceClient
+                  .from("uploaded_files")
+                  .insert({
+                    id: fileId,
+                    organization_id: userData.organization_id,
+                    file_name: sanitizedName,
+                    original_name: file.name,
+                    mime_type: "application/pdf",
+                    size_bytes: pdfResult.buffer.byteLength,
+                    storage_path: storagePath,
+                    kind: "source",
+                    created_at: new Date().toISOString(),
+                  });
+                
+                if (!dbError) {
+                  uploadedFileId = fileId;
+                  logger.info("📥 [ParseFile] Document stored as PDF", {
+                    requestId,
+                    fileId,
+                    storagePath,
+                    pdfSizeKB: (pdfResult.buffer.byteLength / 1024).toFixed(1),
+                    pageCount: pdfResult.pageCount,
+                  });
+                } else {
+                  logger.warn("📥 [ParseFile] Failed to create file record", {
+                    requestId,
+                    error: dbError.message,
+                  });
+                }
+              } else {
+                logger.warn("📥 [ParseFile] Failed to upload PDF to storage", {
+                  requestId,
+                  error: storageError.message,
+                });
+              }
+            }
+          }
+        } catch (storageErr) {
+          // Non-fatal - continue without storing the file
+          logger.warn("📥 [ParseFile] Document storage failed (non-fatal)", {
+            requestId,
+            error: storageErr instanceof Error ? storageErr.message : "Unknown",
+          });
+        }
         
         return NextResponse.json({
           success: true,
@@ -333,6 +418,7 @@ export async function POST(request: NextRequest) {
           confidence: aiResult?.totalConfidence || 0,
           warnings: aiResult?.warnings || [],
           processingTimeMs: totalTimeMs,
+          uploadedFileId, // Include file ID for linking to cutlist
         });
         
       } catch (parseError) {
@@ -427,6 +513,16 @@ export async function POST(request: NextRequest) {
           to: conversionResult.mimeType,
           newSizeKB: originalSizeKB.toFixed(1),
         });
+        
+        // Update storage tracking with converted data
+        storageBuffer = originalBuffer;
+        storageMimeType = workingMimeType;
+        storageSizeBytes = conversionResult.buffer.byteLength;
+      } else {
+        // No conversion needed - use original file for storage
+        storageBuffer = originalBuffer;
+        storageMimeType = workingMimeType;
+        storageSizeBytes = originalBuffer.byteLength;
       }
       
       // ============================================================
@@ -1056,10 +1152,21 @@ export async function POST(request: NextRequest) {
       userOrgId = userData?.organization_id;
       
       if (userData?.organization_id) {
-        // Prepare file data for upload (read buffer once)
-        const fileBuffer = await file.arrayBuffer();
+        // Use the tracked storage buffer (may be converted from HEIC/TIFF/BMP)
+        // Fall back to reading file if no conversion was tracked
+        const fileBuffer = storageBuffer || await file.arrayBuffer();
         const timestamp = Date.now();
-        const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        
+        // Update filename extension if format was converted
+        let sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        if (storageMimeType !== file.type) {
+          // Replace extension with converted format
+          const newExt = storageMimeType === "image/jpeg" ? ".jpg" : 
+                        storageMimeType === "image/png" ? ".png" : "";
+          if (newExt) {
+            sanitizedName = sanitizedName.replace(/\.[^.]+$/, newExt);
+          }
+        }
         const storagePath = `${userData.organization_id}/${timestamp}_${sanitizedName}`;
         
         // Run operations resolution and storage upload IN PARALLEL
@@ -1083,18 +1190,21 @@ export async function POST(request: NextRequest) {
             return aiResult.parts;
           })(),
           
-          // Task 2: Upload file to storage
+          // Task 2: Upload file to storage (use converted buffer/mime type)
           (async () => {
             logger.debug("📥 [ParseFile] Uploading to storage", {
               requestId,
               storagePath,
               bucket: "cutlist-files",
+              mimeType: storageMimeType,
+              sizeBytes: storageSizeBytes,
+              wasConverted: storageMimeType !== file.type,
             });
             
             const { error: storageError } = await serviceClient.storage
               .from("cutlist-files")
               .upload(storagePath, Buffer.from(fileBuffer), {
-                contentType: file.type || "application/octet-stream",
+                contentType: storageMimeType,
                 upsert: false,
               });
             
@@ -1102,7 +1212,7 @@ export async function POST(request: NextRequest) {
               throw storageError;
             }
             
-            // Create uploaded_files record
+            // Create uploaded_files record with converted metadata
             const fileId = crypto.randomUUID();
             const { error: dbError } = await serviceClient
               .from("uploaded_files")
@@ -1111,8 +1221,8 @@ export async function POST(request: NextRequest) {
                 organization_id: userData.organization_id,
                 file_name: sanitizedName,
                 original_name: file.name,
-                mime_type: file.type || "application/octet-stream",
-                size_bytes: file.size,
+                mime_type: storageMimeType,
+                size_bytes: storageSizeBytes,
                 storage_path: storagePath,
                 kind: "source",
                 created_at: new Date().toISOString(),
