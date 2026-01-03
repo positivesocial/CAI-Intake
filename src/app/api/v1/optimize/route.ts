@@ -81,6 +81,8 @@ export async function POST(request: NextRequest) {
     const result = await submitOptimization({
       jobId: cutlistId ?? `job_${Date.now()}`,
       jobName: jobName ?? "Cutlist Optimization",
+      orgId: "cai-intake-default",
+      userId: user.id,
       parts,
       materials,
       customer,

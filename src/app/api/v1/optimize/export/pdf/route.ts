@@ -2,19 +2,19 @@
  * CAI Intake - Optimization PDF Export API
  * 
  * POST /api/v1/optimize/export/pdf - Export optimization results as PDF
- * 
- * Note: This endpoint doesn't require authentication because:
- * 1. All data is provided in the request body (no server-side user data accessed)
- * 2. The CAI 2D API itself doesn't require authentication
- * 3. This makes exports more robust when sessions expire
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { CAI2DClient, type OptimizeResult, type CustomerInfo, type MachineSettings, type RunConfig, type RenderOptions } from "@/lib/optimizer/cai2d-client";
 import type { CutPart, MaterialDef } from "@/lib/schema";
 
 export async function POST(request: NextRequest) {
   try {
+    // Authenticate (optional but recommended for user_id)
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    
     // Parse request body
     const body = await request.json();
     const {
@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
         job_id: cutlistId ?? `job_${Date.now()}`,
         job_name: jobName ?? "Cutlist Optimization",
         org_id: "cai-intake-default",
+        user_id: user?.id ?? "anonymous",
         units: "mm" as const,
         customer,
         materials: (materials ?? []).map(mat => ({
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
         objective: {
           primary: "min_sheets" as const,
           secondary: ["min_waste_area"],
-          weights: { sheets: 1.0, waste_area: 0.5 },
+          weights: { sheets: 1000000, waste_area: 1 },
         },
       },
       run: runConfig ?? { mode: "guillotine", search: "beam", runs: 30 },

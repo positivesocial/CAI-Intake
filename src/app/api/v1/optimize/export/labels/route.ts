@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
         job_id: cutlistId ?? `job_${Date.now()}`,
         job_name: jobName ?? "Cutlist Optimization",
         org_id: "cai-intake-default",
+        user_id: user.id,
         units: "mm" as const,
         customer,
         materials: (materials ?? []).map(mat => ({
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
         objective: {
           primary: "min_sheets" as const,
           secondary: ["min_waste_area"],
-          weights: { sheets: 1.0, waste_area: 0.5 },
+          weights: { sheets: 1000000, waste_area: 1 },
         },
       },
       run: runConfig ?? { mode: "guillotine", search: "beam", runs: 30 },

@@ -275,6 +275,8 @@ registerJobHandler("optimize", async (payload: {
   return submitOptimization({
     jobId: cutlist.id,
     jobName: cutlist.name ?? undefined,
+    orgId: cutlist.organizationId,
+    userId: cutlist.userId ?? "system",
     parts: cutlist.parts,
     machineSettings: payload.machineSettings as any,
     runConfig: payload.runConfig as any,
