@@ -324,11 +324,12 @@ export async function POST(request: NextRequest) {
           );
         }
         
-        // Use converted buffer
-        originalBuffer = conversionResult.buffer.buffer.slice(
-          conversionResult.buffer.byteOffset,
-          conversionResult.buffer.byteOffset + conversionResult.buffer.byteLength
-        );
+        // Use converted buffer - convert Node Buffer to ArrayBuffer
+        const nodeBuffer = conversionResult.buffer;
+        originalBuffer = nodeBuffer.buffer.slice(
+          nodeBuffer.byteOffset,
+          nodeBuffer.byteOffset + nodeBuffer.byteLength
+        ) as ArrayBuffer;
         workingMimeType = conversionResult.mimeType;
         originalSizeKB = conversionResult.buffer.byteLength / 1024;
         
