@@ -15,6 +15,56 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 // ============================================================
+// IMAGE OPTIMIZATION FOR TEMPLATE DETECTION
+// ============================================================
+
+/**
+ * Quick compress image for template detection (must be under 5MB for Anthropic)
+ * Uses aggressive compression since we just need to detect text patterns
+ */
+async function compressForDetection(
+  imageBase64: string,
+  mimeType: string
+): Promise<{ base64: string; mimeType: string }> {
+  // Check size - Anthropic limit is 5MB, base64 is ~33% larger than binary
+  const estimatedBytes = (imageBase64.length * 3) / 4;
+  const MAX_SIZE = 4 * 1024 * 1024; // 4MB to be safe (leaves room for encoding overhead)
+  
+  if (estimatedBytes <= MAX_SIZE) {
+    return { base64: imageBase64, mimeType };
+  }
+  
+  console.log(`[TemplateTextDetector] Image too large (${(estimatedBytes / 1024 / 1024).toFixed(1)}MB), compressing...`);
+  
+  try {
+    // Dynamic import sharp (server-only)
+    const sharpModule = await import("sharp");
+    const sharp = sharpModule.default;
+    
+    // Decode base64 to buffer
+    const buffer = Buffer.from(imageBase64, "base64");
+    
+    // Compress aggressively for detection - we just need to read text
+    const compressed = await sharp(buffer)
+      .resize(1600, 1600, { 
+        fit: "inside", 
+        withoutEnlargement: true 
+      })
+      .jpeg({ quality: 70, mozjpeg: true })
+      .toBuffer();
+    
+    const newBase64 = compressed.toString("base64");
+    console.log(`[TemplateTextDetector] Compressed to ${(compressed.byteLength / 1024).toFixed(0)}KB`);
+    
+    return { base64: newBase64, mimeType: "image/jpeg" };
+  } catch (error) {
+    console.error("[TemplateTextDetector] Compression failed:", error);
+    // Return original and let it fail at API level
+    return { base64: imageBase64, mimeType };
+  }
+}
+
+// ============================================================
 // TYPES
 // ============================================================
 
@@ -147,12 +197,18 @@ export async function detectTemplateViaText(
   const startTime = Date.now();
   
   try {
+    // Compress image if needed (must be under 5MB for Anthropic)
+    const compressed = await compressForDetection(imageBase64, mimeType);
+    
     // Use Anthropic for detection (fastest and most accurate for this task)
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
     
-    const response = await anthropic.messages.create({
+    // Create API call with 30 second timeout (detection shouldn't take long)
+    const DETECTION_TIMEOUT_MS = 30000;
+    
+    const apiCall = anthropic.messages.create({
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 1000,
       messages: [
@@ -163,8 +219,8 @@ export async function detectTemplateViaText(
               type: "image",
               source: {
                 type: "base64",
-                media_type: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-                data: imageBase64,
+                media_type: compressed.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                data: compressed.base64,
               },
             },
             {
@@ -175,6 +231,13 @@ export async function detectTemplateViaText(
         },
       ],
     });
+    
+    // Race with timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Template detection timeout")), DETECTION_TIMEOUT_MS);
+    });
+    
+    const response = await Promise.race([apiCall, timeoutPromise]);
     
     const rawText = response.content[0].type === "text" ? response.content[0].text : "";
     
@@ -214,6 +277,9 @@ export async function quickTemplateCheck(
   mimeType: string
 ): Promise<{ isLikelyTemplate: boolean; confidence: number }> {
   try {
+    // Compress image if needed
+    const compressed = await compressForDetection(imageBase64, mimeType);
+    
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
@@ -229,8 +295,8 @@ export async function quickTemplateCheck(
               type: "image",
               source: {
                 type: "base64",
-                media_type: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-                data: imageBase64,
+                media_type: compressed.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                data: compressed.base64,
               },
             },
             {
