@@ -124,6 +124,7 @@ export const CONVERTIBLE_FORMATS: FileFormatInfo[] = [
 
 /** Completely unsupported formats (no conversion possible) */
 export const UNSUPPORTED_FORMATS: FileFormatInfo[] = [
+  // Document formats
   {
     mime: "application/msword",
     name: "DOC",
@@ -160,6 +161,61 @@ export const UNSUPPORTED_FORMATS: FileFormatInfo[] = [
     tip: "Please export your document as PDF before uploading",
   },
   {
+    mime: "text/html",
+    name: "HTML",
+    extensions: ["html", "htm"],
+    convertible: false,
+    tip: "Please save/print as PDF before uploading, or copy the text directly",
+  },
+  
+  // E-book formats
+  {
+    mime: "application/epub+zip",
+    name: "EPUB",
+    extensions: ["epub"],
+    convertible: false,
+    tip: "E-book files are not supported. Please export as PDF or take screenshots of relevant pages",
+  },
+  {
+    mime: "application/x-mobipocket-ebook",
+    name: "MOBI",
+    extensions: ["mobi"],
+    convertible: false,
+    tip: "E-book files are not supported. Please export as PDF or take screenshots of relevant pages",
+  },
+  {
+    mime: "application/vnd.amazon.ebook",
+    name: "AZW",
+    extensions: ["azw", "azw3"],
+    convertible: false,
+    tip: "Kindle e-book files are not supported. Please export as PDF or take screenshots",
+  },
+  
+  // Presentation formats
+  {
+    mime: "application/vnd.ms-powerpoint",
+    name: "PPT",
+    extensions: ["ppt"],
+    convertible: false,
+    tip: "Please export your presentation as PDF before uploading",
+  },
+  {
+    mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    name: "PPTX",
+    extensions: ["pptx"],
+    convertible: false,
+    tip: "Please export your presentation as PDF before uploading",
+  },
+  {
+    mime: "application/vnd.oasis.opendocument.presentation",
+    name: "ODP",
+    extensions: ["odp"],
+    convertible: false,
+    tip: "Please export your presentation as PDF before uploading",
+  },
+  
+  // Archive formats
+  {
     mime: "application/zip",
     name: "ZIP",
     extensions: ["zip"],
@@ -174,6 +230,22 @@ export const UNSUPPORTED_FORMATS: FileFormatInfo[] = [
     tip: "Please extract files and upload them individually",
   },
   {
+    mime: "application/x-7z-compressed",
+    name: "7Z",
+    extensions: ["7z"],
+    convertible: false,
+    tip: "Please extract files and upload them individually",
+  },
+  {
+    mime: "application/gzip",
+    name: "GZ",
+    extensions: ["gz", "tar.gz"],
+    convertible: false,
+    tip: "Please extract files and upload them individually",
+  },
+  
+  // Video formats
+  {
     mime: "video/mp4",
     name: "MP4",
     extensions: ["mp4"],
@@ -186,6 +258,66 @@ export const UNSUPPORTED_FORMATS: FileFormatInfo[] = [
     extensions: ["mov"],
     convertible: false,
     tip: "Video files are not supported. Please take a screenshot or photo instead",
+  },
+  {
+    mime: "video/x-msvideo",
+    name: "AVI",
+    extensions: ["avi"],
+    convertible: false,
+    tip: "Video files are not supported. Please take a screenshot or photo instead",
+  },
+  {
+    mime: "video/webm",
+    name: "WebM",
+    extensions: ["webm"],
+    convertible: false,
+    tip: "Video files are not supported. Please take a screenshot or photo instead",
+  },
+  
+  // Audio formats
+  {
+    mime: "audio/mpeg",
+    name: "MP3",
+    extensions: ["mp3"],
+    convertible: false,
+    tip: "Audio files are not supported for cutlist parsing",
+  },
+  {
+    mime: "audio/wav",
+    name: "WAV",
+    extensions: ["wav"],
+    convertible: false,
+    tip: "Audio files are not supported for cutlist parsing",
+  },
+  {
+    mime: "audio/ogg",
+    name: "OGG",
+    extensions: ["ogg"],
+    convertible: false,
+    tip: "Audio files are not supported for cutlist parsing",
+  },
+  
+  // CAD/Design formats (common in woodworking but not parseable as cutlists)
+  {
+    mime: "application/acad",
+    name: "DWG",
+    extensions: ["dwg"],
+    convertible: false,
+    tip: "CAD files cannot be parsed directly. Please export a cutlist or parts list as PDF/Excel",
+  },
+  {
+    mime: "image/vnd.dxf",
+    name: "DXF",
+    extensions: ["dxf"],
+    convertible: false,
+    tip: "CAD files cannot be parsed directly. Please export a cutlist or parts list as PDF/Excel",
+  },
+  {
+    mime: "application/x-sketchup",
+    name: "SKP",
+    extensions: ["skp"],
+    convertible: false,
+    tip: "SketchUp files cannot be parsed directly. Please export a cutlist using a plugin like CutList Bridge or OpenCutList",
   },
 ];
 
