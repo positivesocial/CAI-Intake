@@ -1253,7 +1253,10 @@ export async function POST(request: NextRequest) {
             requestId,
             fileId: storageResult.value.fileId, 
             storagePath: storageResult.value.storagePath, 
-            sizeBytes: file.size,
+            sizeBytes: storageSizeBytes,
+            originalSizeBytes: file.size,
+            wasConverted: storageMimeType !== file.type,
+            storedMimeType: storageMimeType,
             storageTimeMs: Date.now() - storageStartTime,
           });
         } else {
