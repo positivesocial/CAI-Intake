@@ -4,18 +4,22 @@
  * Client for integrating with the CAI 2D panel optimization service.
  * API Documentation: https://cai-2d.app/api
  * 
+ * API Version: 1.5.0
+ * 
  * Features:
  * - Synchronous optimization (no webhooks needed)
- * - MaxRects and Guillotine algorithms
+ * - Multiple algorithms: guillotine, best, hybrid, optimal, maxrects
+ * - Part clustering for operator-friendly layouts
  * - SVG layout generation
- * - PDF and labels export
+ * - PDF, labels, and BOM export
+ * - CNC operations and hole drilling support
  */
 
 import { logger } from "../logger";
 import type { CutPart, MaterialDef } from "../schema";
 
 // ============================================================
-// CAI 2D API TYPES (Official Schema)
+// CAI 2D API TYPES (Official Schema v1.5.0)
 // ============================================================
 
 /** Size object with Length and Width */
@@ -41,6 +45,18 @@ export interface Material {
   name: string;
   thickness: number;
   sheet_size: Size;
+  cost?: MaterialCost;
+}
+
+/** Material cost information */
+export interface MaterialCost {
+  cost_per_unit: number;
+  unit: "sheet" | "sqm";
+  currency?: string;
+  cutting_cost_per_unit?: number;
+  cutting_unit?: "sheet" | "sqm" | "cut" | "meter";
+  packaging_cost_per_unit?: number;
+  packaging_unit?: "sheet" | "sqm" | "part";
 }
 
 /** Sheet inventory item */
@@ -59,6 +75,11 @@ export interface EdgebandInventory {
   thickness_mm: number;
   width_mm: number;
   color?: string;
+  cost_per_meter?: number;
+  application_cost_per_meter?: number;
+  overhang_mm?: number;
+  waste_factor_pct?: number;
+  currency?: string;
 }
 
 /** Edge specification for edgebanding */
@@ -71,20 +92,42 @@ export interface EdgeSpec {
 
 /** Groove/dado specification */
 export interface GrooveSpec {
-  kind: "backpanel" | "shelf_dado" | "custom";
-  side: "L1" | "L2" | "W1" | "W2";
+  kind: "dado" | "rabbet" | "slot" | "custom";
+  side: "L1" | "L2" | "W1" | "W2" | "face" | "back";
   depth_mm: number;
   width_mm: number;
   offset_mm: number;
 }
 
-/** Part operations (edging, grooves, notes) */
+/** CNC operation specification */
+export interface CNCOperation {
+  type: "pocket" | "profile" | "engraving" | "drilling" | "routing" | "custom";
+  description?: string;
+  time_minutes?: number;
+  tool_diameter_mm?: number;
+  depth_mm?: number;
+  notes?: string;
+}
+
+/** Hole drilling specification */
+export interface HoleDrilling {
+  diameter_mm: number;
+  depth_mm?: number;
+  count: number;
+  pattern?: "line" | "grid" | "custom";
+  notes?: string;
+}
+
+/** Part operations (edging, grooves, CNC, drilling, notes) */
 export interface PartOperations {
   edging?: {
     band_thickness_mm?: number;
+    band_material_id?: string;
     edges: EdgeSpec;
   };
   grooves?: GrooveSpec[];
+  cnc_operations?: CNCOperation[];
+  hole_drilling?: HoleDrilling[];
   notes?: string;
 }
 
@@ -116,24 +159,27 @@ export interface PanelSawSettings {
   strip_grouping?: "strict" | "relaxed";
 }
 
-/** Machine settings */
+/** Machine settings (REQUIRED) */
 export interface MachineSettings {
-  type?: "panel_saw" | "cnc_router" | "beam_saw";
-  profile_id?: string;
-  kerf?: number;
-  trim_margin?: TrimMargin;
+  type: "panel_saw" | "cnc";
+  profile_id: string;
+  kerf: number;
+  trim_margin: TrimMargin;
+  part_gap?: number;
+  allow_rotation_default?: boolean;
   min_offcut_L?: number;
   min_offcut_W?: number;
   panel_saw?: PanelSawSettings;
 }
 
-/** Optimization objective settings */
+/** Optimization objective settings (REQUIRED) */
 export interface ObjectiveSettings {
-  primary?: "min_sheets" | "min_waste";
-  secondary?: string[];
+  primary: "min_sheets";
+  secondary: string[];
   weights: {
     sheets: number;
     waste_area: number;
+    clustering?: number;
   };
 }
 
@@ -141,20 +187,21 @@ export interface ObjectiveSettings {
 export interface Job {
   job_id: string;
   job_name?: string;
-  org_id: string;
+  org_id: string;      // REQUIRED
+  user_id: string;     // REQUIRED
   units?: "mm" | "in";
   customer?: CustomerInfo;
   materials: Material[];
   sheet_inventory: SheetInventory[];
   edgeband_inventory?: EdgebandInventory[];
   parts: Part[];
-  machine: MachineSettings;
-  objective: ObjectiveSettings;
+  machine: MachineSettings;     // REQUIRED
+  objective: ObjectiveSettings; // REQUIRED
 }
 
 /** Run configuration */
 export interface RunConfig {
-  mode?: "maxrects" | "guillotine";
+  mode?: "guillotine" | "best" | "hybrid" | "optimal" | "maxrects";
   search?: "none" | "beam";
   runs?: number;
   seed?: number | null;
@@ -209,6 +256,7 @@ export interface Summary {
   total_groove_length_mm?: number;
   total_cut_length_mm?: number;
   parts_with_notes?: number;
+  clustering_pct?: number; // New in v1.5.0 - how well similar parts are grouped (0-100%)
 }
 
 /** Cut plan step */
@@ -236,10 +284,21 @@ export interface SvgOutput {
   svg: string;
 }
 
-/** Beam search info */
+/** Algorithm comparison result */
+export interface AlgorithmComparison {
+  algorithm: string;
+  sheets_used: number;
+  utilization_pct: number;
+  score: number;
+}
+
+/** Beam search info (updated for v1.5.0) */
 export interface BeamInfo {
-  runs: number;
-  strategies: string[];
+  mode?: string;
+  algorithmUsed?: string;                    // Which algorithm was selected (in "best" mode)
+  algorithmsCompared?: AlgorithmComparison[]; // All algorithms tested with scores
+  runs?: number;
+  strategies?: string[];
   bestWorkflow?: string;
   workflowBreakdown?: Record<string, number>;
 }
@@ -263,7 +322,7 @@ export interface OptimizeResult {
     sheets: Sheet[];
     summary: Summary;
   };
-  cutplans?: CutPlan[];
+  cutplans?: CutPlan[];  // Only returned when guillotine-based algorithm wins
   beam?: BeamInfo;
   svgs?: SvgOutput[];
   error?: string;
@@ -280,12 +339,145 @@ export interface HealthResponse {
     formatted: string;
     started_at: string;
   };
+  memory?: {
+    heap_used_mb: number;
+    heap_total_mb: number;
+    rss_mb: number;
+    usage_percent: number;
+  };
   algorithms: {
+    best?: { enabled: boolean; modes: string[]; description: string };
     maxrects: { enabled: boolean; modes: string[]; description: string };
     guillotine: { enabled: boolean; modes: string[]; description: string };
   };
   features: Record<string, boolean>;
   rate_limits: Record<string, { limit: number; window: string }>;
+  endpoints?: Record<string, { method: string; path: string; description: string }>;
+  environment?: {
+    node_version: string;
+    platform: string;
+    arch: string;
+  };
+}
+
+/** Import response */
+export interface ImportResponse {
+  success: boolean;
+  detectedFormat: string;
+  job?: Job;
+  summary?: {
+    partsCount: number;
+    totalPieces: number;
+    materialsCount: number;
+    sheetsCount?: number;
+  };
+  shareableUrl?: string;
+  warnings?: string[];
+  errors?: string[];
+}
+
+/** Encode response */
+export interface EncodeResponse {
+  success: boolean;
+  detectedFormat: string;
+  encoded: string;
+  urlFormat: {
+    baseUrl: string;
+    queryParam: string;
+    encoded: string;
+  };
+  shareableUrl: string;
+  size: {
+    jsonBytes: number;
+    compressedBytes: number;
+    urlLength: number;
+    compressionRatio: string;
+    status: "ok" | "warning" | "danger" | "too_large";
+    message: string;
+  };
+  summary: {
+    partsCount: number;
+    totalPieces: number;
+    materialsCount: number;
+  };
+}
+
+/** Session response */
+export interface SessionResponse {
+  success: boolean;
+  detectedFormat?: string;
+  token: string;
+  sessionUrl: string;
+  expiresAt: string;
+  expiresIn: string;
+  maxAccess: number;
+  summary?: {
+    partsCount: number;
+    totalPieces: number;
+    materialsCount: number;
+    sheetsCount?: number;
+  };
+  usage: {
+    url: string;
+    apiRetrieve: string;
+    note: string;
+  };
+}
+
+/** Costing config for BOM export */
+export interface CostingConfig {
+  currency?: string;
+  labor_rates?: {
+    cutting?: { rate: number; unit: string };
+    edgebanding?: { rate: number; unit: string };
+    packaging?: { rate: number; unit: string };
+  };
+  operation_rates?: {
+    grooving?: { rate: number; unit: string };
+    cnc?: { rate: number; unit: string };
+    hole_drilling?: { rate: number; unit: string };
+  };
+  markup_percent?: number;
+  tax_percent?: number;
+}
+
+/** BOM export request */
+export interface BOMExportRequest {
+  job: Job;
+  result: OptimizeResult["result"];
+  costingConfig?: CostingConfig;
+}
+
+/** Label options */
+export interface LabelOptions {
+  includeJobName?: boolean;
+  includePartNumber?: boolean;
+  includeDimensions?: boolean;
+  includeMaterial?: boolean;
+  includeThickness?: boolean;
+  includeOps?: boolean;
+  includeNotes?: boolean;
+  includeQuantityIndex?: boolean;
+  includeQrCode?: boolean;
+  includeBranding?: boolean;
+  copiesMode?: "quantity" | "single";
+  sortBy?: "part_number" | "material" | "size";
+}
+
+/** Custom label format */
+export interface CustomLabelFormat {
+  id: string;
+  name: string;
+  pageWidth: number;
+  pageHeight: number;
+  labelWidth: number;
+  labelHeight: number;
+  columns: number;
+  rows: number;
+  marginTop: number;
+  marginLeft: number;
+  gapHorizontal: number;
+  gapVertical: number;
 }
 
 // ============================================================
@@ -382,9 +574,26 @@ export interface PlacedPart {
 
 export class CAI2DClient {
   private baseUrl: string;
+  private apiKey: string | null;
   
-  constructor(config: { baseUrl?: string } = {}) {
+  constructor(config: { baseUrl?: string; apiKey?: string } = {}) {
     this.baseUrl = config.baseUrl ?? process.env.CAI2D_API_URL ?? "https://cai-2d.app/api";
+    this.apiKey = config.apiKey ?? process.env.CAI2D_API_KEY ?? null;
+  }
+  
+  /**
+   * Get headers for API requests
+   */
+  private getHeaders(): HeadersInit {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    
+    if (this.apiKey) {
+      headers["x-api-key"] = this.apiKey;
+    }
+    
+    return headers;
   }
   
   /**
@@ -435,6 +644,8 @@ export class CAI2DClient {
   
   /**
    * Run optimization (synchronous)
+   * 
+   * NOTE: External API access requires an API key in the x-api-key header.
    */
   async optimize(request: OptimizeRequest): Promise<OptimizeResult> {
     logger.info("Submitting optimization request", { 
@@ -442,12 +653,13 @@ export class CAI2DClient {
       partsCount: request.job.parts.length,
       sheetsCount: request.job.sheet_inventory.length,
       mode: request.run?.mode ?? "guillotine",
+      hasApiKey: !!this.apiKey,
     });
     
     try {
       const response = await fetch(`${this.baseUrl}/optimize`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this.getHeaders(),
         body: JSON.stringify(request),
       });
       
@@ -466,6 +678,8 @@ export class CAI2DClient {
         jobId: result.result?.job_id,
         sheetsUsed: result.result?.summary.sheets_used,
         utilization: result.result?.summary.utilization_pct,
+        clusteringPct: result.result?.summary.clustering_pct,
+        algorithmUsed: result.beam?.algorithmUsed,
         timing: result.timing_ms,
       });
       
@@ -480,13 +694,73 @@ export class CAI2DClient {
   }
   
   /**
+   * Import cutlist data from external formats
+   */
+  async import(data: unknown, format?: string): Promise<ImportResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/import`, {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify(format ? { format, data } : data),
+      });
+      
+      return response.json();
+    } catch (error) {
+      logger.error("Import request failed", { error });
+      return {
+        success: false,
+        detectedFormat: "unknown",
+        errors: [error instanceof Error ? error.message : "Network error"],
+      };
+    }
+  }
+  
+  /**
+   * Encode cutlist for URL sharing
+   */
+  async encode(data: unknown, format?: string): Promise<EncodeResponse | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/import/encode`, {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify(format ? { format, data } : data),
+      });
+      
+      if (!response.ok) return null;
+      return response.json();
+    } catch (error) {
+      logger.error("Encode request failed", { error });
+      return null;
+    }
+  }
+  
+  /**
+   * Create a session for large cutlists
+   */
+  async createSession(data: unknown, format?: string): Promise<SessionResponse | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/import/session`, {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify(format ? { format, data } : data),
+      });
+      
+      if (!response.ok) return null;
+      return response.json();
+    } catch (error) {
+      logger.error("Session creation failed", { error });
+      return null;
+    }
+  }
+  
+  /**
    * Export optimization result as PDF
    */
   async exportPDF(request: OptimizeRequest): Promise<Blob | null> {
     try {
       const response = await fetch(`${this.baseUrl}/export/pdf`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this.getHeaders(),
         body: JSON.stringify(request),
       });
       
@@ -503,34 +777,47 @@ export class CAI2DClient {
   }
   
   /**
+   * Export Bill of Materials as PDF
+   */
+  async exportBOM(request: BOMExportRequest): Promise<Blob | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/export/bom`, {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify(request),
+      });
+      
+      if (!response.ok) {
+        logger.error("BOM export failed", { status: response.status });
+        return null;
+      }
+      
+      return response.blob();
+    } catch (error) {
+      logger.error("BOM export request failed", { error });
+      return null;
+    }
+  }
+  
+  /**
    * Export part labels as PDF
    */
   async exportLabels(
     request: OptimizeRequest,
     options?: {
       labelFormat?: string;
-      labelOptions?: {
-        includeJobName?: boolean;
-        includePartNumber?: boolean;
-        includeDimensions?: boolean;
-        includeMaterial?: boolean;
-        includeThickness?: boolean;
-        includeOps?: boolean;
-        includeNotes?: boolean;
-        includeQuantityIndex?: boolean;
-        includeBranding?: boolean;
-        copiesMode?: "quantity" | "single";
-        sortBy?: "part_number" | "material" | "size";
-      };
+      customFormat?: CustomLabelFormat;
+      labelOptions?: LabelOptions;
     }
   ): Promise<Blob | null> {
     try {
       const response = await fetch(`${this.baseUrl}/export/labels`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this.getHeaders(),
         body: JSON.stringify({
           ...request,
           labelFormat: options?.labelFormat ?? "avery_5163",
+          customFormat: options?.customFormat,
           labelOptions: options?.labelOptions,
         }),
       });
@@ -543,6 +830,23 @@ export class CAI2DClient {
       return response.blob();
     } catch (error) {
       logger.error("Labels export request failed", { error });
+      return null;
+    }
+  }
+  
+  /**
+   * Get available label formats
+   */
+  async getLabelFormats(): Promise<{ formats: Array<{ id: string; name: string; description: string }> } | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/export/labels`, {
+        method: "GET",
+        headers: this.getHeaders(),
+      });
+      
+      if (!response.ok) return null;
+      return response.json();
+    } catch {
       return null;
     }
   }
@@ -817,6 +1121,7 @@ export class CAI2DClient {
           total_groove_length_mm: totalGrooveLength,
           total_cut_length_mm: totalPieces * (usableL + usableW), // Rough estimate
           parts_with_notes: partsWithNotes,
+          clustering_pct: 75, // Mock clustering value
         },
       },
       cutplans: sheets.map(sheet => ({
@@ -847,11 +1152,12 @@ export class CAI2DClient {
 export function buildJobPayload(params: {
   jobId: string;
   jobName?: string;
-  orgId?: string;
+  orgId: string;      // REQUIRED
+  userId: string;     // REQUIRED
   parts: CutPart[];
   materials?: MaterialDef[];
   customer?: CustomerInfo;
-  machineSettings?: MachineSettings;
+  machineSettings?: Partial<MachineSettings>;
 }): Job {
   // Build materials from parts or use provided
   const materialMap = new Map<string, Material>();
@@ -900,7 +1206,7 @@ export function buildJobPayload(params: {
     ops: part.ops ? convertPartOps(part.ops) : undefined,
   }));
   
-  // Build machine settings with required fields
+  // Build machine settings with REQUIRED fields
   const machineSettings: MachineSettings = {
     type: params.machineSettings?.type ?? "panel_saw",
     profile_id: params.machineSettings?.profile_id ?? "default",
@@ -914,38 +1220,45 @@ export function buildJobPayload(params: {
     },
   };
   
+  // Build objective settings with REQUIRED fields and proper weights
+  const objectiveSettings: ObjectiveSettings = {
+    primary: "min_sheets",
+    secondary: ["min_waste_area"],
+    weights: {
+      sheets: 1000000,  // High weight for sheet count (most important)
+      waste_area: 1,    // Lower weight for waste
+      clustering: 50000, // Part clustering bonus
+    },
+  };
+  
   return {
     job_id: params.jobId,
     job_name: params.jobName,
-    org_id: params.orgId ?? "cai-intake-default",
+    org_id: params.orgId,
+    user_id: params.userId,
     units: "mm",
     customer: params.customer,
     materials: Array.from(materialMap.values()),
     sheet_inventory: sheetInventory,
     parts,
     machine: machineSettings,
-    objective: {
-      primary: "min_sheets",
-      secondary: ["min_waste_area"],
-      weights: {
-        sheets: 1.0,
-        waste_area: 0.5,
-      },
-    },
+    objective: objectiveSettings,
   };
 }
 
 /**
  * Map internal groove kind to CAI 2D API valid values
  */
-function mapGrooveKind(kind?: string): "backpanel" | "shelf_dado" | "custom" {
+function mapGrooveKind(kind?: string): "dado" | "rabbet" | "slot" | "custom" {
   switch (kind?.toLowerCase()) {
     case "dado":
     case "shelf_dado":
-      return "shelf_dado";
+      return "dado";
     case "backpanel":
     case "rabbet":
-      return "backpanel";
+      return "rabbet";
+    case "slot":
+      return "slot";
     default:
       return "custom";
   }
@@ -992,11 +1305,21 @@ function convertPartOps(ops: CutPart["ops"]): PartOperations | undefined {
   if (ops.grooves && ops.grooves.length > 0) {
     result.grooves = ops.grooves.map(g => ({
       kind: mapGrooveKind((g as { kind?: string }).kind),
-      side: g.side as "L1" | "L2" | "W1" | "W2",
+      side: g.side as "L1" | "L2" | "W1" | "W2" | "face" | "back",
       depth_mm: g.depth_mm ?? 8, // Default depth if not specified
       width_mm: g.width_mm ?? 18, // Default width if not specified
       offset_mm: g.offset_mm ?? 0,
     }));
+  }
+  
+  // Convert CNC operations if present
+  if ((ops as { cnc_operations?: CNCOperation[] }).cnc_operations) {
+    result.cnc_operations = (ops as { cnc_operations: CNCOperation[] }).cnc_operations;
+  }
+  
+  // Convert hole drilling if present
+  if ((ops as { hole_drilling?: HoleDrilling[] }).hole_drilling) {
+    result.hole_drilling = (ops as { hole_drilling: HoleDrilling[] }).hole_drilling;
   }
   
   // Add notes if present  
@@ -1063,19 +1386,24 @@ export function materialsToStockSheets(materials: MaterialDef[]): StockSheet[] {
 export async function submitOptimization(params: {
   jobId?: string;
   jobName?: string;
+  orgId: string;     // REQUIRED
+  userId: string;    // REQUIRED
   parts: CutPart[] | unknown[];
   materials?: MaterialDef[];
   customer?: CustomerInfo;
-  machineSettings?: MachineSettings;
+  machineSettings?: Partial<MachineSettings>;
   runConfig?: RunConfig;
   renderOptions?: RenderOptions;
   useMock?: boolean;
+  apiKey?: string;
 }): Promise<OptimizeResult> {
-  const client = new CAI2DClient();
+  const client = new CAI2DClient({ apiKey: params.apiKey });
   
   const job = buildJobPayload({
     jobId: params.jobId ?? `job_${Date.now()}`,
     jobName: params.jobName,
+    orgId: params.orgId,
+    userId: params.userId,
     parts: params.parts as CutPart[],
     materials: params.materials,
     customer: params.customer,
@@ -1092,7 +1420,7 @@ export async function submitOptimization(params: {
     render: params.renderOptions ?? {
       svg: true,
       showLabels: true,
-      showCutNumbers: true,
+      showCutNumbers: false,
     },
   };
   
@@ -1112,6 +1440,5 @@ export async function submitOptimization(params: {
   return client.optimize(request);
 }
 
-// Export singleton client
+// Export singleton client (configure with env vars)
 export const cai2dClient = new CAI2DClient();
-
